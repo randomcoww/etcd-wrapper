@@ -1,0 +1,6 @@
+.terraform
+output/*
+data/*
+terraform.tfstate
+terraform.tfstate.*
+docker-compose.yaml

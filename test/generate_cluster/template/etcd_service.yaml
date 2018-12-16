@@ -1,0 +1,33 @@
+  ${host}:
+    image: quay.io/coreos/etcd:v3.3
+    command:
+    - "/usr/local/bin/etcd"
+    - "--name=${host}.local"
+    - "--data-dir=/var/lib/etcd"
+    - "--cert-file=${cert_path}/${host}-client.pem"
+    - "--key-file=${cert_path}/${host}-client-key.pem"
+    - "--trusted-ca-file=${cert_path}/root-client-ca.pem"
+    - "--peer-cert-file=${cert_path}/${host}-peer.pem"
+    - "--peer-key-file=${cert_path}/${host}-peer-key.pem"
+    - "--peer-trusted-ca-file=${cert_path}/root-peer-ca.pem"
+    - "--peer-client-cert-auth"
+    - "--client-cert-auth"
+    - "--initial-advertise-peer-urls=https://${ip}:2380"
+    - "--listen-peer-urls=https://${ip}:2380"
+    - "--listen-client-urls=https://${ip}:${client_port},https://127.0.0.1:${client_port}"
+    - "--advertise-client-urls=https://${ip}:${client_port}"
+    - "--initial-cluster-token=${cluster_name}"
+    - "--initial-cluster=${initial_cluster}"
+    - "--initial-cluster-state=${initial_cluster_state}"
+    - "--enable-v2=false"
+    ports:
+    - "${local_port}:${client_port}"
+    volumes:
+    - ./output:${cert_path}
+    - ./data/${host}:/var/lib/etcd
+    hostname: ${host}.local
+    networks:
+      ${docker_network}:
+        ipv4_address: ${ip}
+        aliases:
+        - ${host}.local
