@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"io"
+	"path/filepath"
 
 	"github.com/coreos/etcd-operator/pkg/backup/reader"
 )
@@ -20,6 +21,11 @@ func NewRestoreManagerFromReader(rr reader.Reader) *RestoreManager {
 }
 
 func (rm *RestoreManager) DownloadSnap(ctx context.Context, s3Path, restorePath string) error {
+	err := os.MkdirAll(filepath.Dir(restorePath), os.FileMode(0644))
+	if err != nil {
+		return fmt.Errorf("failed to create base directory: (%v)", err)
+	}
+
 	f, err := os.OpenFile(restorePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		return fmt.Errorf("failed to open snaphot restore file: (%v)", err)

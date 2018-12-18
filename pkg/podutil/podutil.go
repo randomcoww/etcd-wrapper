@@ -3,11 +3,11 @@ package podutil
 import (
 	"fmt"
 	"strings"
-	// "io/ioutil"
 	"io"
 	"bytes"
 	"os"
 	"encoding/json"
+	"path/filepath"
 
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -45,8 +45,7 @@ type Spec struct {
 	InitialCluster string
 
 	// etcd image
-	Repository string
-	Version string
+	Image string
 	// kubelet static pod path
 	PodSpecFile string
 	S3BackupPath string
@@ -59,7 +58,7 @@ func ClientURLs(m *Spec) []string {
 func makeRestoreInitContainer(m *Spec) v1.Container {
 	return v1.Container{
 		Name:  "restore-datadir",
-		Image: m.Repository + ":" + m.Version,
+		Image: m.Image,
 		Env: []v1.EnvVar{
 			{
 				Name: "ETCDCTL_API",
@@ -87,7 +86,7 @@ func makeRestoreInitContainer(m *Spec) v1.Container {
 func makeEtcdContainer(m *Spec, state string) v1.Container {
 	return v1.Container{
 		Name:  "etcd",
-		Image: m.Repository + ":" + m.Version,
+		Image: m.Image,
 		Env: []v1.EnvVar{
 			{
 				Name: "ETCD_NAME",
@@ -178,10 +177,15 @@ func makeEtcdContainer(m *Spec, state string) v1.Container {
 
 func NewEtcdPod(m *Spec, state string, runRestore bool) *v1.Pod {
 	pod := &v1.Pod{
+		TypeMeta: metav1.TypeMeta{
+			APIVersion: "v1",
+			Kind:       "Pod",
+		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name: m.Name,
 		},
 		Spec: v1.PodSpec{
+			HostNetwork: true,
 			InitContainers: []v1.Container{},
 			Containers: []v1.Container{
 				makeEtcdContainer(m, state),
@@ -223,6 +227,11 @@ func WritePodSpec(pod *v1.Pod, file string) error {
 	j, err := json.MarshalIndent(pod, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal pod spec: %v", err)
+	}
+
+	err = os.MkdirAll(filepath.Dir(file), os.FileMode(0644))
+	if err != nil {
+		return fmt.Errorf("failed to create base directory: (%v)", err)
 	}
 
 	f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)

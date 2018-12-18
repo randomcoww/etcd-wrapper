@@ -22,6 +22,8 @@ import (
 	"github.com/randomcoww/etcd-wrapper/pkg/restore"
 
 	"github.com/coreos/etcd-operator/pkg/util/constants"
+	// "go.etcd.io/etcd/clientv3"
+	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
 )
 
 var (
@@ -36,7 +38,7 @@ func parseFlags() {
 	flag.StringVar(&Member.BackupMountDir, "backup-dir", "/var/lib/etcd-restore", "Base path of snapshot restore file.")
 	flag.StringVar(&Member.BackupFile, "backup-file", "/var/lib/etcd-restore/etcd.db", "Snapshot file restore path.")
 
-	flag.StringVar(&Member.EtcdTLSMountDir, "cert-dir", "/etc/ssl/cert", "Base path of TLS cert files.")
+	flag.StringVar(&Member.EtcdTLSMountDir, "tls-dir", "/etc/ssl/cert", "Base path of TLS cert files.")
 	flag.StringVar(&Member.CertFile, "cert-file", "", "Path to the client server TLS cert file.")
 	flag.StringVar(&Member.KeyFile, "key-file", "", "Path to the client server TLS key file.")
 	flag.StringVar(&Member.TrustedCAFile, "trusted-ca-file", "", "Path to the client server TLS trusted CA cert file.")
@@ -53,8 +55,7 @@ func parseFlags() {
 	flag.StringVar(&Member.InitialClusterToken, "initial-cluster-token", "", "Initial cluster token for the etcd cluster during bootstrap.")
 	flag.StringVar(&Member.InitialCluster, "initial-cluster", "", "Initial cluster configuration for bootstrapping.")
 
-	flag.StringVar(&Member.Repository, "repository", "", "Etcd image repository name.")
-	flag.StringVar(&Member.Version, "version", "", "Etcd image version.")
+	flag.StringVar(&Member.Image, "image", "quay.io/coreos/etcd:v3.3", "Etcd container image.")
 	flag.StringVar(&Member.PodSpecFile, "pod-spec-file", "", "Pod spec file path (intended to be in kubelet manifests path).")
 	flag.StringVar(&Member.S3BackupPath, "s3-backup-path", "", "S3 key name for backup.")
 	flag.Parse()
@@ -73,15 +74,20 @@ func Main() {
 		return
 	}
 
-	run(podutil.ClientURLs(Member), tlsConfig)
+	logrus.Infof("Start")
+
+	go runMain(podutil.ClientURLs(Member), tlsConfig)
+	runBackup(podutil.ClientURLs(Member), tlsConfig)
 }
 
-func run(clientURLs []string, tlsConfig *tls.Config) {
+func runBackup(clientURLs []string, tlsConfig *tls.Config) {
 	ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultRequestTimeout)
 
-	for {	
+	for {
 		select {
-		case <- time.After(30 * time.Minute):
+		case <- time.After(30 * time.Second):
+			logrus.Infof("Started backup")
+
 			status, err := etcdutilext.Status(clientURLs, tlsConfig)
 			if err != nil {
 				logrus.Errorf("Failed to get cluster status: %v", err)
@@ -105,9 +111,19 @@ func run(clientURLs []string, tlsConfig *tls.Config) {
 
 			if err != nil {
 				logrus.Errorf("Failed to run backup: %v", err)
+				continue
 			}
-			logrus.Infof("Finished backup")
 
+			logrus.Infof("Finished backup")
+		}
+	}
+}
+
+func runMain(clientURLs []string, tlsConfig *tls.Config) {
+	ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultRequestTimeout)
+
+	for {
+		select {
 		case <- time.After(10 * time.Second):
 			// Check member list
 			memberList, err := etcdutil.ListMembers(clientURLs, tlsConfig)
@@ -131,7 +147,9 @@ func run(clientURLs []string, tlsConfig *tls.Config) {
 					err = podutil.WritePodSpec(podutil.NewEtcdPod(Member, "new", false), Member.PodSpecFile)
 					if err != nil {
 						logrus.Errorf("Failed to create pod spec: %v", err)
+						continue
 					}
+					logrus.Infof("Created pod spec: %v", Member.PodSpecFile)
 					continue
 				}
 
@@ -144,26 +162,30 @@ func run(clientURLs []string, tlsConfig *tls.Config) {
 				continue
 			}
 
-			// Check health of my node
 			for _, member := range memberList.Members {
+				// logrus.Infof("Got member: %v (%v)", member.ID, member.Name)
+				_, err := etcdutil.ListMembers(member.ClientURLs, tlsConfig)
 
-				if member.Name == Member.Name {
-					_, err := etcdutil.ListMembers(member.ClientURLs, tlsConfig)
+				if err != nil {
+					// Remove this node
+					err = etcdutil.RemoveMember(clientURLs, tlsConfig, member.ID)
+					switch err {
+					case nil:
+						logrus.Infof("Removed member: %v (%v)", member.ID, member.Name)
+					case rpctypes.ErrMemberNotFound:
+						logrus.Infof("Member already removed: %v (%v)", member.ID, member.Name)
+					default:
+						logrus.Errorf("Failed to remove member: %v (%v)", member.ID, member.Name)
+						break
+					}
 
-					if err != nil {
-						// Remove this node
-						err = etcdutil.RemoveMember(clientURLs, tlsConfig, member.ID)
-						if err != nil {
-							logrus.Errorf("Failed to remove unresponsive member: %v", err)
-							continue
-						}
-						logrus.Infof("Removed unresponsive member: %v", member.ID)
-						
+					// If this is my node
+					if member.Name == Member.Name {
 						// Replace with a new member that will be used once new pod starts
 						err = etcdutilext.AddMember(clientURLs, member.PeerURLs, tlsConfig)
 						if err != nil {
 							logrus.Errorf("Failed to add member: %v", err)
-							continue
+							break
 						}
 						logrus.Infof("Added new member")
 
@@ -171,11 +193,12 @@ func run(clientURLs []string, tlsConfig *tls.Config) {
 						err = podutil.WritePodSpec(podutil.NewEtcdPod(Member, "existing", false), Member.PodSpecFile)
 						if err != nil {
 							logrus.Errorf("Failed to create pod spec: %v", err)
-							continue
+							break
 						}
 					}
-					continue
 				}
+				logrus.Infof("Node active: %v (%v)", member.ID, member.Name)
+				break
 			}
 		}
 	}
