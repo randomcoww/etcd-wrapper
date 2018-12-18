@@ -3,8 +3,8 @@ package restore
 import (
 	"context"
 	"fmt"
-	"os"
 	"io"
+	"os"
 	"path/filepath"
 
 	"github.com/coreos/etcd-operator/pkg/backup/reader"

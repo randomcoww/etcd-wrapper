@@ -1,28 +1,27 @@
 package wrapper
 
 import (
-	"flag"
 	"context"
 	"crypto/tls"
+	"flag"
 	"io/ioutil"
 	"time"
 
-	"github.com/sirupsen/logrus"
 	"github.com/randomcoww/etcd-wrapper/pkg/podutil"
+	"github.com/sirupsen/logrus"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 
 	"github.com/coreos/etcd-operator/pkg/backup"
-	"github.com/coreos/etcd-operator/pkg/backup/writer"
 	"github.com/coreos/etcd-operator/pkg/backup/reader"
+	"github.com/coreos/etcd-operator/pkg/backup/writer"
 	"github.com/coreos/etcd-operator/pkg/util/etcdutil"
-	etcdutilext "github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
 	"github.com/randomcoww/etcd-wrapper/pkg/restore"
+	etcdutilext "github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
 
 	"github.com/coreos/etcd-operator/pkg/util/constants"
-	// "go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
 )
 
@@ -45,13 +44,13 @@ func parseFlags() {
 	flag.StringVar(&Member.PeerCertFile, "peer-cert-file", "", "Path to the peer server TLS cert file.")
 	flag.StringVar(&Member.PeerKeyFile, "peer-key-file", "", "Path to the peer server TLS key file.")
 	flag.StringVar(&Member.PeerTrustedCAFile, "peer-trusted-ca-file", "", "Path to the peer server TLS trusted CA file.")
-	
+
 	flag.StringVar(&Member.InitialAdvertisePeerURLs, "initial-advertise-peer-urls", "", "List of this member's peer URLs to advertise to the rest of the cluster.")
 	flag.StringVar(&Member.ListenPeerURLs, "listen-peer-urls", "", "List of URLs to listen on for peer traffic.")
 
 	flag.StringVar(&Member.AdvertiseClientURLs, "advertise-client-urls", "", "List of this member's client URLs to advertise to the public.")
 	flag.StringVar(&Member.ListenClientURLs, "listen-client-urls", "", "List of URLs to listen on for client traffic.")
-	
+
 	flag.StringVar(&Member.InitialClusterToken, "initial-cluster-token", "", "Initial cluster token for the etcd cluster during bootstrap.")
 	flag.StringVar(&Member.InitialCluster, "initial-cluster", "", "Initial cluster configuration for bootstrapping.")
 
@@ -67,7 +66,7 @@ func Main() {
 	cert, _ := ioutil.ReadFile(Member.CertFile)
 	key, _ := ioutil.ReadFile(Member.KeyFile)
 	ca, _ := ioutil.ReadFile(Member.TrustedCAFile)
-	
+
 	tlsConfig, err := etcdutil.NewTLSConfig(cert, key, ca)
 	if err != nil {
 		logrus.Errorf("Failed to read TLS file: %v", err)
@@ -85,7 +84,7 @@ func runBackup(clientURLs []string, tlsConfig *tls.Config) {
 
 	for {
 		select {
-		case <- time.After(30 * time.Second):
+		case <-time.After(30 * time.Second):
 			logrus.Infof("Started backup")
 
 			status, err := etcdutilext.Status(clientURLs, tlsConfig)
@@ -101,7 +100,7 @@ func runBackup(clientURLs []string, tlsConfig *tls.Config) {
 
 			// Check backup
 			sess := session.Must(session.NewSession(&aws.Config{
-				Region: aws.String("us-west-2"),
+				// Region: aws.String("us-west-2"),
 			}))
 
 			s3Writer := writer.NewS3Writer(s3.New(sess))
@@ -124,15 +123,15 @@ func runMain(clientURLs []string, tlsConfig *tls.Config) {
 
 	for {
 		select {
-		case <- time.After(10 * time.Second):
+		case <-time.After(10 * time.Second):
 			// Check member list
 			memberList, err := etcdutil.ListMembers(clientURLs, tlsConfig)
 			if err != nil {
 				logrus.Errorf("Failed to get etcd member list: %v", err)
-				
+
 				// Check backup
 				sess := session.Must(session.NewSession(&aws.Config{
-					Region: aws.String("us-west-2"),
+					// Region: aws.String("us-west-2"),
 				}))
 
 				s3Reader := reader.NewS3Reader(s3.New(sess))

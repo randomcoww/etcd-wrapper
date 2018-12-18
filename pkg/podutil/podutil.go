@@ -1,13 +1,13 @@
 package podutil
 
 import (
-	"fmt"
-	"strings"
-	"io"
 	"bytes"
-	"os"
 	"encoding/json"
+	"fmt"
+	"io"
+	"os"
 	"path/filepath"
+	"strings"
 
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -28,26 +28,26 @@ type Spec struct {
 	// Mount this in etcd container - cert files should all be under this path
 	EtcdTLSMountDir string
 	// These paths should be under EtcdTLSMountDir
-	CertFile string
-	KeyFile string
-	TrustedCAFile string
-	PeerCertFile string
-	PeerKeyFile string
+	CertFile          string
+	KeyFile           string
+	TrustedCAFile     string
+	PeerCertFile      string
+	PeerKeyFile       string
 	PeerTrustedCAFile string
 
 	// Listen
 	InitialAdvertisePeerURLs string
-	ListenPeerURLs string
-	AdvertiseClientURLs string
-	ListenClientURLs string
+	ListenPeerURLs           string
+	AdvertiseClientURLs      string
+	ListenClientURLs         string
 
 	InitialClusterToken string
-	InitialCluster string
+	InitialCluster      string
 
 	// etcd image
 	Image string
 	// kubelet static pod path
-	PodSpecFile string
+	PodSpecFile  string
 	S3BackupPath string
 }
 
@@ -61,22 +61,22 @@ func makeRestoreInitContainer(m *Spec) v1.Container {
 		Image: m.Image,
 		Env: []v1.EnvVar{
 			{
-				Name: "ETCDCTL_API",
+				Name:  "ETCDCTL_API",
 				Value: "3",
 			},
 		},
 		Command: []string{
-			fmt.Sprintf("/usr/local/bin/etcdctl snapshot restore %[1]s" +
-				" --name %[2]s" +
-				" --initial-cluster %[3]s" +
-				" --initial-cluster-token %[4]s" +
-				" --initial-advertise-peer-urls %[5]s" +
+			fmt.Sprintf("/usr/local/bin/etcdctl snapshot restore %[1]s"+
+				" --name %[2]s"+
+				" --initial-cluster %[3]s"+
+				" --initial-cluster-token %[4]s"+
+				" --initial-advertise-peer-urls %[5]s"+
 				" --data-dir %[6]s",
 				m.BackupFile, m.Name, m.InitialCluster, m.InitialClusterToken, m.InitialAdvertisePeerURLs, dataDir),
 		},
 		VolumeMounts: []v1.VolumeMount{
 			{
-				Name: "backup-path", 
+				Name:      "backup-path",
 				MountPath: m.BackupMountDir,
 			},
 		},
@@ -89,77 +89,77 @@ func makeEtcdContainer(m *Spec, state string) v1.Container {
 		Image: m.Image,
 		Env: []v1.EnvVar{
 			{
-				Name: "ETCD_NAME",
+				Name:  "ETCD_NAME",
 				Value: m.Name,
 			},
 			{
-				Name: "ETCD_DATA_DIR",
+				Name:  "ETCD_DATA_DIR",
 				Value: dataDir,
 			},
 			{
-				Name: "ETCD_INITIAL_CLUSTER",
+				Name:  "ETCD_INITIAL_CLUSTER",
 				Value: m.InitialCluster,
 			},
 			{
-				Name: "ETCD_INITIAL_CLUSTER_STATE",
+				Name:  "ETCD_INITIAL_CLUSTER_STATE",
 				Value: state,
 			},
 			{
-				Name: "ETCD_INITIAL_CLUSTER_TOKEN",
+				Name:  "ETCD_INITIAL_CLUSTER_TOKEN",
 				Value: m.InitialClusterToken,
 			},
 			{
-				Name: "ETCD_ENABLE_V2",
+				Name:  "ETCD_ENABLE_V2",
 				Value: "false",
 			},
 			// Listen
 			{
-				Name: "ETCD_LISTEN_CLIENT_URLS",
+				Name:  "ETCD_LISTEN_CLIENT_URLS",
 				Value: m.ListenClientURLs,
 			},
 			{
-				Name: "ETCD_ADVERTISE_CLIENT_URLS",
+				Name:  "ETCD_ADVERTISE_CLIENT_URLS",
 				Value: m.AdvertiseClientURLs,
-			},				
+			},
 			{
-				Name: "ETCD_LISTEN_PEER_URLS",
+				Name:  "ETCD_LISTEN_PEER_URLS",
 				Value: m.ListenPeerURLs,
 			},
 			{
-				Name: "ETCD_INITIAL_ADVERTISE_PEER_URLS",
+				Name:  "ETCD_INITIAL_ADVERTISE_PEER_URLS",
 				Value: m.InitialAdvertisePeerURLs,
 			},
 			// TLS
 			{
-				Name: "ETCD_PEER_CLIENT_CERT_AUTH",
+				Name:  "ETCD_PEER_CLIENT_CERT_AUTH",
 				Value: "true",
 			},
 			{
-				Name: "ETCD_CLIENT_CERT_AUTH",
+				Name:  "ETCD_CLIENT_CERT_AUTH",
 				Value: "true",
 			},
 			{
-				Name: "ETCD_CERT_FILE",
+				Name:  "ETCD_CERT_FILE",
 				Value: m.CertFile,
 			},
 			{
-				Name: "ETCD_KEY_FILE",
+				Name:  "ETCD_KEY_FILE",
 				Value: m.KeyFile,
 			},
 			{
-				Name: "ETCD_TRUSTED_CA_FILE",
+				Name:  "ETCD_TRUSTED_CA_FILE",
 				Value: m.TrustedCAFile,
 			},
 			{
-				Name: "ETCD_PEER_CERT_FILE",
+				Name:  "ETCD_PEER_CERT_FILE",
 				Value: m.PeerCertFile,
 			},
 			{
-				Name: "ETCD_PEER_KEY_FILE",
+				Name:  "ETCD_PEER_KEY_FILE",
 				Value: m.PeerKeyFile,
 			},
 			{
-				Name: "ETCD_PEER_TRUSTED_CA_FILE",
+				Name:  "ETCD_PEER_TRUSTED_CA_FILE",
 				Value: m.PeerTrustedCAFile,
 			},
 		},
@@ -168,7 +168,7 @@ func makeEtcdContainer(m *Spec, state string) v1.Container {
 		},
 		VolumeMounts: []v1.VolumeMount{
 			{
-				Name: "cert-path", 
+				Name:      "cert-path",
 				MountPath: m.EtcdTLSMountDir,
 			},
 		},
@@ -185,7 +185,7 @@ func NewEtcdPod(m *Spec, state string, runRestore bool) *v1.Pod {
 			Name: m.Name,
 		},
 		Spec: v1.PodSpec{
-			HostNetwork: true,
+			HostNetwork:    true,
 			InitContainers: []v1.Container{},
 			Containers: []v1.Container{
 				makeEtcdContainer(m, state),
