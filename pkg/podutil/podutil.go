@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/randomcoww/etcd-wrapper/pkg/cluster"
 	"k8s.io/api/core/v1"
@@ -14,6 +15,7 @@ import (
 )
 
 const (
+	dataMountDir = "/var/etcd"
 	dataDir = "/var/etcd/data"
 )
 
@@ -27,19 +29,21 @@ func makeRestoreInitContainer(m *cluster.Cluster) v1.Container {
 				Value: "3",
 			},
 		},
-		Command: []string{
-			fmt.Sprintf("/usr/local/bin/etcdctl snapshot restore %[1]s"+
-				" --name %[2]s"+
-				" --initial-cluster %[3]s"+
-				" --initial-cluster-token %[4]s"+
-				" --initial-advertise-peer-urls %[5]s"+
-				" --data-dir %[6]s",
-				m.BackupFile, m.Name, m.InitialCluster, m.InitialClusterToken, m.InitialAdvertisePeerURLs, dataDir),
-		},
+		Command: strings.Split(fmt.Sprintf("/usr/local/bin/etcdctl snapshot restore %[1]s"+
+			" --name %[2]s"+
+			" --initial-cluster %[3]s"+
+			" --initial-cluster-token %[4]s"+
+			" --initial-advertise-peer-urls %[5]s"+
+			" --data-dir %[6]s",
+			m.BackupFile, m.Name, m.InitialCluster, m.InitialClusterToken, m.InitialAdvertisePeerURLs, dataDir), " "),
 		VolumeMounts: []v1.VolumeMount{
 			{
 				Name:      "backup-path",
 				MountPath: m.BackupMountDir,
+			},
+			{
+				Name:      "data-mount-path",
+				MountPath: dataMountDir,
 			},
 		},
 	}
@@ -133,6 +137,10 @@ func makeEtcdContainer(m *cluster.Cluster, state string) v1.Container {
 				Name:      "cert-path",
 				MountPath: m.EtcdTLSMountDir,
 			},
+			{
+				Name:      "data-mount-path",
+				MountPath: dataMountDir,
+			},
 		},
 	}
 }
@@ -170,6 +178,13 @@ func NewEtcdPod(m *cluster.Cluster, state string, runRestore bool) *v1.Pod {
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
 							Path: m.EtcdTLSMountDir,
+						},
+					},
+				},
+				{
+					Name: "data-mount-path",
+					VolumeSource: v1.VolumeSource{
+						EmptyDir: &v1.EmptyDirVolumeSource{
 						},
 					},
 				},
