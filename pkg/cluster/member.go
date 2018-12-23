@@ -1,9 +1,10 @@
 package cluster
 
 import (
+	"strings"
+
 	"github.com/coreos/etcd-operator/pkg/util/etcdutil"
 	"go.etcd.io/etcd/clientv3"
-	"strings"
 )
 
 func NewMemberSetFromConfig(c *Cluster) etcdutil.MemberSet {

@@ -18,7 +18,7 @@ const (
 	// Shared path for etcd to read result of restored backup
 	dataMountDir = "/var/etcd"
 	// etcdctl snapshot restore can only be called on directory that doesn't exist
-	dataDir =  dataMountDir + "/data"
+	dataDir = dataMountDir + "/data"
 )
 
 func makeRestoreInitContainer(m *cluster.Cluster) v1.Container {
@@ -186,8 +186,7 @@ func NewEtcdPod(m *cluster.Cluster, state string, runRestore bool) *v1.Pod {
 				{
 					Name: "data-mount-path",
 					VolumeSource: v1.VolumeSource{
-						EmptyDir: &v1.EmptyDirVolumeSource{
-						},
+						EmptyDir: &v1.EmptyDirVolumeSource{},
 					},
 				},
 			},
@@ -213,12 +212,12 @@ func WritePodSpec(pod *v1.Pod, file string) error {
 
 	err = os.MkdirAll(filepath.Dir(file), os.FileMode(0644))
 	if err != nil {
-		return fmt.Errorf("failed to create base directory: (%v)", err)
+		return fmt.Errorf("failed to create base directory: %v", err)
 	}
 
 	f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
-		return fmt.Errorf("failed to open file: (%v)", err)
+		return fmt.Errorf("failed to open file: %v", err)
 	}
 
 	_, err = io.Copy(f, bytes.NewReader(j))
