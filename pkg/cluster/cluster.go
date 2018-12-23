@@ -89,6 +89,14 @@ func NewCluster() *Cluster {
 	return cluster
 }
 
+func MemberURLsFromConfig(c *Cluster) []string {
+	var memberList []string
+	for _, m := range strings.Split(c.InitialCluster, ",") {
+		memberList = append(memberList, strings.Split(m, "=")[0])
+	}
+	return memberList
+}
+
 func ClientURLsFromConfig(c *Cluster) []string {
 	return strings.Split(c.EtcdServers, ",")
 }
@@ -111,6 +119,7 @@ func (c *Cluster) TriggerRestore() {
 	}
 }
 
+// Change annotation in pod to force update
 func (c *Cluster) UpdateInstance() {
 	c.Instance = strconv.FormatInt(time.Now().UTC().UnixNano(), 10)
 }
