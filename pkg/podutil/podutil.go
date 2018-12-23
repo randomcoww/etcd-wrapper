@@ -9,53 +9,19 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/randomcoww/etcd-wrapper/pkg/cluster"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const (
-	dataDir = "/var/etcd/data"
+	// Shared path for etcd to read result of restored backup
+	dataMountDir = "/var/etcd"
+	// etcdctl snapshot restore can only be called on directory that doesn't exist
+	dataDir =  dataMountDir + "/data"
 )
 
-type Spec struct {
-	Name string
-
-	// Mount this to run etcdctl snapshot restore
-	BackupMountDir string
-	// This path should be under BackupMountDir
-	BackupFile string
-
-	// Mount this in etcd container - cert files should all be under this path
-	EtcdTLSMountDir string
-	// These paths should be under EtcdTLSMountDir
-	CertFile          string
-	KeyFile           string
-	TrustedCAFile     string
-	PeerCertFile      string
-	PeerKeyFile       string
-	PeerTrustedCAFile string
-
-	// Listen
-	InitialAdvertisePeerURLs string
-	ListenPeerURLs           string
-	AdvertiseClientURLs      string
-	ListenClientURLs         string
-
-	InitialClusterToken string
-	InitialCluster      string
-
-	// etcd image
-	Image string
-	// kubelet static pod path
-	PodSpecFile  string
-	S3BackupPath string
-}
-
-func ClientURLs(m *Spec) []string {
-	return strings.Split(m.ListenClientURLs, ",")
-}
-
-func makeRestoreInitContainer(m *Spec) v1.Container {
+func makeRestoreInitContainer(m *cluster.Cluster) v1.Container {
 	return v1.Container{
 		Name:  "restore-datadir",
 		Image: m.Image,
@@ -65,25 +31,27 @@ func makeRestoreInitContainer(m *Spec) v1.Container {
 				Value: "3",
 			},
 		},
-		Command: []string{
-			fmt.Sprintf("/usr/local/bin/etcdctl snapshot restore %[1]s"+
-				" --name %[2]s"+
-				" --initial-cluster %[3]s"+
-				" --initial-cluster-token %[4]s"+
-				" --initial-advertise-peer-urls %[5]s"+
-				" --data-dir %[6]s",
-				m.BackupFile, m.Name, m.InitialCluster, m.InitialClusterToken, m.InitialAdvertisePeerURLs, dataDir),
-		},
+		Command: strings.Split(fmt.Sprintf("/usr/local/bin/etcdctl snapshot restore %[1]s"+
+			" --name %[2]s"+
+			" --initial-cluster %[3]s"+
+			" --initial-cluster-token %[4]s"+
+			" --initial-advertise-peer-urls %[5]s"+
+			" --data-dir %[6]s",
+			m.BackupFile, m.Name, m.InitialCluster, m.InitialClusterToken, m.InitialAdvertisePeerURLs, dataDir), " "),
 		VolumeMounts: []v1.VolumeMount{
 			{
 				Name:      "backup-path",
 				MountPath: m.BackupMountDir,
 			},
+			{
+				Name:      "data-mount-path",
+				MountPath: dataMountDir,
+			},
 		},
 	}
 }
 
-func makeEtcdContainer(m *Spec, state string) v1.Container {
+func makeEtcdContainer(m *cluster.Cluster, state string) v1.Container {
 	return v1.Container{
 		Name:  "etcd",
 		Image: m.Image,
@@ -171,11 +139,15 @@ func makeEtcdContainer(m *Spec, state string) v1.Container {
 				Name:      "cert-path",
 				MountPath: m.EtcdTLSMountDir,
 			},
+			{
+				Name:      "data-mount-path",
+				MountPath: dataMountDir,
+			},
 		},
 	}
 }
 
-func NewEtcdPod(m *Spec, state string, runRestore bool) *v1.Pod {
+func NewEtcdPod(m *cluster.Cluster, state string, runRestore bool) *v1.Pod {
 	pod := &v1.Pod{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
@@ -183,6 +155,9 @@ func NewEtcdPod(m *Spec, state string, runRestore bool) *v1.Pod {
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name: m.Name,
+			Annotations: map[string]string{
+				"etcd-wrapper/instance": m.Instance,
+			},
 		},
 		Spec: v1.PodSpec{
 			HostNetwork:    true,
@@ -205,6 +180,13 @@ func NewEtcdPod(m *Spec, state string, runRestore bool) *v1.Pod {
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
 							Path: m.EtcdTLSMountDir,
+						},
+					},
+				},
+				{
+					Name: "data-mount-path",
+					VolumeSource: v1.VolumeSource{
+						EmptyDir: &v1.EmptyDirVolumeSource{
 						},
 					},
 				},
