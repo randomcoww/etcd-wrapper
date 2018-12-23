@@ -15,8 +15,10 @@ import (
 )
 
 const (
+	// Shared path for etcd to read result of restored backup
 	dataMountDir = "/var/etcd"
-	dataDir = "/var/etcd/data"
+	// etcdctl snapshot restore can only be called on directory that doesn't exist
+	dataDir =  dataMountDir + "/data"
 )
 
 func makeRestoreInitContainer(m *cluster.Cluster) v1.Container {

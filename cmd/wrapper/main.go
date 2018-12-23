@@ -82,12 +82,29 @@ func Main() {
 	// Add label to pod spec to regenerate when this restarts
 	Config.Instance = strconv.FormatInt(time.Now().UTC().UnixNano(), 10)
 	Config.RunBackup = make(chan struct{}, 1)
+	Config.ClusterError = make(chan struct{}, 1)
 
 	logrus.Infof("Start etcd-wrapper for clients: %v", clientURLs)
 
 	go runBackup(clientURLs, tlsConfig)
 	runMain(clientURLs, tlsConfig)
 }
+
+func downloadBackup() error {
+	// Check backup
+	sess := session.Must(session.NewSession(&aws.Config{
+		// Region: aws.String("us-west-2"),
+	}))
+
+	ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultRequestTimeout)
+	s3Reader := reader.NewS3Reader(s3.New(sess))
+	rm := restore.NewRestoreManagerFromReader(s3Reader)
+	err := rm.DownloadSnap(ctx, Config.S3BackupPath, Config.BackupFile)
+
+	cancel()
+	return err
+}
+
 
 func runMain(clientURLs []string, tlsConfig *tls.Config) {
 	logrus.Infof("Start etcd-wrapper for clients: %v", clientURLs)
@@ -104,16 +121,7 @@ func runMain(clientURLs []string, tlsConfig *tls.Config) {
 			if err != nil {
 				logrus.Errorf("Failed to get etcd member list: %v", err)
 
-				// Check backup
-				sess := session.Must(session.NewSession(&aws.Config{
-					// Region: aws.String("us-west-2"),
-				}))
-
-				ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultRequestTimeout)
-				s3Reader := reader.NewS3Reader(s3.New(sess))
-				rm := restore.NewRestoreManagerFromReader(s3Reader)
-				err = rm.DownloadSnap(ctx, Config.S3BackupPath, Config.BackupFile)
-
+				err = downloadBackup()
 				if err != nil {
 					logrus.Infof("Could not download snapshot backup: %v", err)
 					// Downloaded backup data
@@ -121,16 +129,14 @@ func runMain(clientURLs []string, tlsConfig *tls.Config) {
 
 					podutil.WritePodSpec(podutil.NewEtcdPod(Config, "new", false), Config.PodSpecFile)
 					logrus.Infof("Generated etcd pod spec for new cluster")
-					continue
 
 				} else {
 					logrus.Infof("Found snapshot backup")
 					// Start new cluster
 					podutil.WritePodSpec(podutil.NewEtcdPod(Config, "existing", true), Config.PodSpecFile)
 					logrus.Errorf("Generated etcd pod spec for existing cluster")
-					continue
 				}
-				cancel()
+				continue
 			}
 
 			// Create pod if my node is missing
@@ -177,6 +183,19 @@ func runMain(clientURLs []string, tlsConfig *tls.Config) {
 										logrus.Infof("Member already removed: %v (%v)", memberName, memberID)
 									default:
 										logrus.Errorf("Failed to remove member: %v (%v)", memberName, err)
+
+										// Cluster may be broken
+										if Config.Name == memberName {
+											err = downloadBackup()
+											if err != nil {
+												logrus.Errorf("Failed to get snapshot backup")
+
+											} else {
+												logrus.Infof("Found snapshot backup")
+												podutil.WritePodSpec(podutil.NewEtcdPod(Config, "existing", true), Config.PodSpecFile)
+												logrus.Errorf("Generated etcd pod spec for existing cluster")
+											}
+										}
 									}
 								case <-r.Reset:
 								}

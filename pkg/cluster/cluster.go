@@ -41,6 +41,7 @@ type Cluster struct {
 	S3BackupPath string
 
 	RunBackup chan struct{}
+	ClusterError chan struct{}
 
 	RunInterval    time.Duration
 	BackupInterval time.Duration
