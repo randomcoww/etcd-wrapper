@@ -31,7 +31,6 @@ type Cluster struct {
 	BackupFile string
 	// Mount this in etcd container - cert files should all be under this path
 	EtcdTLSMountDir string
-
 	// List of etcd client URLs for service to hit
 	EtcdServers string
 	// etcd image
@@ -40,24 +39,18 @@ type Cluster struct {
 	PodSpecFile  string
 	S3BackupPath string
 
-	// Trigger backup from this node
-	RunBackup  chan struct{}
-	RunRestore chan struct{}
+	// etcd node ID
+	ID uint64
 
 	// Main loop interval
 	RunInterval time.Duration
-	// Backup interval
 	BackupInterval  time.Duration
-	RestoreInterval time.Duration
-	// Kill timeout for unresponsive etcd node
-	EtcdTimeout time.Duration
+	MemberWait time.Duration
+	PodSpecWait time.Duration
 }
 
 func NewCluster() *Cluster {
-	cluster := &Cluster{
-		RunBackup:  make(chan struct{}, 1),
-		RunRestore: make(chan struct{}, 1),
-	}
+	cluster := &Cluster{}
 	// Args for etcd
 	flag.StringVar(&cluster.Name, "name", "", "Human-readable name for this member.")
 	flag.StringVar(&cluster.CertFile, "cert-file", "", "Path to the client server TLS cert file.")
@@ -80,12 +73,12 @@ func NewCluster() *Cluster {
 	flag.StringVar(&cluster.Image, "image", "quay.io/coreos/etcd:v3.3", "Etcd container image.")
 	flag.StringVar(&cluster.PodSpecFile, "pod-spec-file", "", "Pod spec file path (intended to be in kubelet manifests path).")
 	flag.StringVar(&cluster.S3BackupPath, "s3-backup-path", "", "S3 key name for backup.")
+	
 	flag.DurationVar(&cluster.RunInterval, "run-interval", 10, "Member check interval.")
 	flag.DurationVar(&cluster.BackupInterval, "backup-interval", 300, "Backup trigger interval.")
-	flag.DurationVar(&cluster.RestoreInterval, "restore-interval", 300, "Restore trigger interval.")
-	flag.DurationVar(&cluster.EtcdTimeout, "etcd-timeout", 120, "Etcd status check timeout.")
+	flag.DurationVar(&cluster.MemberWait, "member-wait", 300, "Wait after member configuration.")
+	flag.DurationVar(&cluster.PodSpecWait, "podspec-wait", 300, "Wait after writing pod spec.")
 	flag.Parse()
-
 	return cluster
 }
 
@@ -101,22 +94,12 @@ func ClientURLsFromConfig(c *Cluster) []string {
 	return strings.Split(c.EtcdServers, ",")
 }
 
-func ListenPeerURLsFromConfig(c *Cluster) []string {
+func LocalPeerURLsFromConfig(c *Cluster) []string {
 	return strings.Split(c.ListenPeerURLs, ",")
 }
 
-func (c *Cluster) TriggerBackup() {
-	select {
-	case c.RunBackup <- struct{}{}:
-	default:
-	}
-}
-
-func (c *Cluster) TriggerRestore() {
-	select {
-	case c.RunRestore <- struct{}{}:
-	default:
-	}
+func LocalClientURLsFromConfig(c *Cluster) []string {
+	return strings.Split(c.ListenClientURLs, ",")
 }
 
 // Change annotation in pod to force update
