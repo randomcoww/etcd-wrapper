@@ -1,163 +1,118 @@
 package wrapper
 
 import (
-	"crypto/tls"
-	"io/ioutil"
-	"time"
+	// "crypto/tls"
+	// "io/ioutil"
+	// "time"
 
 	"github.com/coreos/etcd-operator/pkg/util/etcdutil"
 	"github.com/randomcoww/etcd-wrapper/pkg/backup"
-	"github.com/randomcoww/etcd-wrapper/pkg/cluster"
-	"github.com/randomcoww/etcd-wrapper/pkg/podutil"
+	"github.com/randomcoww/etcd-wrapper/pkg/config"
 	etcdutilextra "github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
 )
 
-const (
-	StateCheckCluster      = 0
-	StateCheckBackup       = 1
-	StateStartNew          = 2
-	StateStartWithSnapshot = 3
-	StateStartExisting     = 4
-	StateWaitPodSpec       = 5
-	StateCheckMembers      = 6
-	StateRemoveLocal       = 7
-	StateAddLocal          = 8
-)
-
 func Main() {
-	config := cluster.NewCluster()
-	clientURLs := cluster.ClientURLsFromConfig(config)
-
-	cert, _ := ioutil.ReadFile(config.CertFile)
-	key, _ := ioutil.ReadFile(config.KeyFile)
-	ca, _ := ioutil.ReadFile(config.TrustedCAFile)
-	tlsConfig, err := etcdutil.NewTLSConfig(cert, key, ca)
+	c, err := config.NewConfig()
 	if err != nil {
-		logrus.Errorf("Failed to read TLS files: %v", err)
+		logrus.Errorf("Failed to parse config")
 		return
 	}
 
-	go runBackupHandler(config, clientURLs, tlsConfig)
-	run(config, clientURLs, tlsConfig)
+	healthcheck := newHealthCheck(c)
+	backup := newBackup(c)
+
+	go healthcheck.runLocalCheck()
+	go healthcheck.runClusterCheck()
+	go backup.runPeriodic()
+
+	run(c)
 }
 
-func run(c *cluster.Cluster, clientURLs []string, tlsConfig *tls.Config) {
-	logrus.Infof("Start etcd-wrapper for clients: %v", clientURLs)
-
-	localClientULRs := cluster.LocalClientURLsFromConfig(c)
-	localPeerURLs := cluster.LocalPeerURLsFromConfig(c)
-
-	// memberset from config
-	memberSet := cluster.MemberSet{}
-	for _, memberName := range cluster.MemberURLsFromConfig(c) {
-		member := cluster.NewMember(memberName)
-		memberSet[memberName] = member
-	}
-
-	// initial state to start
-	state := StateCheckCluster
-
+func run(c *config.Config) {
 	for {
-		switch state {
-		// check response from cluster
-		case StateCheckCluster:
-			logrus.Infof("Check cluster")
-			memberList, err := etcdutil.ListMembers(clientURLs, tlsConfig)
+		select {
+		case <-c.NotifyMissingNew:
+			// Recover member from backup or create new
+			err := fetchBackup(c)
 			if err != nil {
-				// Update annotation to restart pod
-				logrus.Errorf("Could not get member list")
-				c.UpdateInstance()
-				state = StateCheckBackup
+				// Start new with no data
+				writePodSpec(c, "new", false)
 			} else {
-				// Fill in member ID from etcd
-				for _, member := range memberList.Members {
-					logrus.Infof("Found member: %v (%v)", member.Name, member.ID)
-					memberSet[member.Name].ID = member.ID
-				}
-				state = StateCheckMembers
+				// Start existing with snapshot restore
+				writePodSpec(c, "existing", true)
 			}
-			// check backup
-		case StateCheckBackup:
-			logrus.Infof("Check backup")
-			err := backup.FetchBackup(c.S3BackupPath, c.BackupFile)
+
+		case memberID := <-c.NotifyRemoteRemove:
+			// Remove this member
+			removeMember(c, memberID)
+
+		case memberID := <-c.NotifyLocalRemove:
+			// Remove local member
+			err := removeMember(c, memberID)
 			if err != nil {
-				logrus.Errorf("Could not download snapshot backup: %v", err)
-				state = StateStartNew
+				// Remove local member failed - cluster issue?
 			} else {
-				logrus.Infof("Found snapshot backup")
-				state = StateStartWithSnapshot
+				//
 			}
-			// no backup - new podspec
-		case StateStartNew:
-			logrus.Infof("Start pod spec new")
-			podutil.WritePodSpec(podutil.NewEtcdPod(c, "new", false), c.PodSpecFile)
-			state = StateWaitPodSpec
-			// start with backup
-		case StateStartWithSnapshot:
-			logrus.Infof("Start pod spec with snapshot")
-			podutil.WritePodSpec(podutil.NewEtcdPod(c, "existing", true), c.PodSpecFile)
-			state = StateWaitPodSpec
-			// state in existing state
-		case StateStartExisting:
-			logrus.Infof("Start pod spec with existing")
-			podutil.WritePodSpec(podutil.NewEtcdPod(c, "existing", false), c.PodSpecFile)
-			state = StateWaitPodSpec
-			// wait after podspec
-		case StateWaitPodSpec:
-			logrus.Infof("Wait pod spec")
-			time.Sleep(c.PodSpecWait)
-			state = StateCheckCluster
-			// check each member status for unresponsive
-		case StateCheckMembers:
-			logrus.Infof("Check members")
-			// Check status of local member
-			status, err := etcdutilextra.Status(localClientULRs, tlsConfig)
+
+		case <-c.NotifyMissingExisting:
+			// Add local member as existing with blank data
+			err := addMember(c)
 			if err != nil {
-				// Set local ID
-				logrus.Errorf("Healthcheck failed: %v", c.Name)
-				state = StateRemoveLocal
+				// Add member failed - cluster issue?
 			} else {
-				c.ID = memberSet[c.Name].ID
-				if len(status.Errors) == 0 {
-					logrus.Infof("Healthcheck success: %v (%v)", c.Name, c.ID)
-					time.Sleep(c.RunInterval)
-				} else {
-					logrus.Errorf("Status error: %v", status.Errors)
-					state = StateRemoveLocal
-				}
-			}
-			// Remove local node
-		case StateRemoveLocal:
-			logrus.Infof("Remove local")
-			err := etcdutil.RemoveMember(clientURLs, tlsConfig, c.ID)
-			switch err {
-			case nil, rpctypes.ErrMemberNotFound:
-				logrus.Infof("Removed local node")
-				// state = StateStartWithSnapshot
-				state = StateAddLocal
-			default:
-				logrus.Errorf("Failed to remove local node: %v", err)
-				time.Sleep(c.MemberWait)
-			}
-			// Add local node
-		case StateAddLocal:
-			logrus.Infof("Add local")
-			resp, err := etcdutilextra.AddMember(clientURLs, localPeerURLs, tlsConfig)
-			switch err {
-			case nil:
-				memberSet[resp.Member.Name].ID = resp.Member.ID
-				c.ID = resp.Member.ID
-				logrus.Infof("Added member node: %v (%v)", resp.Member.Name, resp.Member.ID)
-				state = StateStartExisting
-			case rpctypes.ErrMemberExist:
-				logrus.Infof("Member exists")
-				state = StateStartExisting
-			default:
-				logrus.Errorf("Failed to add new member: %v", err)
-				time.Sleep(c.MemberWait)
+				// Start existing with no data
+				writePodSpec(c, "existing", false)
 			}
 		}
+	}
+}
+
+func fetchBackup(c *config.Config) error {
+	err := backup.FetchBackup(c.S3BackupPath, c.BackupFile)
+	switch err {
+	case nil:
+		logrus.Infof("Fetched snapshot backup")
+		return nil
+	default:
+		logrus.Errorf("Failed to fetch backup: %v", err)
+		return err
+	}
+}
+
+func writePodSpec(c *config.Config, state string, restore bool) {
+	c.UpdateInstance()
+	config.WritePodSpec(config.NewEtcdPod(c, state, false), c.PodSpecFile)
+}
+
+func addMember(c *config.Config) error {
+	resp, err := etcdutilextra.AddMember(c.ClientURLs, c.LocalPeerURLs, c.TLSConfig)
+	switch err {
+	case nil:
+		logrus.Infof("Added member node: %v (%v)", resp.Member.Name, resp.Member.ID)
+		return nil
+	case rpctypes.ErrMemberExist:
+		logrus.Infof("Member already exists")
+		return nil
+	default:
+		logrus.Errorf("Failed to add new member: %v", err)
+		return err
+	}
+}
+
+func removeMember(c *config.Config, memberID uint64) error {
+	err := etcdutil.RemoveMember(c.ClientURLs, c.TLSConfig, memberID)
+	switch err {
+	case nil:
+		logrus.Infof("Removed member: %v", memberID)
+		return nil
+	case rpctypes.ErrMemberNotFound:
+		logrus.Infof("Member already removed")
+		return nil
+	default:
+		logrus.Errorf("Failed to remove member (%v): %v", memberID, err)
+		return err
 	}
 }

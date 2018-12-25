@@ -1,4 +1,4 @@
-package cluster
+package config
 
 import (
 	"bytes"
@@ -20,7 +20,7 @@ const (
 	dataDir = dataMountDir + "/data"
 )
 
-func makeRestoreInitContainer(m *Cluster) v1.Container {
+func makeRestoreInitContainer(m *Config) v1.Container {
 	return v1.Container{
 		Name:  "restore-datadir",
 		Image: m.Image,
@@ -50,7 +50,7 @@ func makeRestoreInitContainer(m *Cluster) v1.Container {
 	}
 }
 
-func makeEtcdContainer(m *Cluster, state string) v1.Container {
+func makeEtcdContainer(m *Config, state string) v1.Container {
 	return v1.Container{
 		Name:  "etcd",
 		Image: m.Image,
@@ -146,7 +146,7 @@ func makeEtcdContainer(m *Cluster, state string) v1.Container {
 	}
 }
 
-func NewEtcdPod(m *Cluster, state string, runRestore bool) *v1.Pod {
+func NewEtcdPod(m *Config, state string, runRestore bool) *v1.Pod {
 	pod := &v1.Pod{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
