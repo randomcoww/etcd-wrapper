@@ -3,6 +3,7 @@ package wrapper
 import (
 	"time"
 
+	"go.etcd.io/etcd/clientv3"
 	"github.com/coreos/etcd-operator/pkg/util/etcdutil"
 	"github.com/randomcoww/etcd-wrapper/pkg/config"
 	etcdutilextra "github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
@@ -13,9 +14,11 @@ type Member struct {
 	id uint64
 }
 
+type MemberSet map[string]*Member
+
 type HealthCheck struct {
 	config           *config.Config
-	members          map[string]*Member
+	memberSet        MemberSet
 	localID          uint64
 	localErrCount    int
 	clusterErrCount  int
@@ -26,15 +29,15 @@ type HealthCheck struct {
 func newHealthCheck(c *config.Config) *HealthCheck {
 	h := &HealthCheck{
 		config:           c,
-		members:          make(map[string]*Member),
+		memberSet:        MemberSet{},
 		localCheckStop:   make(chan struct{}, 1),
 		clusterCheckStop: make(chan struct{}, 1),
 	}
 
-	// Populate members from config
 	for _, memberName := range h.config.MemberNames {
-		h.members[memberName] = &Member{}
+		h.memberSet[memberName] = &Member{}
 	}
+
 	return h
 }
 
@@ -91,26 +94,11 @@ func (h *HealthCheck) runClusterCheck() {
 			h.clusterErrCount = 0
 
 			// Populate all members
-			for _, member := range memberList.Members {
-				// New members can have blank name
-				if len(member.Name) == 0 {
-					continue
-				}
-
-				if _, ok := h.members[member.Name]; ok {
-					// logrus.Infof("Found member: %v (%v)", member.Name, member.ID)
-					h.members[member.Name].id = member.ID
-				} else {
-					// Removed unknown member ID
-					logrus.Errorf("Found unknown member: %v (%v)", member.Name, member.ID)
-					h.config.SendRemoteRemove(member.ID)
-				}
-			}
-			logrus.Infof("List members success: %s", h.members)
+			h.mergeMemberSet(memberList)
 
 			// Populate ID of my node
-			if _, ok := h.members[h.config.Name]; ok {
-				h.localID = h.members[h.config.Name].id
+			if _, ok := h.memberSet[h.config.Name]; ok {
+				h.localID = h.memberSet[h.config.Name].id
 			}
 
 			// My local node is missing
@@ -121,6 +109,32 @@ func (h *HealthCheck) runClusterCheck() {
 			}
 		case <-h.clusterCheckStop:
 			return
+		}
+	}
+}
+
+func (h *HealthCheck) mergeMemberSet(memberList *clientv3.MemberListResponse) {
+	membersFound := MemberSet{}
+	for _, m := range memberList.Members {
+		// New members may not have names yet
+		if len(m.Name) == 0 {
+			continue
+		}
+
+		if member, ok := h.memberSet[m.Name]; ok {
+			logrus.Infof("Found member: %v (%v)", m.Name, m.ID)
+			member.id = m.ID
+			membersFound[m.Name] = member
+		} else {
+			logrus.Errorf("Unknown member: %v (%v)", m.Name, m.ID)
+			h.config.SendRemoteRemove(m.ID)
+		}
+	}
+
+	// Go through members in config not returned by etcd and reset ID
+	for memberName, member := range h.memberSet {
+		if _, ok := membersFound[memberName]; !ok {
+			member.id = 0
 		}
 	}
 }

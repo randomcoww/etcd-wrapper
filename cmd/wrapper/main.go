@@ -53,7 +53,8 @@ func run(c *config.Config) {
 				// Remove local member failed - cluster issue?
 				c.SendMissingNew()
 			} else {
-				//
+				// Remove success - now add my node
+				c.SendMissingExisting()
 			}
 
 		case <-c.NotifyMissingExisting:
