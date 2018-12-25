@@ -10,22 +10,25 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func runBackupHandler(c *cluster.Cluster, clientURLs []string, tlsConfig *tls.Config) {
+func runBackupHandler(c *cluster.Cluster, tlsConfig *tls.Config) {
+	localClientULRs := cluster.LocalClientURLsFromConfig(c)
+
 	logrus.Infof("Start backup handler")
 	for {
 		select {
 		case <-time.After(c.BackupInterval):
-			status, err := etcdutilextra.Status(clientURLs, tlsConfig)
+			status, err := etcdutilextra.Status(localClientULRs, tlsConfig)
 			if err != nil {
 				logrus.Errorf("Failed to get status: %v", err)
 				continue
 			}
 
-			// Run backup if this node is the leader
-			if c.ID == status.Leader {
+			// Only local instance is hit - responding member should always be my node
+			// Check if leader
+			if status.Header.MemberId == status.Leader {
 				logrus.Infof("Start backup process")
-				err := backup.SendBackup(c.S3BackupPath, tlsConfig, clientURLs)
 
+				err := backup.SendBackup(c.S3BackupPath, tlsConfig, localClientULRs)
 				if err != nil {
 					logrus.Errorf("Backup failed: %v", err)
 				} else {

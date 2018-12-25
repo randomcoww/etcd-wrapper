@@ -3,21 +3,24 @@ package etcdutil
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
 
 	"github.com/coreos/etcd-operator/pkg/util/constants"
 	"go.etcd.io/etcd/clientv3"
+	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
 )
 
-func Status(clientURLs []string, tc *tls.Config) (*clientv3.StatusResponse, error) {
-	cfg := clientv3.Config{
+func newClient(clientURLs []string, tc *tls.Config) (*clientv3.Client, error) {
+	return clientv3.New(clientv3.Config{
 		Endpoints:   clientURLs,
 		DialTimeout: constants.DefaultDialTimeout,
 		TLS:         tc,
-	}
-	etcdcli, err := clientv3.New(cfg)
+	})
+}
+
+func Status(clientURLs []string, tc *tls.Config) (*clientv3.StatusResponse, error) {
+	etcdcli, err := newClient(clientURLs, tc)
 	if err != nil {
-		return nil, fmt.Errorf("get cluster status failed: %v", err)
+		return nil, err
 	}
 	defer etcdcli.Close()
 
@@ -28,12 +31,7 @@ func Status(clientURLs []string, tc *tls.Config) (*clientv3.StatusResponse, erro
 }
 
 func AddMember(clientURLs, peerURLs []string, tc *tls.Config) (*clientv3.MemberAddResponse, error) {
-	cfg := clientv3.Config{
-		Endpoints:   clientURLs,
-		DialTimeout: constants.DefaultDialTimeout,
-		TLS:         tc,
-	}
-	etcdcli, err := clientv3.New(cfg)
+	etcdcli, err := newClient(clientURLs, tc)
 	if err != nil {
 		return nil, err
 	}
@@ -43,4 +41,24 @@ func AddMember(clientURLs, peerURLs []string, tc *tls.Config) (*clientv3.MemberA
 	resp, err := etcdcli.Cluster.MemberAdd(ctx, peerURLs)
 	cancel()
 	return resp, err
+}
+
+// https://github.com/etcd-io/etcd/blob/ff455e3567d6465717d3ced6dc889d4eec9ed890/etcdctl/ctlv3/command/ep_command.go#L121
+func HealthCheck(clientURLs []string, tc *tls.Config) error {
+	etcdcli, err := newClient(clientURLs, tc)
+	if err != nil {
+		return err
+	}
+	defer etcdcli.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultRequestTimeout)
+	_, err = etcdcli.Get(ctx, "health")
+	cancel()
+
+	switch err {
+	case nil,rpctypes.ErrPermissionDenied:
+		return nil
+	default:
+		return err
+	}
 }

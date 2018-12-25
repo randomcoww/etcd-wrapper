@@ -11,7 +11,6 @@ import (
 	"github.com/coreos/etcd-operator/pkg/backup/reader"
 	"github.com/coreos/etcd-operator/pkg/backup/writer"
 	"github.com/coreos/etcd-operator/pkg/util/constants"
-	// "github.com/randomcoww/etcd-wrapper/pkg/restore"
 )
 
 func FetchBackup(s3Path, downloadPath string) error {
