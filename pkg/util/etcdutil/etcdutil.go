@@ -56,7 +56,7 @@ func HealthCheck(clientURLs []string, tc *tls.Config) error {
 	cancel()
 
 	switch err {
-	case nil,rpctypes.ErrPermissionDenied:
+	case nil, rpctypes.ErrPermissionDenied:
 		return nil
 	default:
 		return err
