@@ -24,7 +24,7 @@ type HealthCheck struct {
 }
 
 func newHealthCheck(c *config.Config) *HealthCheck {
-	cs := &HealthCheck{
+	h := &HealthCheck{
 		config:           c,
 		members:          make(map[string]*Member),
 		localCheckStop:   make(chan struct{}, 1),
@@ -32,10 +32,10 @@ func newHealthCheck(c *config.Config) *HealthCheck {
 	}
 
 	// Populate members from config
-	for _, memberName := range cs.config.MemberNames {
-		cs.members[memberName] = &Member{}
+	for _, memberName := range h.config.MemberNames {
+		h.members[memberName] = &Member{}
 	}
-	return cs
+	return h
 }
 
 func (h *HealthCheck) runLocalCheck() {
@@ -46,21 +46,21 @@ func (h *HealthCheck) runLocalCheck() {
 		case <-time.After(h.config.HealthCheckInterval):
 			err := etcdutilextra.HealthCheck(h.config.LocalClientURLs, h.config.TLSConfig)
 			if err != nil {
-				logrus.Errorf("Healthcheck failed (%v): %v", h.localErrCount, err)
 				h.localErrCount += 1
+				logrus.Errorf("Healthcheck failed (%v): %v", h.localErrCount, err)
 
 				if h.localErrCount >= h.config.LocalErrThreshold {
 					// Remove local member
+					logrus.Errorf("Healthcheck failed too many times")
+					h.localErrCount = 0
 					if h.localID != 0 {
-						select {
-						case h.config.NotifyLocalRemove <- h.localID:
-						default:
-						}
+						h.config.SendLocalRemove(h.localID)
 					}
 				}
 				continue
 			}
 			h.localErrCount = 0
+			logrus.Infof("Healthcheck success")
 
 		case <-h.localCheckStop:
 			return
@@ -69,7 +69,7 @@ func (h *HealthCheck) runLocalCheck() {
 }
 
 func (h *HealthCheck) runClusterCheck() {
-	logrus.Infof("Start cluster state handler")
+	logrus.Infof("Start cluster healthcheck handler")
 
 	for {
 		select {
@@ -77,16 +77,14 @@ func (h *HealthCheck) runClusterCheck() {
 			memberList, err := etcdutil.ListMembers(h.config.ClientURLs, h.config.TLSConfig)
 			if err != nil {
 				// Update annotation to restart pod
-				logrus.Errorf("Could not get member list (%v): %v", h.clusterErrCount, err)
 				h.clusterErrCount += 1
+				logrus.Errorf("List members failed (%v): %v", h.clusterErrCount, err)
 
 				if h.clusterErrCount >= h.config.ClusterErrThreshold {
-					logrus.Errorf("List member failed too many times")
+					logrus.Errorf("List members failed too many times")
 					// Recover backup or create new cluster
-					select {
-					case h.config.NotifyMissingNew <- struct{}{}:
-					default:
-					}
+					h.clusterErrCount = 0
+					h.config.SendMissingNew()
 				}
 				continue
 			}
@@ -94,17 +92,21 @@ func (h *HealthCheck) runClusterCheck() {
 
 			// Populate all members
 			for _, member := range memberList.Members {
+				// New members can have blank name
+				if len(member.Name) == 0 {
+					continue
+				}
+
 				if _, ok := h.members[member.Name]; ok {
-					logrus.Infof("Found member: %v (%v)", member.Name, member.ID)
+					// logrus.Infof("Found member: %v (%v)", member.Name, member.ID)
 					h.members[member.Name].id = member.ID
 				} else {
 					// Removed unknown member ID
-					select {
-					case h.config.NotifyRemoteRemove <- member.ID:
-					default:
-					}
+					logrus.Errorf("Found unknown member: %v (%v)", member.Name, member.ID)
+					h.config.SendRemoteRemove(member.ID)
 				}
 			}
+			logrus.Infof("List members success: %s", h.members)
 
 			// Populate ID of my node
 			if _, ok := h.members[h.config.Name]; ok {
@@ -114,10 +116,8 @@ func (h *HealthCheck) runClusterCheck() {
 			// My local node is missing
 			if h.localID == 0 {
 				// Create member as existing
-				select {
-				case h.config.NotifyMissingExisting <- struct{}{}:
-				default:
-				}
+				logrus.Errorf("Local member not found: %v", h.config.Name)
+				h.config.SendMissingExisting()
 			}
 		case <-h.clusterCheckStop:
 			return

@@ -93,12 +93,11 @@ func NewConfig() (*Config, error) {
 	flag.StringVar(&config.Image, "image", "quay.io/coreos/etcd:v3.3", "Etcd container image.")
 	flag.StringVar(&config.PodSpecFile, "pod-spec-file", "", "Pod spec file path (intended to be in kubelet manifests path).")
 	flag.StringVar(&config.S3BackupPath, "s3-backup-path", "", "S3 key name for backup.")
-
-	flag.DurationVar(&config.BackupInterval, "backup-interval", 300, "Backup trigger interval.")
-	flag.DurationVar(&config.HealthCheckInterval, "healthcheck-interval", 10, "Healthcheck interval.")
-	flag.IntVar(&config.LocalErrThreshold, "local-err-thresh", 3, "Error count to trigger local member missing error.")
-	flag.IntVar(&config.ClusterErrThreshold, "cluster-err-thresh", 3, "Error count to trigger cluster error.")
-	// flag.IntVar(&config.MemberErrThreshold, "member-err-thresh", 2, "Error count to trigger member add or remove error.")
+	// Check intervals
+	flag.DurationVar(&config.BackupInterval, "backup-interval", 30 * time.Minute, "Backup trigger interval.")
+	flag.DurationVar(&config.HealthCheckInterval, "healthcheck-interval", 20 * time.Second, "Healthcheck interval.")
+	flag.IntVar(&config.LocalErrThreshold, "local-err-thresh", 2, "Error count to trigger local member missing error.")
+	flag.IntVar(&config.ClusterErrThreshold, "cluster-err-thresh", 5, "Error count to trigger cluster error.")
 	flag.Parse()
 
 	if err := config.addParsedTLS(); err != nil {
@@ -112,6 +111,34 @@ func NewConfig() (*Config, error) {
 // Change annotation in pod to force update
 func (c *Config) UpdateInstance() {
 	c.Instance = strconv.FormatInt(time.Now().UTC().UnixNano(), 10)
+}
+
+func (c *Config) SendMissingNew() {
+	select {
+	case c.NotifyMissingNew <- struct{}{}:
+	default:
+	}
+}
+
+func (c *Config) SendMissingExisting() {
+	select {
+	case c.NotifyMissingExisting <- struct{}{}:
+	default:
+	}
+}
+
+func (c *Config) SendRemoteRemove(memberID uint64) {
+	select {
+	case c.NotifyRemoteRemove <- memberID:
+	default:
+	}
+}
+
+func (c *Config) SendLocalRemove(memberID uint64) {
+	select {
+	case c.NotifyLocalRemove <- memberID:
+	default:
+	}
 }
 
 func (c *Config) addParsedTLS() error {

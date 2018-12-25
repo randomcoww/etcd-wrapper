@@ -22,27 +22,25 @@ func newBackup(c *config.Config) *Backup {
 }
 
 func (b *Backup) runPeriodic() {
-	logrus.Infof("Start backup handler")
+	logrus.Infof("Start periodic backup handler")
 
 	for {
 		select {
 		case <-time.After(b.config.BackupInterval):
 			status, err := etcdutilextra.Status(b.config.LocalClientURLs, b.config.TLSConfig)
 			if err != nil {
-				logrus.Errorf("Failed to get status: %v", err)
+				logrus.Errorf("Status failed: %v", err)
 				continue
 			}
 
 			// Only local client URL is hit
 			// Responding member should always be my node
 			if status.Header.MemberId == status.Leader {
-				logrus.Infof("Start backup")
-
 				err := backup.SendBackup(b.config.S3BackupPath, b.config.TLSConfig, b.config.LocalClientURLs)
 				if err != nil {
-					logrus.Errorf("Backup failed: %v", err)
+					logrus.Errorf("Send backup failed: %v", err)
 				} else {
-					logrus.Infof("Finished backup")
+					logrus.Infof("Send backup success")
 				}
 			}
 		case <-b.stop:

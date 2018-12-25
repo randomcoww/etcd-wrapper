@@ -1,9 +1,7 @@
 package wrapper
 
 import (
-	// "crypto/tls"
-	// "io/ioutil"
-	// "time"
+	"os"
 
 	"github.com/coreos/etcd-operator/pkg/util/etcdutil"
 	"github.com/randomcoww/etcd-wrapper/pkg/backup"
@@ -16,8 +14,8 @@ import (
 func Main() {
 	c, err := config.NewConfig()
 	if err != nil {
-		logrus.Errorf("Failed to parse config")
-		return
+		logrus.Errorf("Parse config failed: %v", err)
+		os.Exit(1)
 	}
 
 	healthcheck := newHealthCheck(c)
@@ -53,6 +51,7 @@ func run(c *config.Config) {
 			err := removeMember(c, memberID)
 			if err != nil {
 				// Remove local member failed - cluster issue?
+				c.SendMissingNew()
 			} else {
 				//
 			}
@@ -62,6 +61,7 @@ func run(c *config.Config) {
 			err := addMember(c)
 			if err != nil {
 				// Add member failed - cluster issue?
+				c.SendMissingNew()
 			} else {
 				// Start existing with no data
 				writePodSpec(c, "existing", false)
@@ -74,30 +74,31 @@ func fetchBackup(c *config.Config) error {
 	err := backup.FetchBackup(c.S3BackupPath, c.BackupFile)
 	switch err {
 	case nil:
-		logrus.Infof("Fetched snapshot backup")
+		logrus.Infof("Fetch snapshot success")
 		return nil
 	default:
-		logrus.Errorf("Failed to fetch backup: %v", err)
+		logrus.Errorf("Fetch snapshot failed: %v", err)
 		return err
 	}
 }
 
 func writePodSpec(c *config.Config, state string, restore bool) {
 	c.UpdateInstance()
-	config.WritePodSpec(config.NewEtcdPod(c, state, false), c.PodSpecFile)
+	config.WritePodSpec(config.NewEtcdPod(c, state, restore), c.PodSpecFile)
+	logrus.Errorf("Write pod spec: (state: %v, restore: %v)", state, restore)
 }
 
 func addMember(c *config.Config) error {
 	resp, err := etcdutilextra.AddMember(c.ClientURLs, c.LocalPeerURLs, c.TLSConfig)
 	switch err {
 	case nil:
-		logrus.Infof("Added member node: %v (%v)", resp.Member.Name, resp.Member.ID)
+		logrus.Infof("Add member success: %v", resp.Member.ID)
 		return nil
 	case rpctypes.ErrMemberExist:
-		logrus.Infof("Member already exists")
+		logrus.Infof("Add member already exists")
 		return nil
 	default:
-		logrus.Errorf("Failed to add new member: %v", err)
+		logrus.Errorf("Add member failed: %v", err)
 		return err
 	}
 }
@@ -106,13 +107,13 @@ func removeMember(c *config.Config, memberID uint64) error {
 	err := etcdutil.RemoveMember(c.ClientURLs, c.TLSConfig, memberID)
 	switch err {
 	case nil:
-		logrus.Infof("Removed member: %v", memberID)
+		logrus.Infof("Remove member success: %v", memberID)
 		return nil
 	case rpctypes.ErrMemberNotFound:
-		logrus.Infof("Member already removed")
+		logrus.Infof("Remove member not found: %v", memberID)
 		return nil
 	default:
-		logrus.Errorf("Failed to remove member (%v): %v", memberID, err)
+		logrus.Errorf("Remove member failed (%v): %v", memberID, err)
 		return err
 	}
 }
