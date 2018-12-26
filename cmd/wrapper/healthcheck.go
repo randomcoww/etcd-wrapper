@@ -68,6 +68,7 @@ func (h *HealthCheck) runPeriodic() {
 			}
 			clusterErrCount = 0
 
+			// logrus.Infof("MemberList: %#v", memberList.Members)
 			// Populate all members
 			// Populate local member ID or 0 if not found
 			h.mergeMemberSet(memberList)
@@ -123,8 +124,11 @@ func (h *HealthCheck) stopRun() {
 func (h *HealthCheck) mergeMemberSet(memberList *clientv3.MemberListResponse) MemberSet {
 	memberFoundList := MemberSet{}
 	var localID uint64
+	var log []string
 
 	for _, m := range memberList.Members {
+		log = append(log, fmt.Sprintf("%v (%v)", m.ID, m.Name))
+
 		// My ID matched by peerURL
 		// It may not have a name yet if it was recently added
 		if config.IsEqual(m.PeerURLs, h.config.LocalPeerURLs) {
@@ -145,19 +149,17 @@ func (h *HealthCheck) mergeMemberSet(memberList *clientv3.MemberListResponse) Me
 			h.removeMember(m.ID)
 		}
 	}
+	logrus.Infof("Found members: %s", strings.Join(log, ", "))
 
 	h.localID = localID
 	logrus.Infof("Local ID: %v", h.localID)
 
 	// Go through members in config not returned by etcd and reset ID
-	var log []string
 	for memberName, member := range h.memberSet {
 		if _, ok := memberFoundList[memberName]; !ok {
 			member.id = 0
 		}
-		log = append(log, fmt.Sprintf("%s: %v", memberName, member.id))
 	}
-	logrus.Infof("Named members: [%s]", strings.Join(log, ", "))
 
 	return memberFoundList
 }

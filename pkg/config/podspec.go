@@ -129,6 +129,10 @@ func makeEtcdContainer(m *Config, state string) v1.Container {
 				Name:  "ETCD_PEER_TRUSTED_CA_FILE",
 				Value: m.PeerTrustedCAFile,
 			},
+			{
+				Name: "ETCD_STRICT_RECONFIG_CHECK",
+				Value: "true",
+			},
 		},
 		Command: []string{
 			"/usr/local/bin/etcd",
