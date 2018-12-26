@@ -60,18 +60,12 @@ type Config struct {
 	// Healthcheck reporting
 	NotifyMissingNew      chan struct{}
 	NotifyMissingExisting chan struct{}
-	NotifyRemoteRemove    chan uint64
-	NotifyLocalRemove     chan uint64
-	NotifyLocalAdd        chan struct{}
 }
 
 func NewConfig() (*Config, error) {
 	config := &Config{
 		NotifyMissingNew:      make(chan struct{}, 1),
 		NotifyMissingExisting: make(chan struct{}, 1),
-		NotifyRemoteRemove:    make(chan uint64),
-		NotifyLocalRemove:     make(chan uint64, 1),
-		NotifyLocalAdd:        make(chan struct{}, 1),
 	}
 	// Args for etcd
 	flag.StringVar(&config.Name, "name", "", "Human-readable name for this member.")
@@ -125,27 +119,6 @@ func (c *Config) SendMissingNew() {
 func (c *Config) SendMissingExisting() {
 	select {
 	case c.NotifyMissingExisting <- struct{}{}:
-	default:
-	}
-}
-
-func (c *Config) SendRemoteRemove(memberID uint64) {
-	select {
-	case c.NotifyRemoteRemove <- memberID:
-	default:
-	}
-}
-
-func (c *Config) SendLocalRemove(memberID uint64) {
-	select {
-	case c.NotifyLocalRemove <- memberID:
-	default:
-	}
-}
-
-func (c *Config) SendLocalAdd() {
-	select {
-	case c.NotifyLocalAdd <- struct{}{}:
 	default:
 	}
 }
