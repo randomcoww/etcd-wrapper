@@ -98,8 +98,8 @@ func NewConfig() (*Config, error) {
 	// Check intervals
 	flag.DurationVar(&config.BackupInterval, "backup-interval", 30*time.Minute, "Backup trigger interval.")
 	flag.DurationVar(&config.HealthCheckInterval, "healthcheck-interval", 20*time.Second, "Healthcheck interval.")
-	flag.IntVar(&config.LocalErrThreshold, "local-err-thresh", 2, "Error count to trigger local member missing error.")
-	flag.IntVar(&config.ClusterErrThreshold, "cluster-err-thresh", 5, "Error count to trigger cluster error.")
+	flag.IntVar(&config.LocalErrThreshold, "local-err-thresh", 3, "Error count to trigger local member missing error.")
+	flag.IntVar(&config.ClusterErrThreshold, "cluster-err-thresh", 3, "Error count to trigger cluster error.")
 	flag.Parse()
 
 	if err := config.addParsedTLS(); err != nil {

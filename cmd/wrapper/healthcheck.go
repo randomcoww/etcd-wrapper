@@ -3,14 +3,11 @@ package wrapper
 import (
 	"time"
 
-	"go.etcd.io/etcd/clientv3"
 	"github.com/coreos/etcd-operator/pkg/util/etcdutil"
 	"github.com/randomcoww/etcd-wrapper/pkg/config"
 	etcdutilextra "github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
 	"github.com/sirupsen/logrus"
-
-	// "github.com/randomcoww/etcd-wrapper/pkg/backup"
-	// "go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
+	"go.etcd.io/etcd/clientv3"
 )
 
 type Member struct {
@@ -20,54 +17,44 @@ type Member struct {
 type MemberSet map[string]*Member
 
 type HealthCheck struct {
-	config           *config.Config
-	memberSet        MemberSet
-	localID          uint64
-	// clusterErrCh chan struct{}
-	// localErrCh chan struct{}
+	config    *config.Config
+	memberSet MemberSet
+	localID   uint64
+	stop      chan struct{}
 }
 
 func newHealthCheck(c *config.Config) *HealthCheck {
 	h := &HealthCheck{
-		config:           c,
-		memberSet:        MemberSet{},
-		// clusterErrCh make(chan struct{}, 1),
-		// localErrCh make(chan struct{}, 1),
+		config:    c,
+		memberSet: MemberSet{},
+		stop:      make(chan struct{}, 1),
 	}
 
 	for _, memberName := range h.config.MemberNames {
 		h.memberSet[memberName] = &Member{}
 	}
-
 	return h
 }
 
-func (h *HealthCheck) runClusterCheck() {
+func (h *HealthCheck) runPeriodic() {
+	logrus.Infof("Start periodic healthcheck handler")
+
 	clusterErrCount := 0
-	clusterErrThreshold := 3
 	localErrCount := 0
-	localErrThreshold := 3
 
 	for {
 		select {
-		case <-time.After(20 * time.Second):
-			// Check cluster
+		case <-time.After(h.config.HealthCheckInterval):
 			memberList, err := etcdutil.ListMembers(h.config.ClientURLs, h.config.TLSConfig)
 			if err != nil {
 				clusterErrCount++
-				// h.clusterErr = true
-
-				if clusterErrCount >= clusterErrThreshold {
-					// select {
-					// case h.clusterErrCh <- struct{}{}:
-					// default:
-					// }
+				if clusterErrCount >= h.config.ClusterErrThreshold {
+					logrus.Errorf("Cluster healthcheck failed: %v", err)
 					h.config.SendMissingNew()
 				}
 				continue
 			}
 			clusterErrCount = 0
-			// h.clusterErr = false
 
 			// Populate all members
 			h.mergeMemberSet(memberList)
@@ -75,37 +62,42 @@ func (h *HealthCheck) runClusterCheck() {
 			// Populate ID of my node
 			if _, ok := h.memberSet[h.config.Name]; ok {
 				h.localID = h.memberSet[h.config.Name].id
+				logrus.Errorf("Found local member ID: %v", h.localID)
 			}
 
-			// cluster err overrides this check
 			err = etcdutilextra.HealthCheck(h.config.LocalClientURLs, h.config.TLSConfig)
 			if err != nil {
 				localErrCount++
 
-				if localErrCount >= localErrThreshold {
-					// select {
-					// case h.localErrCh <- struct{}{}:
-					// default:
-					// }
+				if localErrCount >= h.config.LocalErrThreshold {
+					logrus.Errorf("Local healthcheck failed: %v", err)
 					h.config.SendMissingExisting()
 
 					if h.localID != 0 {
-						// removeMember(h.config, h.localID)
 						h.config.SendLocalRemove(h.localID)
 						h.config.SendLocalAdd()
 					} else {
-						// addMember(h.config)
 						h.config.SendLocalAdd()
 					}
 				}
 				continue
 			}
 			localErrCount = 0
+
+		case <-h.stop:
+			return
 		}
 	}
 }
 
-func (h *HealthCheck) mergeMemberSet(memberList *clientv3.MemberListResponse) {
+func (h *HealthCheck) stopRun() {
+	select {
+	case h.stop <- struct{}{}:
+	default:
+	}
+}
+
+func (h *HealthCheck) mergeMemberSet(memberList *clientv3.MemberListResponse) MemberSet {
 	membersFound := MemberSet{}
 	for _, m := range memberList.Members {
 		// New members may not have names yet
@@ -129,4 +121,5 @@ func (h *HealthCheck) mergeMemberSet(memberList *clientv3.MemberListResponse) {
 			member.id = 0
 		}
 	}
+	return membersFound
 }

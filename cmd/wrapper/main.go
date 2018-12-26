@@ -22,7 +22,7 @@ func Main() {
 	backup := newBackup(c)
 
 	// go healthcheck.runLocalCheck()
-	go healthcheck.runClusterCheck()
+	go healthcheck.runPeriodic()
 	go backup.runPeriodic()
 
 	run(c)
@@ -31,7 +31,7 @@ func Main() {
 func run(c *config.Config) {
 	for {
 		select {
-			// cluster err
+		// cluster err
 		case <-c.NotifyMissingNew:
 			err := fetchBackup(c)
 			if err != nil {
@@ -49,7 +49,7 @@ func run(c *config.Config) {
 
 		case memberID := <-c.NotifyLocalRemove:
 			removeMember(c, memberID)
-			
+
 		case memberID := <-c.NotifyRemoteRemove:
 			removeMember(c, memberID)
 
