@@ -62,6 +62,7 @@ type Config struct {
 	NotifyMissingExisting chan struct{}
 	NotifyRemoteRemove    chan uint64
 	NotifyLocalRemove     chan uint64
+	NotifyLocalAdd        chan struct{}
 }
 
 func NewConfig() (*Config, error) {
@@ -70,6 +71,7 @@ func NewConfig() (*Config, error) {
 		NotifyMissingExisting: make(chan struct{}, 1),
 		NotifyRemoteRemove:    make(chan uint64),
 		NotifyLocalRemove:     make(chan uint64, 1),
+		NotifyLocalAdd:        make(chan struct{}, 1),
 	}
 	// Args for etcd
 	flag.StringVar(&config.Name, "name", "", "Human-readable name for this member.")
@@ -94,8 +96,8 @@ func NewConfig() (*Config, error) {
 	flag.StringVar(&config.PodSpecFile, "pod-spec-file", "", "Pod spec file path (intended to be in kubelet manifests path).")
 	flag.StringVar(&config.S3BackupPath, "s3-backup-path", "", "S3 key name for backup.")
 	// Check intervals
-	flag.DurationVar(&config.BackupInterval, "backup-interval", 30 * time.Minute, "Backup trigger interval.")
-	flag.DurationVar(&config.HealthCheckInterval, "healthcheck-interval", 20 * time.Second, "Healthcheck interval.")
+	flag.DurationVar(&config.BackupInterval, "backup-interval", 30*time.Minute, "Backup trigger interval.")
+	flag.DurationVar(&config.HealthCheckInterval, "healthcheck-interval", 20*time.Second, "Healthcheck interval.")
 	flag.IntVar(&config.LocalErrThreshold, "local-err-thresh", 2, "Error count to trigger local member missing error.")
 	flag.IntVar(&config.ClusterErrThreshold, "cluster-err-thresh", 5, "Error count to trigger cluster error.")
 	flag.Parse()
@@ -137,6 +139,13 @@ func (c *Config) SendRemoteRemove(memberID uint64) {
 func (c *Config) SendLocalRemove(memberID uint64) {
 	select {
 	case c.NotifyLocalRemove <- memberID:
+	default:
+	}
+}
+
+func (c *Config) SendLocalAdd() {
+	select {
+	case c.NotifyLocalAdd <- struct{}{}:
 	default:
 	}
 }
