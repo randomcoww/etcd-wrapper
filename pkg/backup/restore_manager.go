@@ -1,4 +1,4 @@
-package restore
+package backup
 
 import (
 	"context"

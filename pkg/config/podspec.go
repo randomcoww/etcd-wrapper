@@ -1,4 +1,4 @@
-package podutil
+package config
 
 import (
 	"bytes"
@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/randomcoww/etcd-wrapper/pkg/cluster"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -21,7 +20,7 @@ const (
 	dataDir = dataMountDir + "/data"
 )
 
-func makeRestoreInitContainer(m *cluster.Cluster) v1.Container {
+func makeRestoreInitContainer(m *Config) v1.Container {
 	return v1.Container{
 		Name:  "restore-datadir",
 		Image: m.Image,
@@ -51,7 +50,7 @@ func makeRestoreInitContainer(m *cluster.Cluster) v1.Container {
 	}
 }
 
-func makeEtcdContainer(m *cluster.Cluster, state string) v1.Container {
+func makeEtcdContainer(m *Config, state string) v1.Container {
 	return v1.Container{
 		Name:  "etcd",
 		Image: m.Image,
@@ -147,7 +146,7 @@ func makeEtcdContainer(m *cluster.Cluster, state string) v1.Container {
 	}
 }
 
-func NewEtcdPod(m *cluster.Cluster, state string, runRestore bool) *v1.Pod {
+func NewEtcdPod(m *Config, state string, runRestore bool) *v1.Pod {
 	pod := &v1.Pod{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",

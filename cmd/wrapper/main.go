@@ -1,177 +1,120 @@
 package wrapper
 
 import (
-	"crypto/tls"
-	"io/ioutil"
-	"time"
+	"os"
 
-	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
-	"github.com/sirupsen/logrus"
 	"github.com/coreos/etcd-operator/pkg/util/etcdutil"
-	"github.com/randomcoww/etcd-wrapper/pkg/cluster"
-	"github.com/randomcoww/etcd-wrapper/pkg/podutil"
-	"github.com/randomcoww/etcd-wrapper/pkg/s3backup"
+	"github.com/randomcoww/etcd-wrapper/pkg/backup"
+	"github.com/randomcoww/etcd-wrapper/pkg/config"
 	etcdutilextra "github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
-)
-
-var (
-	Config *cluster.Cluster
+	"github.com/sirupsen/logrus"
+	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
 )
 
 func Main() {
-	Config = cluster.NewCluster()
-	clientURLs := cluster.ClientURLsFromConfig(Config)
-
-	cert, _ := ioutil.ReadFile(Config.CertFile)
-	key, _ := ioutil.ReadFile(Config.KeyFile)
-	ca, _ := ioutil.ReadFile(Config.TrustedCAFile)
-	tlsConfig, err := etcdutil.NewTLSConfig(cert, key, ca)
+	c, err := config.NewConfig()
 	if err != nil {
-		logrus.Errorf("Failed to read TLS files: %v", err)
-		return
+		logrus.Errorf("Parse config failed: %v", err)
+		os.Exit(1)
 	}
-	logrus.Infof("Start etcd-wrapper for clients: %v", clientURLs)
 
-	// Start with member initialization
-	Config.TriggerRestore()
+	healthcheck := newHealthCheck(c)
+	backup := newBackup(c)
 
-	// Start backup handler
-	go runBackup(clientURLs, tlsConfig)
+	go healthcheck.runLocalCheck()
+	go healthcheck.runClusterCheck()
+	go backup.runPeriodic()
 
-	run(clientURLs, tlsConfig)
+	run(c)
 }
 
-func run(clientURLs []string, tlsConfig *tls.Config) {
-	logrus.Infof("Start etcd-wrapper for clients: %v", clientURLs)
-
-	reaperSet := cluster.ReaperSet{}
-	configMemberSet := cluster.NewMemberSetFromConfig(Config)
-	listenPeerURLs := cluster.ListenPeerURLsFromConfig(Config)
-
+func run(c *config.Config) {
 	for {
 		select {
-		case <-Config.RunRestore:
-			logrus.Errorf("Restore etcd member")
-			// Restarts pod as needed
-			Config.UpdateInstance()
-
-			err := s3backup.FetchBackup(Config.S3BackupPath, Config.BackupFile)
+		case <-c.NotifyMissingNew:
+			// Recover member from backup or create new
+			err := fetchBackup(c)
 			if err != nil {
-				logrus.Infof("Could not download snapshot backup: %v", err)
-				// Downloaded backup data
-				// Write pod spec for existing cluster with restore
-				podutil.WritePodSpec(podutil.NewEtcdPod(Config, "new", false), Config.PodSpecFile)
-				logrus.Infof("Generated etcd pod spec for new cluster")
-
+				// Start new with no data
+				writePodSpec(c, "new", false)
 			} else {
-				logrus.Infof("Found snapshot backup")
-				// Start new cluster
-				podutil.WritePodSpec(podutil.NewEtcdPod(Config, "existing", true), Config.PodSpecFile)
-				logrus.Errorf("Generated etcd pod spec for existing cluster")
+				// Start existing with snapshot restore
+				writePodSpec(c, "existing", true)
 			}
-			logrus.Infof("Restore handler sleep for %v", Config.RestoreInterval)
-			time.Sleep(Config.RestoreInterval)
 
-		case <-time.After(Config.RunInterval):
-			// Check member list
-			memberList, err := etcdutil.ListMembers(clientURLs, tlsConfig)
+		case memberID := <-c.NotifyRemoteRemove:
+			// Remove this member
+			removeMember(c, memberID)
+
+		case memberID := <-c.NotifyLocalRemove:
+			// Remove local member
+			err := removeMember(c, memberID)
 			if err != nil {
-				logrus.Errorf("Failed to get etcd member list: %v", err)
-				Config.TriggerRestore()
-				continue
+				// Remove local member failed - cluster issue?
+				c.SendMissingNew()
+			} else {
+				// Remove success - now add my node
+				c.SendMissingExisting()
 			}
 
-			// Cluster is healthy
-			// Create pod spec if my node is missing
-			for _, member := range configMemberSet.Diff(cluster.NewMemberSetFromList(memberList)) {
-				logrus.Infof("Member missing: %v", member.Name)
-
-				if Config.Name == member.Name {
-					// My node is missing from etcd list members
-					// Send add member request
-					logrus.Infof("Add missing member: %v %v", member.Name, listenPeerURLs)
-
-					// err = etcdutilextra.AddMember(clientURLs, peerURLs, tlsConfig)
-					err = etcdutilextra.AddMember(clientURLs, listenPeerURLs, tlsConfig)
-					if err != nil {
-						logrus.Errorf("Failed to add new member: %v (%v)", member.Name, err)
-					}
-
-					// Create a pod spec to add to existing cluster
-					podutil.WritePodSpec(podutil.NewEtcdPod(Config, "existing", false), Config.PodSpecFile)
-					logrus.Infof("Wrote etcd pod spec for existing cluster: %v", member.Name)
-					break
-				}
-			}
-
-			// Hit each member and remove nodes that don't respond
-			for _, member := range memberList.Members {
-				// Remove nodes that don't respond for 1 minute
-				r, ok := reaperSet[member.Name]
-				if !ok {
-					reaperSet[member.Name] = &cluster.Reaper{
-						Reset: make(chan struct{}, 1),
-						Fn: func(memberName string, memberID uint64, isMyNode bool) {
-							logrus.Infof("Start reaper for member: %v (%v)", memberName, memberID)
-							for {
-								select {
-								case <-time.After(Config.EtcdTimeout):
-									logrus.Errorf("Member unresponsive: %v (%v)", memberName, memberID)
-
-									err = etcdutil.RemoveMember(clientURLs, tlsConfig, memberID)
-									switch err {
-									case nil:
-										logrus.Infof("Removed member: %v (%v)", memberName, memberID)
-									case rpctypes.ErrMemberNotFound:
-										logrus.Infof("Member already removed: %v (%v)", memberName, memberID)
-									default:
-										logrus.Errorf("Failed to remove member: %v (%v)", memberName, err)
-										if isMyNode {
-											Config.TriggerRestore()
-										}
-									}
-								case <-r.Reset:
-								}
-							}
-						},
-					}
-					r = reaperSet[member.Name]
-					go r.Fn(member.Name, member.ID, Config.Name == member.Name)
-				}
-
-				// Test getting status from URL of just this member
-				status, err := etcdutilextra.Status(member.ClientURLs, tlsConfig)
-				if err != nil {
-					logrus.Errorf("Healthcheck failed: %v %v", member.ID, member.Name)
-				} else {
-					// logrus.Infof("Healthcheck success: %v %v", member.ID, member.Name)
-					r.ResetTimeout()
-
-					// Check if this node is leader. Run backup if leader.
-					if Config.Name == member.Name && status.Leader == member.ID {
-						Config.TriggerBackup()
-					}
-				}
+		case <-c.NotifyMissingExisting:
+			// Add local member as existing with blank data
+			err := addMember(c)
+			if err != nil {
+				// Add member failed - cluster issue?
+				c.SendMissingNew()
+			} else {
+				// Start existing with no data
+				writePodSpec(c, "existing", false)
 			}
 		}
 	}
 }
 
-func runBackup(clientURLs []string, tlsConfig *tls.Config) {
-	logrus.Infof("Start backup handler for clients")
-	for {
-		select {
-		case <-Config.RunBackup:
-			logrus.Infof("Start backup process")
-			err := s3backup.SendBackup(Config.S3BackupPath, tlsConfig, clientURLs)
+func fetchBackup(c *config.Config) error {
+	err := backup.FetchBackup(c.S3BackupPath, c.BackupFile)
+	switch err {
+	case nil:
+		logrus.Infof("Fetch snapshot success")
+		return nil
+	default:
+		logrus.Errorf("Fetch snapshot failed: %v", err)
+		return err
+	}
+}
 
-			if err != nil {
-				logrus.Errorf("Backup failed: %v", err)
-			} else {
-				logrus.Infof("Finished backup")
-			}
-			logrus.Infof("Backup handler sleep for %v", Config.BackupInterval)
-			time.Sleep(Config.BackupInterval)
-		}
+func writePodSpec(c *config.Config, state string, restore bool) {
+	c.UpdateInstance()
+	config.WritePodSpec(config.NewEtcdPod(c, state, restore), c.PodSpecFile)
+	logrus.Errorf("Write pod spec: (state: %v, restore: %v)", state, restore)
+}
+
+func addMember(c *config.Config) error {
+	resp, err := etcdutilextra.AddMember(c.ClientURLs, c.LocalPeerURLs, c.TLSConfig)
+	switch err {
+	case nil:
+		logrus.Infof("Add member success: %v", resp.Member.ID)
+		return nil
+	case rpctypes.ErrMemberExist:
+		logrus.Infof("Add member already exists")
+		return nil
+	default:
+		logrus.Errorf("Add member failed: %v", err)
+		return err
+	}
+}
+
+func removeMember(c *config.Config, memberID uint64) error {
+	err := etcdutil.RemoveMember(c.ClientURLs, c.TLSConfig, memberID)
+	switch err {
+	case nil:
+		logrus.Infof("Remove member success: %v", memberID)
+		return nil
+	case rpctypes.ErrMemberNotFound:
+		logrus.Infof("Remove member not found: %v", memberID)
+		return nil
+	default:
+		logrus.Errorf("Remove member failed (%v): %v", memberID, err)
+		return err
 	}
 }
