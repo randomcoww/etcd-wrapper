@@ -1,6 +1,8 @@
 package wrapper
 
 import (
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/coreos/etcd-operator/pkg/util/etcdutil"
@@ -49,8 +51,17 @@ func (h *HealthCheck) runPeriodic() {
 			memberList, err := etcdutil.ListMembers(h.config.ClientURLs, h.config.TLSConfig)
 			if err != nil {
 				clusterErrCount++
+
 				if clusterErrCount >= h.config.ClusterErrThreshold {
-					logrus.Errorf("Cluster healthcheck failed: %v", err)
+					if clusterErrCount >= (h.config.ClusterErrThreshold * 3) {
+						// Trigger pod restart if this fails too many times
+						logrus.Infof("Cluster healthcheck failed too many times (%v): %v", clusterErrCount, err)
+						h.config.UpdateInstance()
+						clusterErrCount = 0
+					} else {
+						logrus.Errorf("Cluster healthcheck failed: %v", err)
+					}
+
 					h.config.SendMissingNew()
 				}
 				continue
@@ -58,6 +69,7 @@ func (h *HealthCheck) runPeriodic() {
 			clusterErrCount = 0
 
 			// Populate all members
+			// Populate local member ID or 0 if not found
 			h.mergeMemberSet(memberList)
 
 			err = etcdutilextra.HealthCheck(h.config.LocalClientURLs, h.config.TLSConfig)
@@ -65,30 +77,35 @@ func (h *HealthCheck) runPeriodic() {
 				localErrCount++
 
 				if localErrCount >= h.config.LocalErrThreshold {
-					logrus.Infof("Local healthcheck failed: %v", err)
+					if localErrCount >= (h.config.LocalErrThreshold * 3) {
+						// Trigger pod restart if this fails too many times
+						logrus.Infof("Local healthcheck failed too many times (%v): %v", localErrCount, err)
+						h.config.UpdateInstance()
+						localErrCount = 0
+					} else {
+						logrus.Infof("Local healthcheck failed (%v): %v", localErrCount, err)
+					}
+
 					h.config.SendMissingExisting()
 
 					if h.localID != 0 {
-						if err := h.removeMember(h.localID); err == nil {
-							h.localID = 0
-						} else {
+						if err := h.removeMember(h.localID); err != nil {
 							continue
 						}
-					}
-
-					if resp, err := h.addMember(); err == nil {
-						h.localID = resp.Member.ID
+						if _, err := h.addMember(); err != nil {
+							continue
+						}
+						localErrCount = 0
+					} else {
+						if _, err := h.addMember(); err != nil {
+							continue
+						}
+						localErrCount = 0
 					}
 				}
 				continue
 			}
 			localErrCount = 0
-
-			// Populate ID of my node
-			if _, ok := h.memberSet[h.config.Name]; ok {
-				h.localID = h.memberSet[h.config.Name].id
-				logrus.Infof("Found local member ID: %v", h.localID)
-			}
 
 		case <-h.stop:
 			return
@@ -105,14 +122,22 @@ func (h *HealthCheck) stopRun() {
 
 func (h *HealthCheck) mergeMemberSet(memberList *clientv3.MemberListResponse) MemberSet {
 	memberFoundList := MemberSet{}
+	var localID uint64
+
 	for _, m := range memberList.Members {
+		// My ID matched by peerURL
+		// It may not have a name yet if it was recently added
+		if config.IsEqual(m.PeerURLs, h.config.LocalPeerURLs) {
+			localID = m.ID
+		}
+
 		// New members may not have names yet
 		if len(m.Name) == 0 {
 			continue
 		}
 
 		if member, ok := h.memberSet[m.Name]; ok {
-			logrus.Infof("Found member: %v (%v)", m.Name, m.ID)
+			// logrus.Infof("Found member: %v (%v)", m.Name, m.ID)
 			member.id = m.ID
 			memberFoundList[m.Name] = member
 		} else {
@@ -121,12 +146,19 @@ func (h *HealthCheck) mergeMemberSet(memberList *clientv3.MemberListResponse) Me
 		}
 	}
 
+	h.localID = localID
+	logrus.Infof("Local ID: %v", h.localID)
+
 	// Go through members in config not returned by etcd and reset ID
+	var log []string
 	for memberName, member := range h.memberSet {
 		if _, ok := memberFoundList[memberName]; !ok {
 			member.id = 0
 		}
+		log = append(log, fmt.Sprintf("%s: %v", memberName, member.id))
 	}
+	logrus.Infof("Named members: [%s]", strings.Join(log, ", "))
+
 	return memberFoundList
 }
 

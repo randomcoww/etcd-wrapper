@@ -155,3 +155,25 @@ func (c *Config) addParsedConfig() {
 	// List of client URLs of local node
 	c.LocalClientURLs = strings.Split(c.ListenClientURLs, ",")
 }
+
+// Compare URL lists
+// https://stackoverflow.com/questions/15311969/checking-the-equality-of-two-slices
+func IsEqual(a, b []string) bool {
+
+	// If one is nil, the other must also be nil.
+	if (a == nil) != (b == nil) {
+		return false
+	}
+
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+
+	return true
+}
