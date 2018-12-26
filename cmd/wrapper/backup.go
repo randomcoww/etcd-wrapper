@@ -36,7 +36,7 @@ func (b *Backup) runPeriodic() {
 			// Only local client URL is hit
 			// Responding member should always be my node
 			if status.Header.MemberId == status.Leader {
-				err := backup.SendBackup(b.config.S3BackupPath, b.config.TLSConfig, b.config.LocalClientURLs)
+				err := backup.SendBackup(b.config.S3BackupPath, b.config.TLSConfig, b.config.ClientURLs)
 				if err != nil {
 					logrus.Errorf("Send backup failed: %v", err)
 				} else {
