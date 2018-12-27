@@ -2,10 +2,17 @@ package wrapper
 
 import (
 	"os"
+	"time"
 
-	"github.com/randomcoww/etcd-wrapper/pkg/backup"
+	"github.com/coreos/etcd-operator/pkg/util/etcdutil"
 	"github.com/randomcoww/etcd-wrapper/pkg/config"
+	etcdutilextra "github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
 	"github.com/sirupsen/logrus"
+)
+
+const (
+	updateStateNewCluster      = 1
+	updateStateExistingCluster = 2
 )
 
 func Main() {
@@ -15,50 +22,52 @@ func Main() {
 		os.Exit(1)
 	}
 
-	healthcheck := newHealthCheck(c)
 	backup := newBackup(c)
-
-	go healthcheck.runPeriodic()
 	go backup.runPeriodic()
 
-	run(c)
-}
+	podConfig := newPodConfig(c)
+	go podConfig.periodicTriggerFetch()
 
-func run(c *config.Config) {
+	memberStatus := newMemberStatus(c)
+	var updateState int
+
 	for {
-		select {
-		// cluster err
-		case <-c.NotifyMissingNew:
-			err := fetchBackup(c)
-			if err != nil {
-				// Start new with no data
-				writePodSpec(c, "new", false)
-			} else {
-				// Start existing with snapshot restore
-				writePodSpec(c, "existing", true)
-			}
+		updateTimer := time.After(c.PodUpdateInterval)
+	healthCheck:
+		for {
+			select {
+			case <-time.After(c.HealthCheckInterval):
+				memberList, err := etcdutil.ListMembers(c.ClientURLs, c.TLSConfig)
+				if err != nil {
+					logrus.Errorf("Cluster healthcheck failed: %v", err)
+					updateState = updateStateNewCluster
+					continue
+				}
+				memberStatus.mergeMemberList(memberList)
 
-			// local err
-		case <-c.NotifyMissingExisting:
-			// Create pod spec with existing
-			writePodSpec(c, "existing", false)
+				err = etcdutilextra.HealthCheck(c.LocalClientURLs, c.TLSConfig)
+				if err != nil {
+					logrus.Errorf("Local healthcheck failed: %v", err)
+					updateState = updateStateExistingCluster
+					continue
+				}
+				// Success
+				break healthCheck
+
+			case <-updateTimer:
+				switch updateState {
+				case updateStateNewCluster:
+					podConfig.createForNewCluster()
+
+				case updateStateExistingCluster:
+					podConfig.createForExistingCluster()
+					memberStatus.removeLocalMember()
+					memberStatus.addLocalMember()
+				default:
+				}
+				// Reset timers after resource update
+				break healthCheck
+			}
 		}
 	}
-}
-
-func fetchBackup(c *config.Config) error {
-	err := backup.FetchBackup(c.S3BackupPath, c.BackupFile)
-	switch err {
-	case nil:
-		logrus.Infof("Fetch snapshot success")
-		return nil
-	default:
-		logrus.Errorf("Fetch snapshot failed: %v", err)
-		return err
-	}
-}
-
-func writePodSpec(c *config.Config, state string, restore bool) {
-	config.WritePodSpec(config.NewEtcdPod(c, state, restore), c.PodSpecFile)
-	logrus.Errorf("Write pod spec: (state: %v, restore: %v)", state, restore)
 }

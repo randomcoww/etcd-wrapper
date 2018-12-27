@@ -46,8 +46,7 @@ type Config struct {
 	// Main loop interval
 	BackupInterval      time.Duration
 	HealthCheckInterval time.Duration
-	LocalErrThreshold   int
-	ClusterErrThreshold int
+	PodUpdateInterval   time.Duration
 
 	// Parsed static values
 	TLSConfig       *tls.Config
@@ -56,17 +55,10 @@ type Config struct {
 	ClientURLs      []string
 	LocalPeerURLs   []string
 	LocalClientURLs []string
-
-	// Healthcheck reporting
-	NotifyMissingNew      chan struct{}
-	NotifyMissingExisting chan struct{}
 }
 
 func NewConfig() (*Config, error) {
-	config := &Config{
-		NotifyMissingNew:      make(chan struct{}, 1),
-		NotifyMissingExisting: make(chan struct{}, 1),
-	}
+	config := &Config{}
 	// Args for etcd
 	flag.StringVar(&config.Name, "name", "", "Human-readable name for this member.")
 	flag.StringVar(&config.CertFile, "cert-file", "", "Path to the client server TLS cert file.")
@@ -92,8 +84,7 @@ func NewConfig() (*Config, error) {
 	// Check intervals
 	flag.DurationVar(&config.BackupInterval, "backup-interval", 30*time.Minute, "Backup trigger interval.")
 	flag.DurationVar(&config.HealthCheckInterval, "healthcheck-interval", 20*time.Second, "Healthcheck interval.")
-	flag.IntVar(&config.LocalErrThreshold, "local-err-thresh", 3, "Error count to trigger local member missing error.")
-	flag.IntVar(&config.ClusterErrThreshold, "cluster-err-thresh", 3, "Error count to trigger cluster error.")
+	flag.DurationVar(&config.PodUpdateInterval, "pod-update-interval", 2*time.Minute, "Pod update interval.")
 	flag.Parse()
 
 	if err := config.addParsedTLS(); err != nil {
@@ -107,20 +98,6 @@ func NewConfig() (*Config, error) {
 // Change annotation in pod to force update
 func (c *Config) UpdateInstance() {
 	c.Instance = strconv.FormatInt(time.Now().UTC().UnixNano(), 10)
-}
-
-func (c *Config) SendMissingNew() {
-	select {
-	case c.NotifyMissingNew <- struct{}{}:
-	default:
-	}
-}
-
-func (c *Config) SendMissingExisting() {
-	select {
-	case c.NotifyMissingExisting <- struct{}{}:
-	default:
-	}
 }
 
 func (c *Config) addParsedTLS() error {
