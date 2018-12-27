@@ -45,7 +45,7 @@ func Main() {
 				}
 				memberStatus.mergeMemberList(memberList)
 
-				err = etcdutilextra.HealthCheck(c.ClientURLs, c.TLSConfig)
+				err = etcdutilextra.HealthCheck(c.LocalClientURLs, c.TLSConfig)
 				if err != nil {
 					logrus.Errorf("Local healthcheck failed: %v", err)
 					updateState = updateStateExistingCluster
