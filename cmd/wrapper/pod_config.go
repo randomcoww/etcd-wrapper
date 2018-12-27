@@ -1,6 +1,7 @@
 package wrapper
 
 import (
+	"os"
 	"time"
 
 	"github.com/randomcoww/etcd-wrapper/pkg/backup"
@@ -9,73 +10,72 @@ import (
 )
 
 type PodConfig struct {
-	config *config.Config
-	stop   chan struct{}
+	config       *config.Config
+	fetchTrigger chan struct{}
+	fetchExists  bool
 }
 
 func newPodConfig(c *config.Config) *PodConfig {
-	return &PodConfig{
-		config: c,
-		stop:   make(chan struct{}, 1),
+	p := &PodConfig{
+		config:       c,
+		fetchTrigger: make(chan struct{}, 1),
 	}
+	p.triggerFetch()
+	return p
 }
 
-func (p *PodConfig) runCreateNew() {
-	fetchSuccess := false
-
-	for {
-		select {
-		case <-time.After(p.config.PodUpdateInterval):
-			// This is retried every time if it failed
-			if !fetchSuccess {
-				if err := fetchBackup(p.config); err == nil {
-					fetchSuccess = true
-				}
-			}
-
-			if fetchSuccess {
-				// Start existing with snapshot restore
-				writePodSpec(p.config, "existing", true)
-			} else {
-				// Start new with no data
-				writePodSpec(p.config, "new", false)
-			}
-		case <-p.stop:
-			return
-		}
-	}
-}
-
-func (p *PodConfig) runCreateExisting() {
-	for {
-		select {
-		case <-time.After(p.config.PodUpdateInterval):
-			// Start existing with no data
-			writePodSpec(p.config, "existing", false)
-
-		case <-p.stop:
-			return
-		}
-	}
-}
-
-func (p *PodConfig) stopRun() {
+func (p *PodConfig) triggerFetch() {
 	select {
-	case p.stop <- struct{}{}:
+	case p.fetchTrigger <- struct{}{}:
 	default:
 	}
 }
 
-func fetchBackup(c *config.Config) error {
-	err := backup.FetchBackup(c.S3BackupPath, c.BackupFile)
-	switch err {
-	case nil:
-		logrus.Infof("Fetch snapshot success")
-		return nil
-	default:
-		logrus.Errorf("Fetch snapshot failed: %v", err)
-		return err
+func (p *PodConfig) periodicTriggerFetch() {
+	for {
+		select {
+		case <-time.After(p.config.BackupInterval):
+			p.triggerFetch()
+		}
 	}
+}
+
+func (p *PodConfig) fetchBackup() {
+	if err := backup.FetchBackup(p.config.S3BackupPath, p.config.BackupFile); err != nil {
+		logrus.Errorf("Fetch snapshot failed: %v", err)
+		p.fetchExists = false
+	} else {
+		logrus.Infof("Fetch snapshot success")
+		p.fetchExists = true
+	}
+}
+
+func (p *PodConfig) checkFetchFileExists() {
+	if _, err := os.Stat(p.config.BackupFile); os.IsNotExist(err) {
+		p.fetchExists = false
+	}
+}
+
+func (p *PodConfig) createForNewCluster() {
+	// Sets minimum interval for refetching backup from remote
+	select {
+	case <-p.fetchTrigger:
+		p.fetchBackup()
+	default:
+	}
+	p.checkFetchFileExists()
+
+	if p.fetchExists {
+		// Start existing with snapshot restore
+		writePodSpec(p.config, "existing", true)
+	} else {
+		// Start new with no data
+		writePodSpec(p.config, "new", false)
+	}
+}
+
+func (p *PodConfig) createForExistingCluster() {
+	writePodSpec(p.config, "existing", false)
 }
 
 func writePodSpec(c *config.Config, state string, restore bool) {
