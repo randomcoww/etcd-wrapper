@@ -130,7 +130,7 @@ func makeEtcdContainer(m *Config, state string) v1.Container {
 				Value: m.PeerTrustedCAFile,
 			},
 			{
-				Name: "ETCD_STRICT_RECONFIG_CHECK",
+				Name:  "ETCD_STRICT_RECONFIG_CHECK",
 				Value: "true",
 			},
 		},

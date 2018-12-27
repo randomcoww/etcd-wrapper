@@ -2,9 +2,11 @@ package wrapper
 
 import (
 	"os"
+	"time"
 
-	"github.com/randomcoww/etcd-wrapper/pkg/backup"
+	"github.com/coreos/etcd-operator/pkg/util/etcdutil"
 	"github.com/randomcoww/etcd-wrapper/pkg/config"
+	etcdutilextra "github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
 	"github.com/sirupsen/logrus"
 )
 
@@ -15,50 +17,47 @@ func Main() {
 		os.Exit(1)
 	}
 
-	healthcheck := newHealthCheck(c)
 	backup := newBackup(c)
+	podConfig := newPodConfig(c)
+	memberStatus := newMemberStatus(c)
 
-	go healthcheck.runPeriodic()
 	go backup.runPeriodic()
 
-	run(c)
-}
-
-func run(c *config.Config) {
 	for {
-		select {
-		// cluster err
-		case <-c.NotifyMissingNew:
-			err := fetchBackup(c)
-			if err != nil {
-				// Start new with no data
-				writePodSpec(c, "new", false)
-			} else {
-				// Start existing with snapshot restore
-				writePodSpec(c, "existing", true)
+		podConfig.runCreateNew()
+	checkCluster:
+		for {
+			select {
+			case <-time.After(c.HealthCheckInterval):
+				memberList, err := etcdutil.ListMembers(c.ClientURLs, c.TLSConfig)
+				if err != nil {
+					logrus.Errorf("Cluster healthcheck failed: %v", err)
+
+				} else {
+					podConfig.stopRun()
+					memberStatus.mergeMemberList(memberList)
+					break checkCluster
+				}
 			}
-
-			// local err
-		case <-c.NotifyMissingExisting:
-			// Create pod spec with existing
-			writePodSpec(c, "existing", false)
 		}
-	}
-}
 
-func fetchBackup(c *config.Config) error {
-	err := backup.FetchBackup(c.S3BackupPath, c.BackupFile)
-	switch err {
-	case nil:
-		logrus.Infof("Fetch snapshot success")
-		return nil
-	default:
-		logrus.Errorf("Fetch snapshot failed: %v", err)
-		return err
-	}
-}
+		podConfig.runCreateExisting()
+	checkLocal:
+		for {
+			select {
+			case <-time.After(c.HealthCheckInterval):
+				err := etcdutilextra.HealthCheck(c.ClientURLs, c.TLSConfig)
+				if err != nil {
+					logrus.Errorf("Cluster healthcheck failed: %v", err)
+					memberStatus.removeLocalMember()
+					memberStatus.addLocalMember()
 
-func writePodSpec(c *config.Config, state string, restore bool) {
-	config.WritePodSpec(config.NewEtcdPod(c, state, restore), c.PodSpecFile)
-	logrus.Errorf("Write pod spec: (state: %v, restore: %v)", state, restore)
+				} else {
+					podConfig.stopRun()
+					break checkLocal
+				}
+			}
+		}
+
+	}
 }
