@@ -10,6 +10,11 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+const (
+	updateStateNewCluster      = 1
+	updateStateExistingCluster = 2
+)
+
 func Main() {
 	c, err := config.NewConfig()
 	if err != nil {
@@ -18,46 +23,51 @@ func Main() {
 	}
 
 	backup := newBackup(c)
-	podConfig := newPodConfig(c)
-	memberStatus := newMemberStatus(c)
-
 	go backup.runPeriodic()
 
+	podConfig := newPodConfig(c)
+	go podConfig.periodicTriggerFetch()
+
+	memberStatus := newMemberStatus(c)
+	var updateState int
+
 	for {
-		podConfig.runCreateNew()
-	checkCluster:
+		updateTimer := time.After(c.PodUpdateInterval)
+	healthCheck:
 		for {
 			select {
 			case <-time.After(c.HealthCheckInterval):
 				memberList, err := etcdutil.ListMembers(c.ClientURLs, c.TLSConfig)
 				if err != nil {
 					logrus.Errorf("Cluster healthcheck failed: %v", err)
-
-				} else {
-					podConfig.stopRun()
-					memberStatus.mergeMemberList(memberList)
-					break checkCluster
+					updateState = updateStateNewCluster
+					continue
 				}
-			}
-		}
+				memberStatus.mergeMemberList(memberList)
 
-		podConfig.runCreateExisting()
-	checkLocal:
-		for {
-			select {
-			case <-time.After(c.HealthCheckInterval):
-				err := etcdutilextra.HealthCheck(c.ClientURLs, c.TLSConfig)
+				err = etcdutilextra.HealthCheck(c.ClientURLs, c.TLSConfig)
 				if err != nil {
-					logrus.Errorf("Cluster healthcheck failed: %v", err)
+					logrus.Errorf("Local healthcheck failed: %v", err)
+					updateState = updateStateExistingCluster
+					continue
+				}
+				// Success
+				break healthCheck
+
+			case <-updateTimer:
+				switch updateState {
+				case updateStateNewCluster:
+					podConfig.createForNewCluster()
+
+				case updateStateExistingCluster:
+					podConfig.createForExistingCluster()
 					memberStatus.removeLocalMember()
 					memberStatus.addLocalMember()
-
-				} else {
-					podConfig.stopRun()
-					break checkLocal
+				default:
 				}
+				// Reset timers after resource update
+				break healthCheck
 			}
 		}
-
 	}
 }
