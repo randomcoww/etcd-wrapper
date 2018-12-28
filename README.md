@@ -4,7 +4,7 @@ _"I want etcd-operator like management for an etcd cluster, but without the depe
 
 #### Overview
 
-This is intended for managing a static on-prem etcd cluster bootstrapped with fixed peer and client URLs. 
+This is intended for managing a static on-prem etcd cluster bootstrapped with fixed peer and client URLs. Nodes are expected to come back on the same IP address if rebooted.
 
 Each member node should be running (masterless) Kubelet with a `--pod-manifest-path` configured. Etcd-wrapper will write a static pod manifest for etcd to this path to start and update the etcd instance on the node.
 
