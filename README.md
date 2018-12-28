@@ -1,6 +1,6 @@
 #### Overview
 
-_"I want etcd-operator like management for an etcd cluster, but without the dependecy on Kubernetes, which in turn depends on another etcd cluster"_
+_"I want [etcd-operator](https://github.com/coreos/etcd-operator) like management for an etcd cluster, but without the dependecy on Kubernetes, which in turn depends on another etcd cluster"_
 
 This is intended for managing a static on-prem etcd cluster bootstrapped with fixed peer and client URLs. Nodes are expected to come back on the same IP address if rebooted.
 
