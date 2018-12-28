@@ -10,6 +10,8 @@ Each member node should be running (masterless) Kubelet with a `--pod-manifest-p
 
 There is no cleanup of etcd data on recovery steps which require removing old data. Data is intended to live in the etcd container and be discarded on pod restart.
 
+#### Workflow
+
 - If no cluster exists, recover or start new etcd cluster.
   - Check backup location (S3), and attempt to recover.
   - If backup exists, recover existing cluster.
