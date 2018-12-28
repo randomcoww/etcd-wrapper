@@ -22,9 +22,7 @@ There is no cleanup of etcd data on recovery steps which require removing old da
 
 - Periodic snapshot and backup to S3.
 
-##### Sample
-
-Sample etcd-wrapper deployed as a static pod:
+#### Sample etcd-wrapper deployed as a static pod
 
 Nodes:
 - 192.168.126.219
