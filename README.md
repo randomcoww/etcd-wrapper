@@ -42,7 +42,7 @@ hostNetwork: true
 restartPolicy: Always
 containers:
 - name: kube-etcd-wrapper
-    image: randomcoww/etcd-wrapper:20181227.01
+    image: randomcoww/etcd-wrapper:20181227.02
     args:
     - "--name=$(NODE_NAME)"
     - "--cert-file=/var/lib/kubelet/etcd.pem"
