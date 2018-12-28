@@ -18,7 +18,7 @@ func FetchBackup(s3Path, downloadPath string) error {
 		// Region: aws.String("us-west-2"),
 	}))
 
-	ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultRequestTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultBackupTimeout)
 	s3Reader := reader.NewS3Reader(s3.New(sess))
 	rm := NewRestoreManagerFromReader(s3Reader)
 	err := rm.DownloadSnap(ctx, s3Path, downloadPath)
@@ -32,7 +32,7 @@ func SendBackup(s3Path string, tlsConfig *tls.Config, clientURLs []string) error
 		// Region: aws.String("us-west-2"),
 	}))
 
-	ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultRequestTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultBackupTimeout)
 	s3Writer := writer.NewS3Writer(s3.New(sess))
 	bm := importbackup.NewBackupManagerFromWriter(nil, s3Writer, tlsConfig, clientURLs, "")
 	_, _, err := bm.SaveSnap(ctx, s3Path)
