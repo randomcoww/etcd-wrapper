@@ -42,6 +42,9 @@ type Config struct {
 	// kubelet static pod path
 	PodSpecFile  string
 	S3BackupPath string
+	// Client cert for getting status of all etcd nodes (not just local)
+	ClientCertFile string
+	ClientKeyFile  string
 
 	// Main loop interval
 	BackupInterval      time.Duration
@@ -74,6 +77,8 @@ func NewConfig() (*Config, error) {
 	flag.StringVar(&config.InitialClusterToken, "initial-cluster-token", "", "Initial cluster token for the etcd cluster during bootstrap.")
 	flag.StringVar(&config.InitialCluster, "initial-cluster", "", "Initial cluster configuration for bootstrapping.")
 	// Client
+	flag.StringVar(&config.ClientCertFile, "client-cert-file", "", "Path to the client server TLS cert file.")
+	flag.StringVar(&config.ClientKeyFile, "client-key-file", "", "Path to the client server TLS key file.")
 	flag.StringVar(&config.BackupMountDir, "backup-dir", "/var/lib/etcd-restore", "Base path of snapshot restore file.")
 	flag.StringVar(&config.BackupFile, "backup-file", "/var/lib/etcd-restore/etcd.db", "Snapshot file restore path.")
 	flag.StringVar(&config.EtcdTLSMountDir, "tls-dir", "/etc/ssl/cert", "Base path of TLS cert files.")
@@ -101,8 +106,8 @@ func (c *Config) UpdateInstance() {
 }
 
 func (c *Config) addParsedTLS() error {
-	cert, _ := ioutil.ReadFile(c.CertFile)
-	key, _ := ioutil.ReadFile(c.KeyFile)
+	cert, _ := ioutil.ReadFile(c.ClientCertFile)
+	key, _ := ioutil.ReadFile(c.ClientKeyFile)
 	ca, _ := ioutil.ReadFile(c.TrustedCAFile)
 
 	tc, err := etcdutil.NewTLSConfig(cert, key, ca)
