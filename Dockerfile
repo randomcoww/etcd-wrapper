@@ -9,8 +9,8 @@ RUN set -x \
   && apk add --no-cache \
     git \
   \
-  && go get -d ./... \
-  && go build
+  && GO111MODULE=on GOOS=linux \
+    go build -o etcd-wrapper main.go
 
 FROM alpine:edge
 
