@@ -215,7 +215,7 @@ func NewEtcdPod(m *Config, state string, runRestore bool) *v1.Pod {
 					Name: "host-trusted-ca-file",
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
-							Path: m.CertFile,
+							Path: m.TrustedCAFile,
 							Type: &hostPathFile,
 						},
 					},
@@ -224,7 +224,7 @@ func NewEtcdPod(m *Config, state string, runRestore bool) *v1.Pod {
 					Name: "host-peer-cert-file",
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
-							Path: m.TrustedCAFile,
+							Path: m.PeerCertFile,
 							Type: &hostPathFile,
 						},
 					},
