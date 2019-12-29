@@ -260,16 +260,6 @@ func NewEtcdPod(m *Config, state string, runRestore bool) *v1.Pod {
 						EmptyDir: &v1.EmptyDirVolumeSource{},
 					},
 				},
-				// Restore backup to this path
-				{
-					Name: "host-backup-file",
-					VolumeSource: v1.VolumeSource{
-						HostPath: &v1.HostPathVolumeSource{
-							Path: m.BackupFile,
-							Type: &hostPathFile,
-						},
-					},
-				},
 			},
 			Hostname: m.Name,
 		},
@@ -277,6 +267,18 @@ func NewEtcdPod(m *Config, state string, runRestore bool) *v1.Pod {
 
 	// Run recovery for existing clusters
 	if runRestore {
+		pod.Spec.Volumes = append(pod.Spec.Volumes,
+			v1.Volume{
+				Name: "host-backup-file",
+				VolumeSource: v1.VolumeSource{
+					HostPath: &v1.HostPathVolumeSource{
+						Path: m.BackupFile,
+						Type: &hostPathFile,
+					},
+				},
+			},
+		)
+
 		pod.Spec.InitContainers = append(pod.Spec.InitContainers,
 			makeRestoreInitContainer(m),
 		)
