@@ -30,15 +30,11 @@ type Config struct {
 	// Update this in pod spec annotation to restart etcd pod
 	Instance string
 	// Mount this to run etcdctl snapshot restore
-	BackupMountDir string
-	// This path should be under BackupMountDir
 	BackupFile string
-	// Mount this in etcd container - cert files should all be under this path
-	EtcdTLSMountDir string
 	// List of etcd client URLs for service to hit
 	EtcdServers string
 	// etcd image
-	Image string
+	EtcdImage string
 	// kubelet static pod path
 	PodSpecFile  string
 	S3BackupPath string
@@ -62,34 +58,31 @@ type Config struct {
 
 func NewConfig() (*Config, error) {
 	config := &Config{}
-	// Args for etcd
+	// Etcd manifest config
 	flag.StringVar(&config.Name, "name", "", "Human-readable name for this member.")
-	flag.StringVar(&config.CertFile, "cert-file", "", "Path to the client server TLS cert file.")
-	flag.StringVar(&config.KeyFile, "key-file", "", "Path to the client server TLS key file.")
-	flag.StringVar(&config.TrustedCAFile, "trusted-ca-file", "", "Path to the client server TLS trusted CA cert file.")
-	flag.StringVar(&config.PeerCertFile, "peer-cert-file", "", "Path to the peer server TLS cert file.")
-	flag.StringVar(&config.PeerKeyFile, "peer-key-file", "", "Path to the peer server TLS key file.")
-	flag.StringVar(&config.PeerTrustedCAFile, "peer-trusted-ca-file", "", "Path to the peer server TLS trusted CA file.")
+	flag.StringVar(&config.CertFile, "host-cert-file", "", "Host path to the client server TLS cert file.")
+	flag.StringVar(&config.KeyFile, "host-key-file", "", "Host path to the client server TLS key file.")
+	flag.StringVar(&config.TrustedCAFile, "host-trusted-ca-file", "", "Host path to the client server TLS trusted CA cert file.")
+	flag.StringVar(&config.PeerCertFile, "host-peer-cert-file", "", "Host path to the peer server TLS cert file.")
+	flag.StringVar(&config.PeerKeyFile, "host-peer-key-file", "", "Host path to the peer server TLS key file.")
+	flag.StringVar(&config.PeerTrustedCAFile, "host-peer-trusted-ca-file", "", "Host path to the peer server TLS trusted CA file.")
 	flag.StringVar(&config.InitialAdvertisePeerURLs, "initial-advertise-peer-urls", "", "List of this member's peer URLs to advertise to the rest of the cluster.")
 	flag.StringVar(&config.ListenPeerURLs, "listen-peer-urls", "", "List of URLs to listen on for peer traffic.")
 	flag.StringVar(&config.AdvertiseClientURLs, "advertise-client-urls", "", "List of this member's client URLs to advertise to the public.")
 	flag.StringVar(&config.ListenClientURLs, "listen-client-urls", "", "List of URLs to listen on for client traffic.")
 	flag.StringVar(&config.InitialClusterToken, "initial-cluster-token", "", "Initial cluster token for the etcd cluster during bootstrap.")
 	flag.StringVar(&config.InitialCluster, "initial-cluster", "", "Initial cluster configuration for bootstrapping.")
-	// Client
+	flag.StringVar(&config.BackupFile, "host-backup-file", "/var/lib/etcd-restore/etcd.db", "Host path to restore snapshot file.")
+	flag.StringVar(&config.PodSpecFile, "pod-manifest-file", "", "Host path to write etcd pod manifest file. This should be where kubelet reads static pod manifests.")
+	flag.StringVar(&config.EtcdImage, "image", "", "Etcd container image.")
+	// Wrapper config
 	flag.StringVar(&config.ClientCertFile, "client-cert-file", "", "Path to the client server TLS cert file.")
 	flag.StringVar(&config.ClientKeyFile, "client-key-file", "", "Path to the client server TLS key file.")
-	flag.StringVar(&config.BackupMountDir, "backup-dir", "/var/lib/etcd-restore", "Base path of snapshot restore file.")
-	flag.StringVar(&config.BackupFile, "backup-file", "/var/lib/etcd-restore/etcd.db", "Snapshot file restore path.")
-	flag.StringVar(&config.EtcdTLSMountDir, "tls-dir", "/etc/ssl/cert", "Base path of TLS cert files.")
 	flag.StringVar(&config.EtcdServers, "etcd-servers", "", "List of etcd client URLs.")
-	flag.StringVar(&config.Image, "image", "quay.io/coreos/etcd:v3.3", "Etcd container image.")
-	flag.StringVar(&config.PodSpecFile, "pod-spec-file", "", "Pod spec file path (intended to be in kubelet manifests path).")
 	flag.StringVar(&config.S3BackupPath, "s3-backup-path", "", "S3 key name for backup.")
-	// Check intervals
 	flag.DurationVar(&config.BackupInterval, "backup-interval", 30*time.Minute, "Backup trigger interval.")
-	flag.DurationVar(&config.HealthCheckInterval, "healthcheck-interval", 20*time.Second, "Healthcheck interval.")
-	flag.DurationVar(&config.PodUpdateInterval, "pod-update-interval", 2*time.Minute, "Pod update interval.")
+	flag.DurationVar(&config.HealthCheckInterval, "healthcheck-interval", 10*time.Second, "Healthcheck interval.")
+	flag.DurationVar(&config.PodUpdateInterval, "pod-update-interval", 1*time.Minute, "Pod update interval.")
 	flag.Parse()
 
 	if err := config.addParsedTLS(); err != nil {

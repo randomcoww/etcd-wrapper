@@ -18,12 +18,14 @@ const (
 	dataMountDir = "/var/etcd"
 	// etcdctl snapshot restore can only be called on directory that doesn't exist
 	dataDir = dataMountDir + "/data"
+	// backup restore path
+	backupDir = "/var/etcd-restore/etcd.db"
 )
 
 func makeRestoreInitContainer(m *Config) v1.Container {
 	return v1.Container{
 		Name:  "restore-datadir",
-		Image: m.Image,
+		Image: m.EtcdImage,
 		Env: []v1.EnvVar{
 			{
 				Name:  "ETCDCTL_API",
@@ -36,11 +38,11 @@ func makeRestoreInitContainer(m *Config) v1.Container {
 			" --initial-cluster-token %[4]s"+
 			" --initial-advertise-peer-urls %[5]s"+
 			" --data-dir %[6]s",
-			m.BackupFile, m.Name, m.InitialCluster, m.InitialClusterToken, m.InitialAdvertisePeerURLs, dataDir), " "),
+			backupDir, m.Name, m.InitialCluster, m.InitialClusterToken, m.InitialAdvertisePeerURLs, dataDir), " "),
 		VolumeMounts: []v1.VolumeMount{
 			{
-				Name:      "backup-path",
-				MountPath: m.BackupMountDir,
+				Name:      "host-backup-file",
+				MountPath: backupDir,
 			},
 			{
 				Name:      "data-mount-path",
@@ -53,7 +55,7 @@ func makeRestoreInitContainer(m *Config) v1.Container {
 func makeEtcdContainer(m *Config, state string) v1.Container {
 	return v1.Container{
 		Name:  "etcd",
-		Image: m.Image,
+		Image: m.EtcdImage,
 		Env: []v1.EnvVar{
 			{
 				Name:  "ETCD_NAME",
@@ -107,27 +109,27 @@ func makeEtcdContainer(m *Config, state string) v1.Container {
 			},
 			{
 				Name:  "ETCD_CERT_FILE",
-				Value: m.CertFile,
+				Value: "/etc/etcd/cert.pem",
 			},
 			{
 				Name:  "ETCD_KEY_FILE",
-				Value: m.KeyFile,
+				Value: "/etc/etcd/key.pem",
 			},
 			{
 				Name:  "ETCD_TRUSTED_CA_FILE",
-				Value: m.TrustedCAFile,
+				Value: "/etc/etcd/ca.pem",
 			},
 			{
 				Name:  "ETCD_PEER_CERT_FILE",
-				Value: m.PeerCertFile,
+				Value: "/etc/etcd/peer-cert.pem",
 			},
 			{
 				Name:  "ETCD_PEER_KEY_FILE",
-				Value: m.PeerKeyFile,
+				Value: "/etc/etcd/peer-key.pem",
 			},
 			{
 				Name:  "ETCD_PEER_TRUSTED_CA_FILE",
-				Value: m.PeerTrustedCAFile,
+				Value: "/etc/etcd/peer-ca.pem",
 			},
 			{
 				Name:  "ETCD_STRICT_RECONFIG_CHECK",
@@ -135,12 +137,32 @@ func makeEtcdContainer(m *Config, state string) v1.Container {
 			},
 		},
 		Command: []string{
-			"/usr/local/bin/etcd",
+			"etcd",
 		},
 		VolumeMounts: []v1.VolumeMount{
 			{
-				Name:      "cert-path",
-				MountPath: m.EtcdTLSMountDir,
+				Name:      "host-cert-file",
+				MountPath: "/etc/etcd/cert.pem",
+			},
+			{
+				Name:      "host-key-file",
+				MountPath: "/etc/etcd/key.pem",
+			},
+			{
+				Name:      "host-trusted-ca-file",
+				MountPath: "/etc/etcd/ca.pem",
+			},
+			{
+				Name:      "host-peer-cert-file",
+				MountPath: "/etc/etcd/peer-cert.pem",
+			},
+			{
+				Name:      "host-peer-key-file",
+				MountPath: "/etc/etcd/peer-key.pem",
+			},
+			{
+				Name:      "host-peer-trusted-ca-file",
+				MountPath: "/etc/etcd/peer-ca.pem",
 			},
 			{
 				Name:      "data-mount-path",
@@ -151,6 +173,7 @@ func makeEtcdContainer(m *Config, state string) v1.Container {
 }
 
 func NewEtcdPod(m *Config, state string, runRestore bool) *v1.Pod {
+	hostPathFile := v1.HostPathFile
 	pod := &v1.Pod{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
@@ -171,25 +194,74 @@ func NewEtcdPod(m *Config, state string, runRestore bool) *v1.Pod {
 			RestartPolicy: v1.RestartPolicyAlways,
 			Volumes: []v1.Volume{
 				{
-					Name: "backup-path",
+					Name: "host-cert-file",
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
-							Path: m.BackupMountDir,
+							Path: m.CertFile,
+							Type: &hostPathFile,
 						},
 					},
 				},
 				{
-					Name: "cert-path",
+					Name: "host-key-file",
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
-							Path: m.EtcdTLSMountDir,
+							Path: m.KeyFile,
+							Type: &hostPathFile,
 						},
 					},
 				},
+				{
+					Name: "host-trusted-ca-file",
+					VolumeSource: v1.VolumeSource{
+						HostPath: &v1.HostPathVolumeSource{
+							Path: m.CertFile,
+							Type: &hostPathFile,
+						},
+					},
+				},
+				{
+					Name: "host-peer-cert-file",
+					VolumeSource: v1.VolumeSource{
+						HostPath: &v1.HostPathVolumeSource{
+							Path: m.TrustedCAFile,
+							Type: &hostPathFile,
+						},
+					},
+				},
+				{
+					Name: "host-peer-key-file",
+					VolumeSource: v1.VolumeSource{
+						HostPath: &v1.HostPathVolumeSource{
+							Path: m.PeerKeyFile,
+							Type: &hostPathFile,
+						},
+					},
+				},
+				{
+					Name: "host-peer-trusted-ca-file",
+					VolumeSource: v1.VolumeSource{
+						HostPath: &v1.HostPathVolumeSource{
+							Path: m.PeerTrustedCAFile,
+							Type: &hostPathFile,
+						},
+					},
+				},
+				// Share restored DB with init-container
 				{
 					Name: "data-mount-path",
 					VolumeSource: v1.VolumeSource{
 						EmptyDir: &v1.EmptyDirVolumeSource{},
+					},
+				},
+				// Restore backup to this path
+				{
+					Name: "host-backup-file",
+					VolumeSource: v1.VolumeSource{
+						HostPath: &v1.HostPathVolumeSource{
+							Path: m.BackupFile,
+							Type: &hostPathFile,
+						},
 					},
 				},
 			},
