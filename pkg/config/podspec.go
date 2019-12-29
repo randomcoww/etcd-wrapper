@@ -32,7 +32,7 @@ func makeRestoreInitContainer(m *Config) v1.Container {
 				Value: "3",
 			},
 		},
-		Command: strings.Split(fmt.Sprintf("/usr/local/bin/etcdctl snapshot restore %[1]s"+
+		Command: strings.Split(fmt.Sprintf("etcdctl snapshot restore %[1]s"+
 			" --name %[2]s"+
 			" --initial-cluster %[3]s"+
 			" --initial-cluster-token %[4]s"+
