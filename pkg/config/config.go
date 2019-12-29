@@ -73,8 +73,8 @@ func NewConfig() (*Config, error) {
 	flag.StringVar(&config.InitialClusterToken, "initial-cluster-token", "", "Initial cluster token for the etcd cluster during bootstrap.")
 	flag.StringVar(&config.InitialCluster, "initial-cluster", "", "Initial cluster configuration for bootstrapping.")
 	flag.StringVar(&config.BackupFile, "host-backup-file", "/var/lib/etcd-restore/etcd.db", "Host path to restore snapshot file.")
-	flag.StringVar(&config.PodSpecFile, "pod-manifest-file", "", "Host path to write etcd pod manifest file. This should be where kubelet reads static pod manifests.")
-	flag.StringVar(&config.EtcdImage, "image", "", "Etcd container image.")
+	flag.StringVar(&config.PodSpecFile, "host-etcd-manifest-file", "", "Host path to write etcd pod manifest file. This should be where kubelet reads static pod manifests.")
+	flag.StringVar(&config.EtcdImage, "etcd-image", "", "Etcd container image.")
 	// Wrapper config
 	flag.StringVar(&config.ClientCertFile, "client-cert-file", "", "Path to the client server TLS cert file.")
 	flag.StringVar(&config.ClientKeyFile, "client-key-file", "", "Path to the client server TLS key file.")
