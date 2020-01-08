@@ -10,7 +10,7 @@ RUN set -x \
     git \
   \
   && GO111MODULE=on GOOS=linux \
-    go build -o etcd-wrapper main.go
+    go build -v -ldflags "-s -w" -o etcd-wrapper main.go
 
 FROM alpine:edge
 
