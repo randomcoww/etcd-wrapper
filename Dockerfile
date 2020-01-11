@@ -19,6 +19,7 @@ COPY --from=BUILD /go/src/github.com/randomcoww/etcd-wrapper/etcd-wrapper /
 RUN set -x \
   \
   && apk add --no-cache \
-    ca-certificates
+    ca-certificates \
+  && update-ca-certificates
  
 ENTRYPOINT ["/etcd-wrapper"]
