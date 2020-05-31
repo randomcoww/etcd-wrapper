@@ -261,7 +261,6 @@ func NewEtcdPod(m *Config, state string, runRestore bool) *v1.Pod {
 					},
 				},
 			},
-			Hostname: m.Name,
 		},
 	}
 
