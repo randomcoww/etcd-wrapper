@@ -143,32 +143,32 @@ func makeEtcdContainer(m *Config, state string) v1.Container {
 			{
 				Name:      "host-cert-file",
 				MountPath: "/etc/etcd/cert.pem",
-				ReadOnly: true,
+				ReadOnly:  true,
 			},
 			{
 				Name:      "host-key-file",
 				MountPath: "/etc/etcd/key.pem",
-				ReadOnly: true,
+				ReadOnly:  true,
 			},
 			{
 				Name:      "host-trusted-ca-file",
 				MountPath: "/etc/etcd/ca.pem",
-				ReadOnly: true,
+				ReadOnly:  true,
 			},
 			{
 				Name:      "host-peer-cert-file",
 				MountPath: "/etc/etcd/peer-cert.pem",
-				ReadOnly: true,
+				ReadOnly:  true,
 			},
 			{
 				Name:      "host-peer-key-file",
 				MountPath: "/etc/etcd/peer-key.pem",
-				ReadOnly: true,
+				ReadOnly:  true,
 			},
 			{
 				Name:      "host-peer-trusted-ca-file",
 				MountPath: "/etc/etcd/peer-ca.pem",
-				ReadOnly: true,
+				ReadOnly:  true,
 			},
 			{
 				Name:      "data-mount-path",

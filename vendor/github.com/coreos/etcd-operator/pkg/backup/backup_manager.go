@@ -22,8 +22,8 @@ import (
 	"github.com/coreos/etcd-operator/pkg/backup/writer"
 	"github.com/coreos/etcd-operator/pkg/util/constants"
 
-	"go.etcd.io/etcd/clientv3"
 	"github.com/sirupsen/logrus"
+	"go.etcd.io/etcd/clientv3"
 	"k8s.io/client-go/kubernetes"
 )
 

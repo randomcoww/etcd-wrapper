@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"io/ioutil"
 
-	etcdutilextra "github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
 	"github.com/coreos/etcd-operator/pkg/util/etcdutil"
+	etcdutilextra "github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
 )
 
 func main() {
