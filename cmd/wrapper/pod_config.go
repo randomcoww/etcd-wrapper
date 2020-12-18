@@ -10,79 +10,77 @@ import (
 )
 
 type PodConfig struct {
-	config       *config.Config
-	fetchTrigger chan struct{}
-	fetchExists  bool
+	config     *config.Config
+	allowFetch chan struct{}
 }
 
 func newPodConfig(c *config.Config) *PodConfig {
 	p := &PodConfig{
-		config:       c,
-		fetchTrigger: make(chan struct{}, 1),
+		config:     c,
+		allowFetch: make(chan struct{}, 1),
 	}
-	p.triggerFetch()
+
+	// Allow fetching backup initially and after every backup interval
+	p.allowFetch <- struct{}{}
+	go func() {
+		for {
+			select {
+			case <-time.After(p.config.BackupInterval):
+				select {
+				case p.allowFetch <- struct{}{}:
+				default:
+				}
+			}
+		}
+	}()
 	return p
 }
 
-func (p *PodConfig) triggerFetch() {
+// Pull backup if possible, and check if snapshot file was generated
+func (p *PodConfig) checkBackup() (bool, error) {
 	select {
-	case p.fetchTrigger <- struct{}{}:
+	case <-p.allowFetch:
+		logrus.Infof("[podconfig] Fetching snapshot")
+		if err := backup.FetchBackup(p.config.S3BackupPath, p.config.BackupFile); err != nil {
+			logrus.Warningf("[podconfig] Fetch snapshot failed: %v", err)
+		} else {
+			logrus.Infof("[podconfig] Fetch snapshot succeeded")
+		}
 	default:
+		logrus.Warningf("[podconfig] Throttling fetching snapshot")
 	}
-}
 
-func (p *PodConfig) periodicTriggerFetch() {
-	for {
-		select {
-		case <-time.After(p.config.BackupInterval):
-			p.triggerFetch()
+	if _, err := os.Stat(p.config.BackupFile); err != nil {
+		if os.IsNotExist(err) {
+			logrus.Warningf("[podconfig] Snapshot file does not exist")
+			return false, nil
+		} else {
+			logrus.Errorf("[podconfig] Failed to stat snapshot file: %v", err)
+			return false, err
 		}
 	}
-}
-
-func (p *PodConfig) fetchBackup() {
-	if err := backup.FetchBackup(p.config.S3BackupPath, p.config.BackupFile); err != nil {
-		logrus.Errorf("Fetch snapshot failed: %v", err)
-		p.fetchExists = false
-	} else {
-		logrus.Infof("Fetch snapshot success")
-		p.fetchExists = true
-	}
-}
-
-func (p *PodConfig) checkFetchFileExists() {
-	if _, err := os.Stat(p.config.BackupFile); os.IsNotExist(err) {
-		p.fetchExists = false
-	}
+	return true, nil
 }
 
 func (p *PodConfig) createForNewCluster() {
-	// Sets minimum interval for refetching backup from remote
-	select {
-	case <-p.fetchTrigger:
-		p.fetchBackup()
-	default:
-	}
-	p.checkFetchFileExists()
-
-	if p.fetchExists {
-		// Start existing with snapshot restore
+	logrus.Infof("[podconfig] Create manifest for new cluster")
+	if ok, _ := p.checkBackup(); ok {
 		writePodSpec(p.config, "existing", true)
 	} else {
-		// Start new with no data
 		writePodSpec(p.config, "new", false)
 	}
 }
 
 func (p *PodConfig) createForExistingCluster() {
+	logrus.Infof("[podconfig] Create manifest for existing cluster")
 	writePodSpec(p.config, "existing", false)
 }
 
 func writePodSpec(c *config.Config, state string, restore bool) {
 	c.UpdateInstance()
 	if err := config.WritePodSpec(config.NewEtcdPod(c, state, restore), c.PodSpecFile); err != nil {
-		logrus.Errorf("Failed to write pod spec: (state: %v, restore: %v): %v", state, restore, err)
+		logrus.Errorf("[podconfig] Failed to write pod spec: (state: %v, restore: %v): %v", state, restore, err)
 		return
 	}
-	logrus.Infof("Wrote pod spec: (state: %v, restore: %v)", state, restore)
+	logrus.Infof("[podconfig] Wrote pod spec: (state: %v, restore: %v)", state, restore)
 }

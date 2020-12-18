@@ -301,6 +301,7 @@ func WritePodSpec(pod *v1.Pod, file string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open file: %v", err)
 	}
+	defer f.Close()
 
 	_, err = io.Copy(f, bytes.NewReader(j))
 	if err != nil {

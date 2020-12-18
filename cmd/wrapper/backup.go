@@ -22,14 +22,16 @@ func newBackup(c *config.Config) *Backup {
 }
 
 func (b *Backup) runPeriodic() {
-	logrus.Infof("Start periodic backup handler")
+	logrus.Infof("[backup] Start periodic")
 
 	for {
 		select {
 		case <-time.After(b.config.BackupInterval):
+			logrus.Infof("[backup] Start run")
+
 			status, err := etcdutilextra.Status(b.config.LocalClientURLs, b.config.TLSConfig)
 			if err != nil {
-				logrus.Errorf("Status failed: %v", err)
+				logrus.Errorf("[backup] Etcd status lookup failed: %v", err)
 				continue
 			}
 
@@ -38,12 +40,15 @@ func (b *Backup) runPeriodic() {
 			if status.Header.MemberId == status.Leader {
 				err := backup.SendBackup(b.config.S3BackupPath, b.config.TLSConfig, b.config.ClientURLs)
 				if err != nil {
-					logrus.Errorf("Send backup failed: %v", err)
+					logrus.Errorf("[backup] Backup failed: %v", err)
 				} else {
-					logrus.Infof("Send backup success")
+					logrus.Infof("[backup] Backup succeeded")
 				}
+			} else {
+				logrus.Infof("[backup] Skipping backup from non-leader")
 			}
 		case <-b.stop:
+			logrus.Infof("[backup] Stop periodic")
 			return
 		}
 	}

@@ -56,18 +56,15 @@ func (s *MemberStatus) mergeMemberList(memberList *clientv3.MemberListResponse) 
 		}
 
 		if member, ok := s.memberSet[m.Name]; ok {
-			// logrus.Infof("Found member: %v (%v)", m.Name, m.ID)
 			member.id = m.ID
 			memberFoundList[m.Name] = member
 		} else {
-			logrus.Errorf("Removing unknown member: %v (%v)", m.Name, m.ID)
+			logrus.Warningf("[memberstatus] Removing unknown member: %v (%v)", m.Name, m.ID)
 			s.removeMember(m.ID)
 		}
 	}
-	logrus.Infof("Found members: %s", strings.Join(log, ", "))
-
 	s.localID = localID
-	logrus.Infof("Local ID: %v", s.localID)
+	logrus.Infof("[memberstatus] Local: %v Members: %s", s.localID, strings.Join(log, ", "))
 
 	// Go through members in config not returned by etcd and reset ID
 	for memberName, member := range s.memberSet {
@@ -79,17 +76,18 @@ func (s *MemberStatus) mergeMemberList(memberList *clientv3.MemberListResponse) 
 
 func (s *MemberStatus) addLocalMember() error {
 	if s.localID != 0 {
-		return fmt.Errorf("Add member ID already exists: %v", s.localID)
+		logrus.Warningf("[memberstatus] Local member ID already exists: %v", s.localID)
+		return nil
 	}
 
 	resp, err := etcdutilextra.AddMember(s.config.ClientURLs, s.config.LocalPeerURLs, s.config.TLSConfig)
 	switch err {
 	case nil:
-		logrus.Infof("Add member success: %v", resp.Member.ID)
 		s.localID = resp.Member.ID
+		logrus.Infof("[memberstatus] Add member success: %v", resp.Member.ID)
 		return nil
 	default:
-		logrus.Errorf("Add member failed: %v", err)
+		logrus.Errorf("[memberstatus] Add member failed: %v", err)
 		return err
 	}
 }
@@ -100,17 +98,18 @@ func (s *MemberStatus) removeLocalMember() error {
 
 func (s *MemberStatus) removeMember(memberID uint64) error {
 	if memberID == 0 {
-		return fmt.Errorf("Member ID not provided")
+		logrus.Warningf("[memberstatus] Member ID not provided")
+		return nil
 	}
 
 	err := etcdutil.RemoveMember(s.config.ClientURLs, s.config.TLSConfig, memberID)
 	switch err {
 	case nil, rpctypes.ErrMemberNotFound:
-		logrus.Infof("Remove member success: %v", memberID)
 		s.localID = 0
+		logrus.Infof("[memberstatus] Remove member success: %v", memberID)
 		return nil
 	default:
-		logrus.Errorf("Remove member failed (%v): %v", memberID, err)
+		logrus.Errorf("[memberstatus] Remove member failed (%v): %v", memberID, err)
 		return err
 	}
 }

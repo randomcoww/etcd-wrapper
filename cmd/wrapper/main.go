@@ -23,13 +23,11 @@ func Main() {
 	}
 
 	backup := newBackup(c)
-	go backup.runPeriodic()
-
 	podConfig := newPodConfig(c)
-	go podConfig.periodicTriggerFetch()
-
 	memberStatus := newMemberStatus(c)
 	var updateState int
+
+	go backup.runPeriodic()
 
 	for {
 		updateTimer := time.After(c.PodUpdateInterval)

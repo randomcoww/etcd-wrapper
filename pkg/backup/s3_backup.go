@@ -19,8 +19,7 @@ func FetchBackup(s3Path, downloadPath string) error {
 	}))
 
 	ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultBackupTimeout)
-	s3Reader := reader.NewS3Reader(s3.New(sess))
-	rm := NewRestoreManagerFromReader(s3Reader)
+	rm := NewRestoreManagerFromReader(reader.NewS3Reader(s3.New(sess)))
 	err := rm.DownloadSnap(ctx, s3Path, downloadPath)
 
 	cancel()
@@ -33,8 +32,7 @@ func SendBackup(s3Path string, tlsConfig *tls.Config, clientURLs []string) error
 	}))
 
 	ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultBackupTimeout)
-	s3Writer := writer.NewS3Writer(s3.New(sess))
-	bm := importbackup.NewBackupManagerFromWriter(nil, s3Writer, tlsConfig, clientURLs, "")
+	bm := importbackup.NewBackupManagerFromWriter(nil, writer.NewS3Writer(s3.New(sess)), tlsConfig, clientURLs, "")
 	_, _, err := bm.SaveSnap(ctx, s3Path)
 
 	cancel()
