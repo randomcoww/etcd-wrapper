@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/coreos/etcd-operator/pkg/backup/util"
+	"github.com/randomcoww/etcd-wrapper/pkg/backup/util"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
@@ -66,4 +66,40 @@ func (s3w *s3Writer) Write(ctx context.Context, path string, r io.Reader) (int64
 		return 0, fmt.Errorf("failed to compute s3 object size")
 	}
 	return *resp.ContentLength, nil
+}
+
+// List return the file paths which match the given s3 path
+func (s3w *s3Writer) List(ctx context.Context, basePath string) ([]string, error) {
+	bk, key, err := util.ParseBucketAndKey(basePath)
+	if err != nil {
+		return nil, err
+	}
+
+	objects, err := s3w.s3.ListObjectsWithContext(ctx,
+		&s3.ListObjectsInput{
+			Bucket: aws.String(bk),
+			Prefix: aws.String(key),
+		})
+	if err != nil {
+		return nil, err
+	}
+	objectKeys := []string{}
+	for _, object := range objects.Contents {
+		objectKeys = append(objectKeys, bk+"/"+*object.Key)
+	}
+	return objectKeys, nil
+}
+
+func (s3w *s3Writer) Delete(ctx context.Context, path string) error {
+	bk, key, err := util.ParseBucketAndKey(path)
+	if err != nil {
+		return err
+	}
+
+	_, err = s3w.s3.DeleteObjectWithContext(ctx,
+		&s3.DeleteObjectInput{
+			Bucket: aws.String(bk),
+			Key:    aws.String(key),
+		})
+	return err
 }

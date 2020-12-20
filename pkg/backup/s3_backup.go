@@ -7,10 +7,9 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
-	importbackup "github.com/coreos/etcd-operator/pkg/backup"
-	"github.com/coreos/etcd-operator/pkg/backup/reader"
-	"github.com/coreos/etcd-operator/pkg/backup/writer"
-	"github.com/coreos/etcd-operator/pkg/util/constants"
+	"github.com/randomcoww/etcd-wrapper/pkg/backup/reader"
+	"github.com/randomcoww/etcd-wrapper/pkg/backup/writer"
+	"github.com/randomcoww/etcd-wrapper/pkg/util/constants"
 )
 
 func FetchBackup(s3Path, downloadPath string) error {
@@ -32,8 +31,8 @@ func SendBackup(s3Path string, tlsConfig *tls.Config, clientURLs []string) error
 	}))
 
 	ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultBackupTimeout)
-	bm := importbackup.NewBackupManagerFromWriter(nil, writer.NewS3Writer(s3.New(sess)), tlsConfig, clientURLs, "")
-	_, _, err := bm.SaveSnap(ctx, s3Path)
+	bm := NewBackupManagerFromWriter(writer.NewS3Writer(s3.New(sess)), tlsConfig, clientURLs, "")
+	_, _, err := bm.SaveSnap(ctx, s3Path, false)
 
 	cancel()
 	return err

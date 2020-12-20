@@ -4,9 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/coreos/etcd-operator/pkg/util/etcdutil"
 	"github.com/randomcoww/etcd-wrapper/pkg/config"
-	etcdutilextra "github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
+	"github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
@@ -80,7 +79,7 @@ func (s *MemberStatus) addLocalMember() error {
 		return nil
 	}
 
-	resp, err := etcdutilextra.AddMember(s.config.ClientURLs, s.config.LocalPeerURLs, s.config.TLSConfig)
+	resp, err := etcdutil.AddMember(s.config.ClientURLs, s.config.LocalPeerURLs, s.config.TLSConfig)
 	switch err {
 	case nil:
 		s.localID = resp.Member.ID

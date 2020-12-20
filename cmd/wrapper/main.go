@@ -4,9 +4,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/coreos/etcd-operator/pkg/util/etcdutil"
 	"github.com/randomcoww/etcd-wrapper/pkg/config"
-	etcdutilextra "github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
+	"github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
 	"github.com/sirupsen/logrus"
 )
 
@@ -43,7 +42,7 @@ func Main() {
 				}
 				memberStatus.mergeMemberList(memberList)
 
-				err = etcdutilextra.HealthCheck(c.LocalClientURLs, c.TLSConfig)
+				err = etcdutil.HealthCheck(c.LocalClientURLs, c.TLSConfig)
 				if err != nil {
 					logrus.Errorf("Local healthcheck failed: %v", err)
 					updateState = updateStateExistingCluster

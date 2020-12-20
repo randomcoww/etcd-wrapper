@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/coreos/etcd-operator/pkg/backup/reader"
+	"github.com/randomcoww/etcd-wrapper/pkg/backup/reader"
 )
 
 type RestoreManager struct {

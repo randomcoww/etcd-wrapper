@@ -5,7 +5,7 @@ import (
 
 	"github.com/randomcoww/etcd-wrapper/pkg/backup"
 	"github.com/randomcoww/etcd-wrapper/pkg/config"
-	etcdutilextra "github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
+	"github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
 	"github.com/sirupsen/logrus"
 )
 
@@ -29,7 +29,7 @@ func (b *Backup) runPeriodic() {
 		case <-time.After(b.config.BackupInterval):
 			logrus.Infof("[backup] Start run")
 
-			status, err := etcdutilextra.Status(b.config.LocalClientURLs, b.config.TLSConfig)
+			status, err := etcdutil.Status(b.config.LocalClientURLs, b.config.TLSConfig)
 			if err != nil {
 				logrus.Errorf("[backup] Etcd status lookup failed: %v", err)
 				continue

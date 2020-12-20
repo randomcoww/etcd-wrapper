@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/coreos/etcd-operator/pkg/util/etcdutil"
+	"github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
 )
 
 type Config struct {
