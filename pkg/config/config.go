@@ -4,6 +4,8 @@ import (
 	"crypto/tls"
 	"flag"
 	"io/ioutil"
+	"net"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -88,8 +90,9 @@ func NewConfig() (*Config, error) {
 	if err := config.addParsedTLS(); err != nil {
 		return nil, err
 	}
-	config.addParsedConfig()
-
+	if err := config.addParsedConfig(); err != nil {
+		return nil, err
+	}
 	return config, nil
 }
 
@@ -112,23 +115,45 @@ func (c *Config) addParsedTLS() error {
 	return nil
 }
 
-func (c *Config) addParsedConfig() {
+func (c *Config) addParsedConfig() error {
 	// List of client names
 	c.MemberNames = []string{}
-	// List of peer URLs
+	// List of all peer URLs
 	c.PeerURLs = []string{}
+	// List of peer URLs of local node
+	c.LocalPeerURLs = []string{}
+	// List of peer URLs of local node
+	c.LocalClientURLs = []string{}
+	// List of all client URLs
+	c.ClientURLs = strings.Split(c.EtcdServers, ",")
+
 	for _, m := range strings.Split(c.InitialCluster, ",") {
 		node := strings.Split(m, "=")
 		c.MemberNames = append(c.MemberNames, node[0])
 		c.PeerURLs = append(c.PeerURLs, node[1])
 	}
 
-	// List of client URLs
-	c.ClientURLs = strings.Split(c.EtcdServers, ",")
-	// List of peer URLs of local node
-	c.LocalPeerURLs = strings.Split(c.ListenPeerURLs, ",")
-	// List of client URLs of local node
-	c.LocalClientURLs = strings.Split(c.ListenClientURLs, ",")
+	// Resolve DNS names in ListenPeerURLs
+	for _, u := range strings.Split(c.ListenPeerURLs, ",") {
+		r, err := resolveURLName(u)
+		if err != nil {
+			return err
+		}
+		c.LocalPeerURLs = append(c.LocalPeerURLs, r)
+	}
+	c.ListenPeerURLs = strings.Join(c.LocalPeerURLs, ",")
+
+	// Resolve DNS names in ListenClientURLs
+	for _, u := range strings.Split(c.ListenClientURLs, ",") {
+		r, err := resolveURLName(u)
+		if err != nil {
+			return err
+		}
+		c.LocalClientURLs = append(c.LocalClientURLs, r)
+	}
+	c.ListenClientURLs = strings.Join(c.LocalClientURLs, ",")
+
+	return nil
 }
 
 // Compare URL lists
@@ -151,4 +176,20 @@ func IsEqual(a, b []string) bool {
 	}
 
 	return true
+}
+
+func resolveURLName(s string) (string, error) {
+	u, err := url.Parse(s)
+	if err != nil {
+		return "", err
+	}
+	host, port, err := net.SplitHostPort(u.Host)
+	if err != nil {
+		return "", err
+	}
+	addrs, err := net.LookupHost(host)
+	if err != nil {
+		return "", err
+	}
+	return net.JoinHostPort(addrs[0], port), nil
 }
