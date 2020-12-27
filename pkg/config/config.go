@@ -191,5 +191,6 @@ func resolveURLName(s string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return net.JoinHostPort(addrs[0], port), nil
+	u.Host = net.JoinHostPort(addrs[0], port)
+	return u.String(), nil
 }
