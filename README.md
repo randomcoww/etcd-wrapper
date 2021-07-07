@@ -26,6 +26,8 @@ There is no cleanup of etcd data on recovery steps which require removing old da
 
 #### Sample etcd-wrapper deployed as a static pod
 
+https://github.com/randomcoww/terraform-infra/blob/master/modules/template/kubernetes/templates/ignition_controller/controller.yaml#L182
+
 Nodes:
 - 192.168.126.219
 - 192.168.126.220
