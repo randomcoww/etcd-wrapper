@@ -44,3 +44,12 @@ podman build \
 ```
 podman push ghcr.io/randomcoww/etcd-wrapper:$VERSION
 ```
+
+### Env
+
+```
+podman run -it --rm \
+  -v $(pwd):/go/src/github.com/randomcoww/etcd-wrapper/etcd-wrapper \
+  -w /go/src/github.com/randomcoww/etcd-wrapper/etcd-wrapper \
+   golang:alpine sh
+```
