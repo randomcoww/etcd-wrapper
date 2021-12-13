@@ -9,6 +9,8 @@ RUN set -x \
   && apk add --no-cache \
     git \
   \
+  && go get -u \
+  && go mod tidy \
   && CGO_ENABLED=0 GO111MODULE=on GOOS=linux \
     go build -v -ldflags '-s -w' -o etcd-wrapper main.go
 
