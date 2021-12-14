@@ -50,14 +50,17 @@ func (p *PodConfig) checkBackup() (bool, error) {
 		logrus.Warningf("[podconfig] Throttling fetching snapshot")
 	}
 
-	if _, err := os.Stat(p.config.BackupFile); err != nil {
+	if f, err := os.Stat(p.config.BackupFile); err != nil {
 		if os.IsNotExist(err) {
 			logrus.Warningf("[podconfig] Snapshot file does not exist")
 			return false, nil
-		} else {
-			logrus.Errorf("[podconfig] Failed to stat snapshot file: %v", err)
-			return false, err
 		}
+		if f.Size() == 0 {
+			logrus.Warningf("[podconfig] Snapshot file is empty")
+			return false, nil
+		}
+		logrus.Errorf("[podconfig] Failed to stat snapshot file: %v", err)
+		return false, err
 	}
 	return true, nil
 }
