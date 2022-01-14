@@ -31,18 +31,18 @@ https://github.com/randomcoww/terraform-infra/blob/master/modules/template/kuber
 ### Image build
 
 ```
-mkdir -p build
-export TMPDIR=$(pwd)/build
-
 VERSION=latest
+TAG=ghcr.io/randomcoww/etcd-wrapper:$VERSION
 
-podman build \
+buildah build \
   -f Dockerfile \
-  -t ghcr.io/randomcoww/etcd-wrapper:$VERSION
-```
+  -t localtemp
 
-```
-podman push ghcr.io/randomcoww/etcd-wrapper:$VERSION
+container=$(buildah from localtemp)
+buildah run --net=none $container -- rm /etc/hosts
+buildah commit $container $TAG
+
+buildah push $TAG
 ```
 
 ### Env
