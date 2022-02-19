@@ -19,7 +19,7 @@ const (
 	// etcdctl snapshot restore can only be called on directory that doesn't exist
 	dataDir = dataMountDir + "/data"
 	// backup restore path
-	backupDir = "/var/etcd-restore/etcd.db"
+	backupFilePath = "/var/lib/etcd/data.db"
 )
 
 func makeRestoreInitContainer(m *Config) v1.Container {
@@ -38,11 +38,11 @@ func makeRestoreInitContainer(m *Config) v1.Container {
 			" --initial-cluster-token %[4]s"+
 			" --initial-advertise-peer-urls %[5]s"+
 			" --data-dir %[6]s",
-			backupDir, m.Name, m.InitialCluster, m.InitialClusterToken, m.InitialAdvertisePeerURLs, dataDir), " "),
+			backupFilePath, m.Name, m.InitialCluster, m.InitialClusterToken, m.InitialAdvertisePeerURLs, dataDir), " "),
 		VolumeMounts: []v1.VolumeMount{
 			{
 				Name:      "host-backup-file",
-				MountPath: backupDir,
+				MountPath: backupFilePath,
 			},
 			{
 				Name:      "data-mount-path",
@@ -186,7 +186,8 @@ func NewEtcdPod(m *Config, state string, runRestore bool) *v1.Pod {
 			Kind:       "Pod",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name: m.Name,
+			Name: m.EtcdPodName,
+			Namespace: m.EtcdPodNamespace,
 			Annotations: map[string]string{
 				"etcd-wrapper/instance": m.Instance,
 			},
