@@ -1,12 +1,11 @@
 package wrapper
 
 import (
-	"time"
-
 	"github.com/randomcoww/etcd-wrapper/pkg/backup"
 	"github.com/randomcoww/etcd-wrapper/pkg/config"
 	"github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
 	"github.com/sirupsen/logrus"
+	"time"
 )
 
 type Backup struct {

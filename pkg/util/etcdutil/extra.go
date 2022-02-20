@@ -3,7 +3,6 @@ package etcdutil
 import (
 	"context"
 	"crypto/tls"
-
 	"github.com/randomcoww/etcd-wrapper/pkg/util/constants"
 	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"

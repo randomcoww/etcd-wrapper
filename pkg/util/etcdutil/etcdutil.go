@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-
 	"github.com/randomcoww/etcd-wrapper/pkg/util/constants"
 	"go.etcd.io/etcd/clientv3"
 )

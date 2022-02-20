@@ -1,54 +1,30 @@
 package wrapper
 
 import (
-	"os"
-	"time"
-
 	"github.com/randomcoww/etcd-wrapper/pkg/backup"
 	"github.com/randomcoww/etcd-wrapper/pkg/config"
 	"github.com/sirupsen/logrus"
+	"os"
 )
 
 type PodConfig struct {
-	config     *config.Config
-	allowFetch chan struct{}
+	config *config.Config
 }
 
 func newPodConfig(c *config.Config) *PodConfig {
-	p := &PodConfig{
-		config:     c,
-		allowFetch: make(chan struct{}, 1),
+	return &PodConfig{
+		config: c,
 	}
-
-	// Allow fetching backup initially and after every backup interval
-	p.allowFetch <- struct{}{}
-	go func() {
-		for {
-			select {
-			case <-time.After(p.config.BackupInterval):
-				select {
-				case p.allowFetch <- struct{}{}:
-				default:
-				}
-			}
-		}
-	}()
-	return p
 }
 
 // Pull backup if possible, and check if snapshot file was generated
 func (p *PodConfig) checkBackup() (bool, error) {
-	select {
-	case <-p.allowFetch:
-		logrus.Infof("[podconfig] Fetching snapshot")
-		if err := backup.FetchBackup(p.config.S3BackupPath, p.config.BackupFile); err != nil {
-			logrus.Warningf("[podconfig] Fetch snapshot failed: %v", err)
-		} else {
-			logrus.Infof("[podconfig] Fetch snapshot succeeded")
-		}
-	default:
-		logrus.Warningf("[podconfig] Throttling fetching snapshot")
+	logrus.Infof("[podconfig] Fetching snapshot")
+	if err := backup.FetchBackup(p.config.S3BackupPath, p.config.BackupFile); err != nil {
+		logrus.Warningf("[podconfig] Fetch snapshot failed: %v", err)
+		return false, err
 	}
+	logrus.Infof("[podconfig] Fetched snapshot")
 
 	if f, err := os.Stat(p.config.BackupFile); err != nil {
 		if os.IsNotExist(err) {

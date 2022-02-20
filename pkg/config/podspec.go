@@ -5,12 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"os"
 	"path/filepath"
 	"strings"
-
-	"k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 const (
@@ -186,7 +185,7 @@ func NewEtcdPod(m *Config, state string, runRestore bool) *v1.Pod {
 			Kind:       "Pod",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name: m.EtcdPodName,
+			Name:      m.EtcdPodName,
 			Namespace: m.EtcdPodNamespace,
 			Annotations: map[string]string{
 				"etcd-wrapper/instance": m.Instance,

@@ -3,12 +3,11 @@ package config
 import (
 	"crypto/tls"
 	"flag"
+	"github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
 	"io/ioutil"
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
 )
 
 type Config struct {
@@ -31,14 +30,14 @@ type Config struct {
 	// Update this in pod spec annotation to restart etcd pod
 	Instance string
 	// Pod name for etcd
-	EtcdPodName string
+	EtcdPodName      string
 	EtcdPodNamespace string
 	// Mount this to run etcdctl snapshot restore
 	BackupFile string
 	// etcd image
 	EtcdImage string
 	// kubelet static pod path
-	PodSpecFile  string
+	PodSpecFile string
 
 	// -- Params for etcd wrapper
 	// Client cert for getting status of all etcd nodes (not just local)
@@ -49,9 +48,10 @@ type Config struct {
 	// S3 bucket and key for etcd backups
 	S3BackupPath string
 	// Main loop interval
-	BackupInterval      time.Duration
-	HealthCheckInterval time.Duration
-	PodUpdateInterval   time.Duration
+	BackupInterval           time.Duration
+	HealthCheckInterval      time.Duration
+	HealthCheckFailuresAllow int
+	PodUpdateWait            time.Duration
 
 	// Parsed static values
 	TLSConfig       *tls.Config
@@ -80,7 +80,7 @@ func NewConfig() (*Config, error) {
 	flag.StringVar(&config.InitialCluster, "initial-cluster", "", "Initial cluster configuration for bootstrapping.")
 	// Etcd pod creation config
 	flag.StringVar(&config.EtcdPodName, "etcd-pod-name", "etcd", "Name of etcd pod.")
-	flag.StringVar(&config.EtcdPodNamespace, "etcd-pod-namespace", "default", "Namespace to launch etcd pod.")
+	flag.StringVar(&config.EtcdPodNamespace, "etcd-pod-namespace", "kube-system", "Namespace to launch etcd pod.")
 	flag.StringVar(&config.BackupFile, "host-backup-file", "/var/lib/etcd-restore/etcd.db", "Host path to restore snapshot file.")
 	flag.StringVar(&config.PodSpecFile, "host-etcd-manifest-file", "", "Host path to write etcd pod manifest file. This should be where kubelet reads static pod manifests.")
 	flag.StringVar(&config.EtcdImage, "etcd-image", "", "Etcd container image.")
@@ -90,8 +90,9 @@ func NewConfig() (*Config, error) {
 	flag.StringVar(&config.ClusterClientURLs, "cluster-client-urls", "", "List of etcd client URLs.")
 	flag.StringVar(&config.S3BackupPath, "s3-backup-path", "", "S3 key name for backup.")
 	flag.DurationVar(&config.BackupInterval, "backup-interval", 30*time.Minute, "Backup trigger interval.")
-	flag.DurationVar(&config.HealthCheckInterval, "healthcheck-interval", 10*time.Second, "Healthcheck interval.")
-	flag.DurationVar(&config.PodUpdateInterval, "pod-update-interval", 1*time.Minute, "Pod update interval.")
+	flag.DurationVar(&config.HealthCheckInterval, "healthcheck-interval", 5*time.Second, "Healthcheck interval.")
+	flag.IntVar(&config.HealthCheckFailuresAllow, "healthcheck-failures-allow", 3, "Number of healthcheck failures to allow before updating etcd pod.")
+	flag.DurationVar(&config.PodUpdateWait, "pod-update-wait", 30*time.Second, "Time to wait after pod manifest update to resume health checks.")
 	flag.Parse()
 
 	if err := config.addParsedTLS(); err != nil {

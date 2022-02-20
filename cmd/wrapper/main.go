@@ -1,12 +1,11 @@
 package wrapper
 
 import (
-	"os"
-	"time"
-
 	"github.com/randomcoww/etcd-wrapper/pkg/config"
 	"github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
 	"github.com/sirupsen/logrus"
+	"os"
+	"time"
 )
 
 const (
@@ -24,35 +23,45 @@ func Main() {
 	backup := newBackup(c)
 	podConfig := newPodConfig(c)
 	memberStatus := newMemberStatus(c)
-	var updateState int
+
+	clusterUpdateState := newClusterUpdateState(c.HealthCheckFailuresAllow)
+	stop := make(chan bool)
 
 	go backup.runPeriodic()
 
-	for {
-		updateTimer := time.After(c.PodUpdateInterval)
-	healthCheck:
+	go func() {
 		for {
 			select {
 			case <-time.After(c.HealthCheckInterval):
+				// Check if other cluster members are up
 				memberList, err := etcdutil.ListMembers(c.ClientURLs, c.TLSConfig)
 				if err != nil {
-					logrus.Errorf("Cluster healthcheck failed: %v", err)
-					updateState = updateStateNewCluster
+					clusterUpdateState.setState(updateStateNewCluster)
+					logrus.Warningf("[memberstatus] Cluster healthcheck failed (%d): %v", clusterUpdateState.counter, err)
 					continue
 				}
+				// Create updated memberlist
 				memberStatus.mergeMemberList(memberList)
 
+				// Cluster is up - now check if this local member is up
 				err = etcdutil.HealthCheck(c.LocalClientURLs, c.TLSConfig)
 				if err != nil {
-					logrus.Errorf("Local healthcheck failed: %v", err)
-					updateState = updateStateExistingCluster
+					clusterUpdateState.setState(updateStateExistingCluster)
+					logrus.Warningf("[memberstatus] Local member healthcheck failed (%d): %v", clusterUpdateState.counter, err)
 					continue
 				}
-				// Success
-				break healthCheck
 
-			case <-updateTimer:
-				switch updateState {
+				clusterUpdateState.clearState()
+			}
+		}
+	}()
+
+	go func() {
+		for {
+			select {
+			case <-time.After(c.PodUpdateWait):
+				// Block on next updateState
+				switch <-clusterUpdateState.ch {
 				case updateStateNewCluster:
 					podConfig.createForNewCluster()
 
@@ -60,11 +69,10 @@ func Main() {
 					podConfig.createForExistingCluster()
 					memberStatus.removeLocalMember()
 					memberStatus.addLocalMember()
-				default:
 				}
-				// Reset timers after resource update
-				break healthCheck
 			}
 		}
-	}
+	}()
+
+	<-stop
 }

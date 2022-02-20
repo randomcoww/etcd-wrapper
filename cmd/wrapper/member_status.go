@@ -2,13 +2,12 @@ package wrapper
 
 import (
 	"fmt"
-	"strings"
-
 	"github.com/randomcoww/etcd-wrapper/pkg/config"
 	"github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
 	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/clientv3"
 	"go.etcd.io/etcd/etcdserver/api/v3rpc/rpctypes"
+	"strings"
 )
 
 type Member struct {
