@@ -35,12 +35,9 @@ VERSION=latest
 TAG=ghcr.io/randomcoww/etcd-wrapper:$VERSION
 
 buildah build \
+  --dns 9.9.9.9 \
   -f Dockerfile \
-  -t localtemp
-
-container=$(buildah from localtemp)
-buildah run --net=none $container -- rm /etc/hosts
-buildah commit $container $TAG
+  -t $TAG
 
 buildah push $TAG
 ```
