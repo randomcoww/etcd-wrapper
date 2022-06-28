@@ -36,8 +36,7 @@ TAG=ghcr.io/randomcoww/etcd-wrapper:$VERSION
 
 buildah build \
   --dns 9.9.9.9 \
-  -f Dockerfile \
-  -t $TAG
+  -t $TAG && \
 
 buildah push $TAG
 ```
