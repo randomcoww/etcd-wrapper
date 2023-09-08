@@ -31,21 +31,19 @@ https://github.com/randomcoww/terraform-infra/blob/master/modules/template/kuber
 ### Image build
 
 ```
-VERSION=latest
-TAG=ghcr.io/randomcoww/etcd-wrapper:$VERSION
+TAG=ghcr.io/randomcoww/etcd-wrapper:$(date -u +'%Y%m%d')
 
-buildah build \
-  --dns 9.9.9.9 \
-  -t $TAG && \
+podman build \
+  -t $TAG . && \
 
-buildah push $TAG
+podman push $TAG
 ```
 
 ### Env
 
 ```
 podman run -it --rm \
-  -v $(pwd):/go/src/github.com/randomcoww/etcd-wrapper/etcd-wrapper \
-  -w /go/src/github.com/randomcoww/etcd-wrapper/etcd-wrapper \
+  -v $(pwd):/go/etcd-wrapper \
+  -w /go/etcd-wrapper \
    golang:alpine sh
 ```

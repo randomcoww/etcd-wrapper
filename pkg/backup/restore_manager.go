@@ -3,11 +3,10 @@ package backup
 import (
 	"context"
 	"fmt"
+	"github.com/randomcoww/etcd-wrapper/pkg/backup/reader"
 	"io"
 	"os"
 	"path/filepath"
-
-	"github.com/randomcoww/etcd-wrapper/pkg/backup/reader"
 )
 
 type RestoreManager struct {

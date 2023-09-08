@@ -5,7 +5,6 @@ import (
 	"flag"
 	"github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
 	"io/ioutil"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -27,8 +26,6 @@ type Config struct {
 	InitialCluster           string
 
 	// -- Params for etcd and data recovery pod creation
-	// Update this in pod spec annotation to restart etcd pod
-	Instance string
 	// Pod name for etcd
 	EtcdPodName      string
 	EtcdPodNamespace string
@@ -100,11 +97,6 @@ func NewConfig() (*Config, error) {
 	}
 	config.addParsedConfig()
 	return config, nil
-}
-
-// Change annotation in pod to force update
-func (c *Config) UpdateInstance() {
-	c.Instance = strconv.FormatInt(time.Now().UTC().UnixNano(), 10)
 }
 
 func (c *Config) addParsedTLS() error {

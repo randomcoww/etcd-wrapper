@@ -56,7 +56,6 @@ func (p *PodConfig) createForExistingCluster() {
 }
 
 func writePodSpec(c *config.Config, state string, restore bool) {
-	c.UpdateInstance()
 	if err := config.WritePodSpec(config.NewEtcdPod(c, state, restore), c.PodSpecFile); err != nil {
 		logrus.Errorf("[podconfig] Failed to write pod spec: (state: %v, restore: %v): %v", state, restore, err)
 		return

@@ -21,7 +21,6 @@ func Main() {
 	}
 
 	backup := newBackup(c)
-	podConfig := newPodConfig(c)
 	memberStatus := newMemberStatus(c)
 
 	clusterUpdateState := newClusterUpdateState(c.HealthCheckFailuresAllow)
@@ -63,10 +62,10 @@ func Main() {
 				// Block on next updateState
 				switch <-clusterUpdateState.ch {
 				case updateStateNewCluster:
-					podConfig.createForNewCluster()
+					newPodConfig(c).createForNewCluster()
 
 				case updateStateExistingCluster:
-					podConfig.createForExistingCluster()
+					newPodConfig(c).createForExistingCluster()
 					memberStatus.removeLocalMember()
 					memberStatus.addLocalMember()
 				}

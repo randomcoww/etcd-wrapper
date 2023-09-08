@@ -135,9 +135,6 @@ func makeEtcdContainer(m *Config, state string) v1.Container {
 				Value: "true",
 			},
 		},
-		Command: []string{
-			"etcd",
-		},
 		VolumeMounts: []v1.VolumeMount{
 			{
 				Name:      "host-cert-file",
@@ -185,11 +182,9 @@ func NewEtcdPod(m *Config, state string, runRestore bool) *v1.Pod {
 			Kind:       "Pod",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      m.EtcdPodName,
-			Namespace: m.EtcdPodNamespace,
-			Annotations: map[string]string{
-				"etcd-wrapper/instance": m.Instance,
-			},
+			Name:        m.EtcdPodName,
+			Namespace:   m.EtcdPodNamespace,
+			Annotations: map[string]string{},
 		},
 		Spec: v1.PodSpec{
 			HostNetwork:    true,
