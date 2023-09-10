@@ -1,4 +1,4 @@
-package config
+package podspec
 
 import (
 	"bytes"
@@ -13,18 +13,21 @@ import (
 )
 
 const (
-	// Shared path for etcd to read result of restored backup
-	dataMountDir = "/var/etcd"
-	// etcdctl snapshot restore can only be called on directory that doesn't exist
-	dataDir = dataMountDir + "/data"
-	// backup restore path
-	backupFilePath = "/var/lib/etcd/data.db"
+	restoreMountPath string = "/var/etcd"
+	restoreDataPath string = restoreMountPath + "/data"
+	backupFilePath string = "/var/lib/etcd/data.db"
+	etcdContainerName string = "etcd"
+	restoreContainerName string = etcdContainerName + "-snap-restore"
 )
 
-func makeRestoreInitContainer(m *Config) v1.Container {
-	return v1.Container{
-		Name:  "restore-datadir",
-		Image: m.EtcdImage,
+func WriteManifest(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, peerTrustedCAFile, initialAdvertisePeerURLs,
+	listenPeerURLs, advertiseClientURLs, listenClientURLs, initialClusterToken, initialCluster string,
+	etcdPodName, etcdPodNamespace, etcdImage, snapRestoreFile, podManifestFile string,
+	initialClusterState string, snapRestore bool, memberAnnotation uint64) error {
+
+	restoreContainerSpec := v1.Container{
+		Name:  restoreContainerName,
+		Image: etcdImage,
 		Env: []v1.EnvVar{
 			{
 				Name:  "ETCDCTL_API",
@@ -37,28 +40,26 @@ func makeRestoreInitContainer(m *Config) v1.Container {
 			" --initial-cluster-token %[4]s"+
 			" --initial-advertise-peer-urls %[5]s"+
 			" --data-dir %[6]s",
-			backupFilePath, m.Name, m.InitialCluster, m.InitialClusterToken, m.InitialAdvertisePeerURLs, dataDir), " "),
+			backupFilePath, name, initialCluster, initialClusterToken, initialAdvertisePeerURLs, dataDir), " "),
 		VolumeMounts: []v1.VolumeMount{
 			{
 				Name:      "host-backup-file",
 				MountPath: backupFilePath,
 			},
 			{
-				Name:      "data-mount-path",
-				MountPath: dataMountDir,
+				Name:      "snap-mount-path",
+				MountPath: snapMountDir,
 			},
 		},
 	}
-}
 
-func makeEtcdContainer(m *Config, state string) v1.Container {
-	return v1.Container{
-		Name:  "etcd",
-		Image: m.EtcdImage,
+	etcdContainerSpec := v1.Container{
+		Name: etcdContainerName,
+		Image: etcdImage,
 		Env: []v1.EnvVar{
 			{
 				Name:  "ETCD_NAME",
-				Value: m.Name,
+				Value: name,
 			},
 			{
 				Name:  "ETCD_DATA_DIR",
@@ -66,15 +67,15 @@ func makeEtcdContainer(m *Config, state string) v1.Container {
 			},
 			{
 				Name:  "ETCD_INITIAL_CLUSTER",
-				Value: m.InitialCluster,
+				Value: initialCluster,
 			},
 			{
 				Name:  "ETCD_INITIAL_CLUSTER_STATE",
-				Value: state,
+				Value: initialClusterState,
 			},
 			{
 				Name:  "ETCD_INITIAL_CLUSTER_TOKEN",
-				Value: m.InitialClusterToken,
+				Value: initialClusterToken,
 			},
 			{
 				Name:  "ETCD_ENABLE_V2",
@@ -83,19 +84,19 @@ func makeEtcdContainer(m *Config, state string) v1.Container {
 			// Listen
 			{
 				Name:  "ETCD_LISTEN_CLIENT_URLS",
-				Value: m.ListenClientURLs,
+				Value: listenClientURLs,
 			},
 			{
 				Name:  "ETCD_ADVERTISE_CLIENT_URLS",
-				Value: m.AdvertiseClientURLs,
+				Value: advertiseClientURLs,
 			},
 			{
 				Name:  "ETCD_LISTEN_PEER_URLS",
-				Value: m.ListenPeerURLs,
+				Value: listenPeerURLs,
 			},
 			{
 				Name:  "ETCD_INITIAL_ADVERTISE_PEER_URLS",
-				Value: m.InitialAdvertisePeerURLs,
+				Value: initialAdvertisePeerURLs,
 			},
 			// TLS
 			{
@@ -168,29 +169,29 @@ func makeEtcdContainer(m *Config, state string) v1.Container {
 			},
 			{
 				Name:      "data-mount-path",
-				MountPath: dataMountDir,
+				MountPath: restoreMountPath,
 			},
 		},
 	}
-}
 
-func NewEtcdPod(m *Config, state string, runRestore bool) *v1.Pod {
-	hostPathFile := v1.HostPathFile
+	hostPathFileType := v1.HostPathFile
 	pod := &v1.Pod{
 		TypeMeta: metav1.TypeMeta{
 			APIVersion: "v1",
 			Kind:       "Pod",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:        m.EtcdPodName,
-			Namespace:   m.EtcdPodNamespace,
-			Annotations: map[string]string{},
+			Name:        etcdPodName,
+			Namespace:   etcdPodNamespace,
+			Annotations: map[string]string{
+				"etcd-wrapper/member": fmt.Sprintf("%s", memberAnnotation),
+			},
 		},
 		Spec: v1.PodSpec{
 			HostNetwork:    true,
 			InitContainers: []v1.Container{},
 			Containers: []v1.Container{
-				makeEtcdContainer(m, state),
+				createEtcdContainerSpec(),
 			},
 			RestartPolicy: v1.RestartPolicyAlways,
 			Volumes: []v1.Volume{
@@ -199,7 +200,7 @@ func NewEtcdPod(m *Config, state string, runRestore bool) *v1.Pod {
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
 							Path: m.CertFile,
-							Type: &hostPathFile,
+							Type: &hostPathFileType,
 						},
 					},
 				},
@@ -208,7 +209,7 @@ func NewEtcdPod(m *Config, state string, runRestore bool) *v1.Pod {
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
 							Path: m.KeyFile,
-							Type: &hostPathFile,
+							Type: &hostPathFileType,
 						},
 					},
 				},
@@ -217,7 +218,7 @@ func NewEtcdPod(m *Config, state string, runRestore bool) *v1.Pod {
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
 							Path: m.TrustedCAFile,
-							Type: &hostPathFile,
+							Type: &hostPathFileType,
 						},
 					},
 				},
@@ -226,7 +227,7 @@ func NewEtcdPod(m *Config, state string, runRestore bool) *v1.Pod {
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
 							Path: m.PeerCertFile,
-							Type: &hostPathFile,
+							Type: &hostPathFileType,
 						},
 					},
 				},
@@ -235,7 +236,7 @@ func NewEtcdPod(m *Config, state string, runRestore bool) *v1.Pod {
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
 							Path: m.PeerKeyFile,
-							Type: &hostPathFile,
+							Type: &hostPathFileType,
 						},
 					},
 				},
@@ -244,13 +245,13 @@ func NewEtcdPod(m *Config, state string, runRestore bool) *v1.Pod {
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
 							Path: m.PeerTrustedCAFile,
-							Type: &hostPathFile,
+							Type: &hostPathFileType,
 						},
 					},
 				},
 				// Share restored DB with init-container
 				{
-					Name: "data-mount-path",
+					Name: "restore-mount-path",
 					VolumeSource: v1.VolumeSource{
 						EmptyDir: &v1.EmptyDirVolumeSource{},
 					},
@@ -258,49 +259,49 @@ func NewEtcdPod(m *Config, state string, runRestore bool) *v1.Pod {
 			},
 		},
 	}
-
+	
 	// Run recovery for existing clusters
-	if runRestore {
+	if snapRestore {
 		pod.Spec.Volumes = append(pod.Spec.Volumes,
 			v1.Volume{
-				Name: "host-backup-file",
+				Name: "host-snap-restore-file",
 				VolumeSource: v1.VolumeSource{
 					HostPath: &v1.HostPathVolumeSource{
-						Path: m.BackupFile,
-						Type: &hostPathFile,
+						Path: backupFile,
+						Type: &hostPathFileType,
 					},
 				},
 			},
 		)
 
 		pod.Spec.InitContainers = append(pod.Spec.InitContainers,
-			makeRestoreInitContainer(m),
+			createRestoreContainerSpec(),
 		)
 	}
 
-	return pod
+	return writePodManifest(pod, manifestFile)
 }
 
-func WritePodSpec(pod *v1.Pod, file string) error {
-	j, err := json.MarshalIndent(pod, "", "  ")
+func writePodManifest(pod *v1.Pod, file string) error {
+	manifest, err := json.MarshalIndent(pod, "", "  ")
 	if err != nil {
-		return fmt.Errorf("failed to marshal pod spec: %v", err)
+		return err
 	}
 
 	err = os.MkdirAll(filepath.Dir(file), os.FileMode(0644))
 	if err != nil {
-		return fmt.Errorf("failed to create base directory: %v", err)
+		return err
 	}
 
 	f, err := os.OpenFile(file, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
-		return fmt.Errorf("failed to open file: %v", err)
+		return err
 	}
 	defer f.Close()
 
-	_, err = io.Copy(f, bytes.NewReader(j))
+	_, err = io.Copy(f, bytes.NewReader(manifest))
 	if err != nil {
-		return fmt.Errorf("failed to restore snapshot file: %v", err)
+		return err
 	}
-	return err
+	return nil
 }
