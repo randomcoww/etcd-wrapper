@@ -18,6 +18,44 @@ func newClient(ctx context.Context, endpoints []string, tlsConfig *tls.Config) (
 	})
 }
 
+func Status(endpoints []string, tlsConfig *tls.Config) (resp *clientv3.StatusResponse, err error) {
+	ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultRequestTimeout)
+	client, err := newClient(ctx, endpoints, tlsConfig)
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+
+	errCh := make(chan error)
+	respCh := make(chan *clientv3.StatusResponse)
+
+	for i, endpoint := range endpoints {
+		go func(i int, endpoint string) {
+			resp, err = client.Status(ctx, endpoint)
+			if err != nil {
+				errCh <- err
+				return
+			}
+			respCh <- resp
+		}(i, endpoint)
+	}
+
+	var errCount int
+	for {
+		select {
+		case resp := <-respCh:
+			cancel()
+			return resp, nil
+		case err := <-errCh:
+			errCount++
+			if errCount >= len(endpoints) {
+				cancel()
+				return nil, err
+			}
+		}
+	}
+}
+
 func AddMember(endpoints, peerURLs []string, tlsConfig *tls.Config) (*clientv3.MemberAddResponse, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultRequestTimeout)
 	client, err := newClient(ctx, endpoints, tlsConfig)
