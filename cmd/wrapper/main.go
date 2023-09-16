@@ -11,17 +11,18 @@ import (
 
 type member struct {
 	name string
-	listenPeerURL string
 	id *uint64
+	peerURL string
+	clientURL string
 }
 
 type config struct {
 	ListenClientURLs []string
 	ListenPeerURLs []string
-	ClusterClientURLs []string
 	ClientTLSConfig       *tls.Config
-	MemberMap map[string]*member
-	Members []*member
+	ClusterClientURLs []string
+	MemberPeerMap map[string]*member
+	MemberClientMap map[string]*member
 	MemberSelf *member
 	WritePodManifest func(string, bool, uint64) error
 }
@@ -84,19 +85,23 @@ func newConfig() (*Config, error) {
 
 	config.Members = make([]*member)
 	config.MemberPeerMap = make(map[string]*member)
+	config.MemberClientMap = make(map[string]*member)
 
 	for _, n := range strings.Split(initialCluster, ",") {
 		node = strings.Split(n, "=")
 		m = &member{
 			name: node[0],
-			listenPeerURL: node[1],
 		}
 		config.MemberPeerMap[node[1]] = m
-		config.Members = append(config.Members, m)
 		if node[0] == name {
 			config.MemberSelf = m
 		}
 	}
+
+	for _, client := range config.ClusterClientURLs {
+		config.MemberClientMap[client] = nil
+	}
+
 	if config.MemberSelf == nil {
 		return fmt.Errorf("peer config not found for self (%s)", name)
 	}
@@ -115,6 +120,49 @@ func newConfig() (*Config, error) {
 		return nil
 	}
 
+	// main loop
+	for {
+		switch {
+			select <- time.After(config.HealthCheckInterval):
+			localStatus, err := Status(config.MemberSelf.clientURL, config.ClientTLSConfig)
+			if err != nil {
+				// my client is down - check rest of nodes
+				for endpoint, member := range config.MemberClientMap {
+					if endpoint == config.MemberSelf.clientURL {
+						continue
+					}
+					status, err := Status(endpoint, config.ClientTLSConfig)
+					clusterID := status.ResponseHeader.ClusterID
+				}
+			}
+		}
+	}
+
+
+	for {
+		switch {
+			select <- time.After(config.HealthCheckInterval):
+			var currentClusterID *uint64
+			// check each cluster member
+			for _, endpoint := range config.ClusterClientURLs {
+				status, err := Status(endpoint, config.ClientTLSConfig)
+				if err != nil {
+					return 
+				}
+
+
+				clusterID, err := ClusterID(endpoint, config.ClientTLSConfig)
+				if currentClusterID != nil {
+					currentClusterID = clusterID
+				} else {
+					if currentClusterID != clusterID {
+						// split brain
+					}
+				}
+			}
+		}
+	}
+
 	return config
 }
 
@@ -125,24 +173,38 @@ func (v *config) SyncMembers() error {
 	}
 
 	// member Name field may not be populated right away
-	// Match returned members by ListenPeerURL field
+	// Match returned members by PeerURL field
 	peerURLsReturned := make(map[string]struct{})
 	for _, member := range members.Members {
-		for _, url := range member.PeerURLs {
+		var m *member
+		var ok bool
+
+		for _, peer := range member.PeerURLs {
 			var id uint64
-			if m, ok := v.MemberPeerMap[url]; ok {
+			if m, ok = v.MemberPeerMap[peer]; ok {
 				id = member.ID
 				m.id = &id
+				m.peerURL = peer
 
-				peerURLsReturned[url] = struct{}{}
+				peerURLsReturned[peer] = struct{}{}
 				break
+			}
+		}
+
+		if ok {
+			for _, client := range member.ClientURLs {
+				if _, ok = v.MemberClientMap[client]; ok {
+					m.clientURL = client
+					v.MemberClientMap[client] = m
+					break
+				}
 			}
 		}
 	}
 
 	// Compare returned members with list and remove inactive ones
-	for url, m := range v.MemberPeerMap {
-		if _, ok := peerURLsReturned[url]; !ok	{
+	for peer, m := range v.MemberPeerMap {
+		if _, ok := peerURLsReturned[peer]; !ok	{
 			m.ID = nil
 		}
 	}

@@ -43,7 +43,7 @@ func WriteManifest(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKey
 			backupFilePath, name, initialCluster, initialClusterToken, initialAdvertisePeerURLs, dataDir), " "),
 		VolumeMounts: []v1.VolumeMount{
 			{
-				Name:      "host-backup-file",
+				Name:      "backup-file",
 				MountPath: backupFilePath,
 			},
 			{
@@ -138,32 +138,32 @@ func WriteManifest(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKey
 		},
 		VolumeMounts: []v1.VolumeMount{
 			{
-				Name:      "host-cert-file",
+				Name:      "cert-file",
 				MountPath: "/etc/etcd/cert.pem",
 				ReadOnly:  true,
 			},
 			{
-				Name:      "host-key-file",
+				Name:      "key-file",
 				MountPath: "/etc/etcd/key.pem",
 				ReadOnly:  true,
 			},
 			{
-				Name:      "host-trusted-ca-file",
+				Name:      "trusted-ca-file",
 				MountPath: "/etc/etcd/ca.pem",
 				ReadOnly:  true,
 			},
 			{
-				Name:      "host-peer-cert-file",
+				Name:      "peer-cert-file",
 				MountPath: "/etc/etcd/peer-cert.pem",
 				ReadOnly:  true,
 			},
 			{
-				Name:      "host-peer-key-file",
+				Name:      "peer-key-file",
 				MountPath: "/etc/etcd/peer-key.pem",
 				ReadOnly:  true,
 			},
 			{
-				Name:      "host-peer-trusted-ca-file",
+				Name:      "peer-trusted-ca-file",
 				MountPath: "/etc/etcd/peer-ca.pem",
 				ReadOnly:  true,
 			},
@@ -196,7 +196,7 @@ func WriteManifest(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKey
 			RestartPolicy: v1.RestartPolicyAlways,
 			Volumes: []v1.Volume{
 				{
-					Name: "host-cert-file",
+					Name: "cert-file",
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
 							Path: m.CertFile,
@@ -205,7 +205,7 @@ func WriteManifest(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKey
 					},
 				},
 				{
-					Name: "host-key-file",
+					Name: "key-file",
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
 							Path: m.KeyFile,
@@ -214,7 +214,7 @@ func WriteManifest(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKey
 					},
 				},
 				{
-					Name: "host-trusted-ca-file",
+					Name: "trusted-ca-file",
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
 							Path: m.TrustedCAFile,
@@ -223,7 +223,7 @@ func WriteManifest(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKey
 					},
 				},
 				{
-					Name: "host-peer-cert-file",
+					Name: "peer-cert-file",
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
 							Path: m.PeerCertFile,
@@ -232,7 +232,7 @@ func WriteManifest(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKey
 					},
 				},
 				{
-					Name: "host-peer-key-file",
+					Name: "peer-key-file",
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
 							Path: m.PeerKeyFile,
@@ -241,7 +241,7 @@ func WriteManifest(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKey
 					},
 				},
 				{
-					Name: "host-peer-trusted-ca-file",
+					Name: "peer-trusted-ca-file",
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
 							Path: m.PeerTrustedCAFile,
@@ -264,7 +264,7 @@ func WriteManifest(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKey
 	if snapRestore {
 		pod.Spec.Volumes = append(pod.Spec.Volumes,
 			v1.Volume{
-				Name: "host-snap-restore-file",
+				Name: "snap-restore-file",
 				VolumeSource: v1.VolumeSource{
 					HostPath: &v1.HostPathVolumeSource{
 						Path: backupFile,

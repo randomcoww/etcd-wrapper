@@ -9,6 +9,12 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
+type statusResp struct {
+	endpoint string
+	resp *clientv3.StatusResponse
+	err error
+}
+
 func newClient(ctx context.Context, endpoints []string, tlsConfig *tls.Config) (*clientv3.Client, error) {
 	return clientv3.New(clientv3.Config{
 		Endpoints:   endpoints,
@@ -18,42 +24,161 @@ func newClient(ctx context.Context, endpoints []string, tlsConfig *tls.Config) (
 	})
 }
 
-func Status(endpoints []string, tlsConfig *tls.Config) (resp *clientv3.StatusResponse, err error) {
-	ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultRequestTimeout)
-	client, err := newClient(ctx, endpoints, tlsConfig)
+func Status(endpoint string, tlsConfig *tls.Config) (*clientv3.Client, error) {
+	respCh, err := Status([]string{endpoint}, tlsConfig)
 	if err != nil {
 		return nil, err
 	}
+
+	resp := <-respCh
+	close(respCh)
+	return resp.resp, nil
+}
+
+
+// func MemberID(endpoint string, tlsConfig *tls.Config) (*uint64, error) {
+// 	respCh, err := Status([]string{endpoint}, tlsConfig)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	resp := <-respCh
+// 	close(respCh)
+
+// 	if resp.err != nil {
+// 		return nil, resp.err
+// 	}
+
+// 	id := resp.ResponseHeader.MemberID
+// 	return &id, nil
+// }
+
+// func LeaderID(endpoint string, tlsConfig *tls.Config) (*uint64, error) {
+// 	respCh, err := status([]string{endpoint}, tlsConfig)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	resp := <-respCh
+// 	close(respCh)
+
+// 	if resp.err != nil {
+// 		return nil, resp.err
+// 	}
+
+// 	id := resp.Leader
+// 	return &id, nil
+// }
+
+// func ClusterID(endpoint string, tlsConfig *tls.Config) (*uint64, error) {
+// 	respCh, err := status([]string{endpoint}, tlsConfig)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+
+// 	resp := <-respCh
+// 	close(respCh)
+
+// 	if resp.err != nil {
+// 		return nil, resp.err
+// 	}
+
+// 	id := resp.ResponseHeader.ClusterID
+// 	return &id, nil
+// }
+
+func CheckSplitBrain(endpoints []string, tlsConfig *tls.Config) (bool, error) {
+	var clusterID *uint64
+	respCh, err := status(endpoints, tlsConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	for {
+		resp := <-respCh
+		count++
+
+		if resp.err != nil {
+			return false, resp.err
+		}
+		id := resp.resp.ResponseHeader.ClusterID
+		if clusterID == nil {
+			clusterID = &id	
+		}
+		
+		if *clusterID != id {
+			return false, nil
+		}
+		if count >= len(endpoints) {
+			close(respCh)
+			return true, nil
+		}
+	}
+}
+
+func GetMaxRevisionMemberID(endpoints []string, tlsConfig *tls.Config) (uint64, error) {
+	var memberID *uint64
+	var maxRevision *uint64
+	var clusterID *uint64
+	respCh, err := status(endpoints, tlsConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	for {
+		resp := <-respCh
+		count++
+
+		if resp.err != nil {
+			return 0, resp.err
+		}
+		id := resp.resp.ResponseHeader.ClusterID
+		if clusterID == nil {
+			clusterID = &id	
+		}
+		if *clusterID != id {
+			return 0, fmt.Errorf("Got mismatched cluster IDs from endpoints")
+		}
+
+		revision := resp.resp.ResponseHeader.Revision
+		if maxRevision == nil {
+			maxRevision = &revision
+		}
+		if revision > *maxRevision {
+			maxRevision = &revision
+		}
+
+		if count >= len(endpoints) {
+			close(respCh)
+			return *maxRevision, nil
+		}
+	}
+}
+
+func status(endpoints []string, tlsConfig *tls.Config) (chan *statusResp, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultRequestTimeout)
+	client, err := newClient(ctx, endpoints, tlsConfig)
+	if err != nil {
+		return err
+	}
 	defer client.Close()
 
-	errCh := make(chan error)
-	respCh := make(chan *clientv3.StatusResponse)
-
-	for i, endpoint := range endpoints {
-		go func(i int, endpoint string) {
+	respCh := make(chan *statusResp, len(endpoints))
+	for _, endpoint := range endpoints {
+		go func(endpoint string) {
 			resp, err = client.Status(ctx, endpoint)
 			if err != nil {
 				errCh <- err
 				return
 			}
-			respCh <- resp
-		}(i, endpoint)
-	}
-
-	var errCount int
-	for {
-		select {
-		case resp := <-respCh:
-			cancel()
-			return resp, nil
-		case err := <-errCh:
-			errCount++
-			if errCount >= len(endpoints) {
-				cancel()
-				return nil, err
+			*respCh <- &statusResp{
+				endpoint: endpoint,
+				resp: resp,
+				err: err,
 			}
-		}
+		}(endpoint)
 	}
+	return respCh, nil
 }
 
 func AddMember(endpoints, peerURLs []string, tlsConfig *tls.Config) (*clientv3.MemberAddResponse, error) {

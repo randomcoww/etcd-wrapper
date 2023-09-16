@@ -47,3 +47,68 @@ podman run -it --rm \
   -w /go/etcd-wrapper \
    golang:alpine sh
 ```
+
+### Test cluster
+
+```bash
+IMAGE=gcr.io/etcd-development/etcd:v3.5.8-amd64
+TOKEN=my-etcd-token-1
+CLUSTER_STATE=new
+NAME_1=etcd-1
+NAME_2=etcd-2
+NAME_3=etcd-3
+HOST_PEER_1=127.0.0.1:40001
+HOST_PEER_2=127.0.0.1:40002
+HOST_PEER_3=127.0.0.1:40003
+HOST_CLIENT_1=127.0.0.1:40004
+HOST_CLIENT_2=127.0.0.1:40005
+HOST_CLIENT_3=127.0.0.1:40006
+CLUSTER=${NAME_1}=http://${HOST_PEER_1},${NAME_2}=http://${HOST_PEER_2},${NAME_3}=http://${HOST_PEER_3}
+
+THIS_NAME=${NAME_1}
+PEER=${HOST_PEER_1}
+CLIENT=${HOST_CLIENT_1}
+podman run -it --rm --name ${THIS_NAME} -e ETCDCTL_API=3 --net host ${IMAGE} \
+  etcd \
+  --data-dir=data.etcd \
+  --name ${THIS_NAME} \
+	--initial-advertise-peer-urls http://${PEER} \
+	--listen-peer-urls http://${PEER} \
+	--advertise-client-urls http://${CLIENT},http://127.0.0.1:40011 \
+	--listen-client-urls http://${CLIENT} \
+	--initial-cluster ${CLUSTER} \
+	--initial-cluster-state ${CLUSTER_STATE} \
+	--initial-cluster-token ${TOKEN}
+
+# For node 2
+THIS_NAME=${NAME_2}
+PEER=${HOST_PEER_2}
+CLIENT=${HOST_CLIENT_2}
+podman run -it --rm --name ${THIS_NAME} -e ETCDCTL_API=3 --net host ${IMAGE} \
+  etcd \
+  --data-dir=data.etcd \
+  --name ${THIS_NAME} \
+	--initial-advertise-peer-urls http://${PEER} \
+	--listen-peer-urls http://${PEER} \
+	--advertise-client-urls http://${CLIENT} \
+	--listen-client-urls http://${CLIENT} \
+	--initial-cluster ${CLUSTER} \
+	--initial-cluster-state ${CLUSTER_STATE} \
+	--initial-cluster-token ${TOKEN}
+
+# For node 3
+THIS_NAME=${NAME_3}
+PEER=${HOST_PEER_3}
+CLIENT=${HOST_CLIENT_3}
+podman run -it --rm --name ${THIS_NAME} -e ETCDCTL_API=3 --net host ${IMAGE} \
+  etcd \
+  --data-dir=data.etcd \
+  --name ${THIS_NAME} \
+	--initial-advertise-peer-urls http://${PEER} \
+	--listen-peer-urls http://${PEER} \
+	--advertise-client-urls http://${CLIENT} \
+	--listen-client-urls http://${CLIENT} \
+	--initial-cluster ${CLUSTER} \
+	--initial-cluster-state ${CLUSTER_STATE} \
+	--initial-cluster-token ${TOKEN}
+```
