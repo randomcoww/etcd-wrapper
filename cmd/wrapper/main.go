@@ -14,21 +14,32 @@ type member struct {
 	id *uint64
 	peerURL string
 	clientURL string
+	healthy bool
+	revision *int64
+	clusterID *uint64
+	leaderID *uint64
+}
+
+type Status struct {
+	LeaderID *uint64
+	ClusterID *uint64
+	MemberNameMap map[string]*member
+	MemberPeerMap map[string]*member
+	MemberClientMap map[string]*member
+	MemberSelf *member
+	WritePodManifest func(string, bool, uint64) error
+	ClientTLSConfig       *tls.Config
+	healty bool
 }
 
 type config struct {
 	ListenClientURLs []string
 	ListenPeerURLs []string
-	ClientTLSConfig       *tls.Config
 	ClusterClientURLs []string
-	MemberPeerMap map[string]*member
-	MemberClientMap map[string]*member
-	MemberSelf *member
-	WritePodManifest func(string, bool, uint64) error
 }
 
-func newConfig() (*Config, error) {
-	config := &Config{}
+func newConfig() (*status, error) {
+	status := &status{}
 	var err error
 
 	// etcd args
@@ -61,7 +72,7 @@ func newConfig() (*Config, error) {
 	var healthCheckFailuresAllow int
 	flag.StringVar(&clientCertFile, "client-cert-file", "", "Path to the client server TLS cert file.")
 	flag.StringVar(&clientKeyFile, "client-key-file", "", "Path to the client server TLS key file.")
-	flag.StringVar(&clusterClientURLs, "cluster-client-urls", "", "List of etcd client URLs.")
+	flag.StringVar(&initialClusterClients, "initial-cluster-clients", "", "List of etcd nodes and client URLs in same format as intial-cluster.")
 	flag.StringVar(&s3SnapBackupPath, "s3-backup-path", "", "S3 key name for backup.")
 	flag.DurationVar(&snapBackupInterval, "backup-interval", 30*time.Minute, "Backup trigger interval.")
 	flag.DurationVar(&healthCheckInterval, "healthcheck-interval", 5*time.Second, "Healthcheck interval.")
@@ -69,47 +80,60 @@ func newConfig() (*Config, error) {
 	flag.DurationVar(&podManifestUpdateWait, "pod-update-wait", 30*time.Second, "Time to wait after pod manifest update to resume health checks.")
 	flag.Parse()
 
+	clusterClientURLsList := strings.Split(clusterClientURLs, ",")
+
 	tlsInfo := transport.TLSInfo{
 		CertFile:      clientCertFile,
 		KeyFile:       clientKeyFile,
 		TrustedCAFile: trustedCAFile,
 	}
-	config.ClientTLSConfig, err = tlsInfo.ClientConfig()
+	status.ClientTLSConfig, err = tlsInfo.ClientConfig()
 	if err != nil {
 		return err
 	}
 
-	config.ListenClientURLs = strings.Split(listenClientURLs, ",")
-	config.ListenPeerURLs = strings.Split(listenPeerURLs, ",")
-	config.ClusterClientURLs = strings.Split(clusterClientURLs, ",")
-
-	config.Members = make([]*member)
-	config.MemberPeerMap = make(map[string]*member)
-	config.MemberClientMap = make(map[string]*member)
+	status.MemberNameMap = make(map[string]*member)
+	status.MemberPeerMap = make(map[string]*member)
+	status.MemberClientMap = make(map[string]*member)
 
 	for _, n := range strings.Split(initialCluster, ",") {
 		node = strings.Split(n, "=")
 		m = &member{
-			name: node[0],
+			Name: node[0],
+			PeerURL: node[1],
+			Healthy: false,
 		}
-		config.MemberPeerMap[node[1]] = m
+		status.MemberNameMap[m.Name] = m
+		status.MemberPeerMap[m.PeerURL] = m
 		if node[0] == name {
-			config.MemberSelf = m
+			status.MemberSelf = m
 		}
 	}
 
-	for _, client := range config.ClusterClientURLs {
-		config.MemberClientMap[client] = nil
+	for _, client := range strings.Split(initialClusterClients, ",") {
+		node = strings.Split(n, "=")
+		name := node[0]
+		client := node[1]
+		m, ok := status.MemberNameMap[name]
+		if !ok {
+			return nil, fmt.Errorf("Mismatch in initial-cluster and initial-cluster-clients members")
+		}
+		m.ClientURL = client
+		status.MemberClientMap[client] = m
 	}
 
-	if config.MemberSelf == nil {
-		return fmt.Errorf("peer config not found for self (%s)", name)
+	if len(status.MemberClientMap) != len(status.MemberNameMap) {
+		return nil, fmt.Errorf("Mismatch in initial-cluster and initial-cluster-clients members")
 	}
 
-	config.WritePodManifest = func(initialClusterState string, snapRestore bool) {
+	if status.MemberSelf == nil {
+		return fmt.Errorf("Member config not found for self (%s)", name)
+	}
+
+	status.WritePodManifest = func(initialClusterState string, snapRestore bool) {
 		var id uint64
-		if config.MemberSelf.id != nil {
-			id = *config.MemberSelf.id
+		if status.MemberSelf.id != nil {
+			id = *status.MemberSelf.id
 		}
 		podspec.WriteManifest(
 			name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, peerTrustedCAFile, initialAdvertisePeerURLs,
@@ -120,54 +144,52 @@ func newConfig() (*Config, error) {
 		return nil
 	}
 
-	// main loop
-	for {
-		switch {
-			select <- time.After(config.HealthCheckInterval):
-			localStatus, err := Status(config.MemberSelf.clientURL, config.ClientTLSConfig)
-			if err != nil {
-				// my client is down - check rest of nodes
-				for endpoint, member := range config.MemberClientMap {
-					if endpoint == config.MemberSelf.clientURL {
-						continue
-					}
-					status, err := Status(endpoint, config.ClientTLSConfig)
-					clusterID := status.ResponseHeader.ClusterID
-				}
-			}
-		}
+	status.QueryMembers = func() (*clientv3.ListMembersResponse, error) {
+		return etcdutil.ListMembers(clusterClientURLsList, v.ClientTLSConfig)
 	}
 
-
-	for {
-		switch {
-			select <- time.After(config.HealthCheckInterval):
-			var currentClusterID *uint64
-			// check each cluster member
-			for _, endpoint := range config.ClusterClientURLs {
-				status, err := Status(endpoint, config.ClientTLSConfig)
-				if err != nil {
-					return 
-				}
-
-
-				clusterID, err := ClusterID(endpoint, config.ClientTLSConfig)
-				if currentClusterID != nil {
-					currentClusterID = clusterID
-				} else {
-					if currentClusterID != clusterID {
-						// split brain
-					}
-				}
-			}
-		}
-	}
-
-	return config
+	return status
 }
 
-func (v *config) SyncMembers() error {
-	members, err := etcdutil.ListMembers(v.ClusterClientURLs, v.ClientTLSConfig)
+func (v *status) UpdateFromHealthCheck() {
+	err := etcdutil.Status(clusterClientURLsList, tlsConfig)
+	v.Healthy = err == nil
+}
+
+func (v *status) UpdateFromStatus() error {
+	respCh, err := etcdutil.Status(clusterClientURLsList, tlsConfig)
+	var leaderID *uint64
+	var count int
+
+	for {
+		resp := <-respCh
+		count++
+
+		m, ok := v.MemberClientMap[resp.endpoint]
+		if !ok || m == nil {
+			continue
+		}
+
+		if resp.err != nil {
+			m.Healthy = false
+			continue
+		}
+
+		m.Healthy = true
+		m.MemberID = resp.status.ResponseHeader.MemberID
+		m.ClusterID = resp.status.ResponseHeader.ClusterID
+		m.LeaderID = resp.status.Leader
+		m.Revision = resp.status.ResponseHeader.Revision
+
+		if count >= len(clusterClientURLsList) {
+			close(respCh)
+			return nil
+		}
+	}
+}
+
+func (v *status) UpdateFromMembers() error {
+	members, err := v.QueryMembers()
 	if err != nil {
 		return err
 	}
@@ -183,21 +205,10 @@ func (v *config) SyncMembers() error {
 			var id uint64
 			if m, ok = v.MemberPeerMap[peer]; ok {
 				id = member.ID
-				m.id = &id
-				m.peerURL = peer
+				m.ID = &id
 
 				peerURLsReturned[peer] = struct{}{}
 				break
-			}
-		}
-
-		if ok {
-			for _, client := range member.ClientURLs {
-				if _, ok = v.MemberClientMap[client]; ok {
-					m.clientURL = client
-					v.MemberClientMap[client] = m
-					break
-				}
 			}
 		}
 	}

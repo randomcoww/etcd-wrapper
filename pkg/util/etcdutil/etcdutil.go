@@ -11,7 +11,7 @@ import (
 
 type statusResp struct {
 	endpoint string
-	resp *clientv3.StatusResponse
+	status *clientv3.StatusResponse
 	err error
 }
 
@@ -24,138 +24,7 @@ func newClient(ctx context.Context, endpoints []string, tlsConfig *tls.Config) (
 	})
 }
 
-func Status(endpoint string, tlsConfig *tls.Config) (*clientv3.Client, error) {
-	respCh, err := Status([]string{endpoint}, tlsConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	resp := <-respCh
-	close(respCh)
-	return resp.resp, nil
-}
-
-
-// func MemberID(endpoint string, tlsConfig *tls.Config) (*uint64, error) {
-// 	respCh, err := Status([]string{endpoint}, tlsConfig)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	resp := <-respCh
-// 	close(respCh)
-
-// 	if resp.err != nil {
-// 		return nil, resp.err
-// 	}
-
-// 	id := resp.ResponseHeader.MemberID
-// 	return &id, nil
-// }
-
-// func LeaderID(endpoint string, tlsConfig *tls.Config) (*uint64, error) {
-// 	respCh, err := status([]string{endpoint}, tlsConfig)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	resp := <-respCh
-// 	close(respCh)
-
-// 	if resp.err != nil {
-// 		return nil, resp.err
-// 	}
-
-// 	id := resp.Leader
-// 	return &id, nil
-// }
-
-// func ClusterID(endpoint string, tlsConfig *tls.Config) (*uint64, error) {
-// 	respCh, err := status([]string{endpoint}, tlsConfig)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-
-// 	resp := <-respCh
-// 	close(respCh)
-
-// 	if resp.err != nil {
-// 		return nil, resp.err
-// 	}
-
-// 	id := resp.ResponseHeader.ClusterID
-// 	return &id, nil
-// }
-
-func CheckSplitBrain(endpoints []string, tlsConfig *tls.Config) (bool, error) {
-	var clusterID *uint64
-	respCh, err := status(endpoints, tlsConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	for {
-		resp := <-respCh
-		count++
-
-		if resp.err != nil {
-			return false, resp.err
-		}
-		id := resp.resp.ResponseHeader.ClusterID
-		if clusterID == nil {
-			clusterID = &id	
-		}
-		
-		if *clusterID != id {
-			return false, nil
-		}
-		if count >= len(endpoints) {
-			close(respCh)
-			return true, nil
-		}
-	}
-}
-
-func GetMaxRevisionMemberID(endpoints []string, tlsConfig *tls.Config) (uint64, error) {
-	var memberID *uint64
-	var maxRevision *uint64
-	var clusterID *uint64
-	respCh, err := status(endpoints, tlsConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	for {
-		resp := <-respCh
-		count++
-
-		if resp.err != nil {
-			return 0, resp.err
-		}
-		id := resp.resp.ResponseHeader.ClusterID
-		if clusterID == nil {
-			clusterID = &id	
-		}
-		if *clusterID != id {
-			return 0, fmt.Errorf("Got mismatched cluster IDs from endpoints")
-		}
-
-		revision := resp.resp.ResponseHeader.Revision
-		if maxRevision == nil {
-			maxRevision = &revision
-		}
-		if revision > *maxRevision {
-			maxRevision = &revision
-		}
-
-		if count >= len(endpoints) {
-			close(respCh)
-			return *maxRevision, nil
-		}
-	}
-}
-
-func status(endpoints []string, tlsConfig *tls.Config) (chan *statusResp, error) {
+func Status(endpoints []string, tlsConfig *tls.Config) (chan *statusResp, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultRequestTimeout)
 	client, err := newClient(ctx, endpoints, tlsConfig)
 	if err != nil {
@@ -166,14 +35,10 @@ func status(endpoints []string, tlsConfig *tls.Config) (chan *statusResp, error)
 	respCh := make(chan *statusResp, len(endpoints))
 	for _, endpoint := range endpoints {
 		go func(endpoint string) {
-			resp, err = client.Status(ctx, endpoint)
-			if err != nil {
-				errCh <- err
-				return
-			}
+			status, err = client.Status(ctx, endpoint)
 			*respCh <- &statusResp{
 				endpoint: endpoint,
-				resp: resp,
+				status: status,
 				err: err,
 			}
 		}(endpoint)
@@ -239,105 +104,3 @@ func HealthCheck(endpoints []string, tlsConfig *tls.Config) error {
 		return err
 	}
 }
-
-// func GetIsMaxRevision(endpoints []string, tlsConfig *tls.Config) error {
-// 	for _, endpoint := range endpoints {
-// 		ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultRequestTimeout)
-// 		client, err := newClient(ctx, []string{endpoint}, tlsConfig)
-
-// 	}
-// }
-
-// func getRevision(endpoints []string, tlsConfig *tls.Config) (int64, *clientv3.Client, error) {
-// 	ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultRequestTimeout)
-// 	client, err := newClient(ctx, endpoints, tlsConfig)
-// 	if err != nil {
-// 		return 0, err
-// 	}
-// 	defer client.Close()
-
-// 	resp, err := client.Get(ctx, "/", clientv3.WithSerializable())
-// 	cancel()
-
-// 	switch err {
-// 	case nil
-// 		return resp.Header.Revision, client, nil
-// 	default:
-// 		return 0, nil, err
-// 	}
-// }
-
-// func GetMaxRevisionClient(endpoints []string,  tlsConfig *tls.Config) (*clientv3.Client, error) {
-// 	var maxRev int64
-// 	var maxRevClient *clientv3.Client
-
-// 	for _, endpoint := range endpoints {
-// 		rev, client, err := getRevision([]string{endpoint}, tlsConfig)
-// 		if err != nil {
-// 			return nil, err
-// 		}
-
-// 		if rev > maxRev {
-// 			maxRev = rev
-// 			maxRevClient = client
-// 		}
-// 	}
-// }
-
-// func GetClientWithMaxRev(ctx context.Context, endpoints []string, tlsConfig *tls.Config) (*clientv3.Client, int64, error) {
-// 	ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultRequestTimeout)
-	
-// 	mapEps := make(map[string]*clientv3.Client)
-// 	var maxClient *clientv3.Client
-// 	maxRev := int64(0)
-// 	errors := make([]string, 0)
-// 	for _, endpoint := range endpoints {
-// 		cfg := clientv3.Config{
-// 			Endpoints:   []string{endpoint},
-// 			DialTimeout: constants.DefaultDialTimeout,
-// 			TLS:         tc,
-// 			Context: ctx,
-// 		}
-// 		etcdcli, err := clientv3.New(cfg)
-// 		if err != nil {
-// 			errors = append(errors, fmt.Sprintf("failed to create etcd client for endpoint (%v): %v", endpoint, err))
-// 			continue
-// 		}
-// 		mapEps[endpoint] = etcdcli
-
-// 		resp, err := etcdcli.Get(ctx, "/", clientv3.WithSerializable())
-// 		if err != nil {
-// 			errors = append(errors, fmt.Sprintf("failed to get revision from endpoint (%s)", endpoint))
-// 			continue
-// 		}
-
-// 		logrus.Infof("getMaxRev: endpoint %s revision (%d)", endpoint, resp.Header.Revision)
-// 		if resp.Header.Revision > maxRev {
-// 			maxRev = resp.Header.Revision
-// 			maxClient = etcdcli
-// 		}
-// 	}
-
-// 	// close all open clients that are not maxClient.
-// 	for _, cli := range mapEps {
-// 		if cli == maxClient {
-// 			continue
-// 		}
-// 		cli.Close()
-// 	}
-
-// 	if maxClient == nil {
-// 		return nil, 0, fmt.Errorf("could not create an etcd client for the max revision purpose from given endpoints (%v)", endpoints)
-// 	}
-
-// 	var err error
-// 	if len(errors) > 0 {
-// 		errorStr := ""
-// 		for _, errStr := range errors {
-// 			errorStr += errStr + "\n"
-// 		}
-// 		err = fmt.Errorf(errorStr)
-// 	}
-
-// 	return maxClient, maxRev, err
-// }
