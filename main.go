@@ -25,9 +25,9 @@ func main() {
 func newClient(ctx context.Context, endpoints []string, tlsConfig *tls.Config) (*clientv3.Client, error) {
 	return clientv3.New(clientv3.Config{
 		Endpoints:   endpoints,
-		DialTimeout: 30*time.Second,
+		DialTimeout: 30 * time.Second,
 		TLS:         tlsConfig,
-		Context: ctx,
+		Context:     ctx,
 	})
 }
 

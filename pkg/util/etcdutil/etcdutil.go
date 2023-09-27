@@ -11,8 +11,8 @@ import (
 
 type statusResp struct {
 	endpoint string
-	status *clientv3.StatusResponse
-	err error
+	status   *clientv3.StatusResponse
+	err      error
 }
 
 func newClient(ctx context.Context, endpoints []string, tlsConfig *tls.Config) (*clientv3.Client, error) {
@@ -20,7 +20,7 @@ func newClient(ctx context.Context, endpoints []string, tlsConfig *tls.Config) (
 		Endpoints:   endpoints,
 		DialTimeout: constants.DefaultDialTimeout,
 		TLS:         tlsConfig,
-		Context: ctx,
+		Context:     ctx,
 	})
 }
 
@@ -38,8 +38,8 @@ func Status(endpoints []string, tlsConfig *tls.Config) (chan *statusResp, error)
 			status, err = client.Status(ctx, endpoint)
 			*respCh <- &statusResp{
 				endpoint: endpoint,
-				status: status,
-				err: err,
+				status:   status,
+				err:      err,
 			}
 		}(endpoint)
 	}

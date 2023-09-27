@@ -3,38 +3,38 @@ package wrapper
 import (
 	"github.com/randomcoww/etcd-wrapper/pkg/config"
 	"github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
-	"go.etcd.io/etcd/pkg/transport"
 	"github.com/sirupsen/logrus"
+	"go.etcd.io/etcd/pkg/transport"
 	"os"
 	"time"
 )
 
-type member struct {
-	name string
-	id *uint64
-	peerURL string
-	clientURL string
-	healthy bool
-	revision *int64
-	clusterID *uint64
-	leaderID *uint64
+type Member struct {
+	Name      string
+	ID        *uint64
+	PeerURL   string
+	ClientURL string
+	Healthy   bool
+	Revision  *int64
+	ClusterID *uint64
+	LeaderID  *uint64
 }
 
 type Status struct {
-	LeaderID *uint64
-	ClusterID *uint64
-	MemberNameMap map[string]*member
-	MemberPeerMap map[string]*member
-	MemberClientMap map[string]*member
-	MemberSelf *member
+	LeaderID         *uint64
+	ClusterID        *uint64
+	MemberNameMap    map[string]*Member
+	MemberPeerMap    map[string]*Member
+	MemberClientMap  map[string]*Member
+	MemberSelf       *Member
 	WritePodManifest func(string, bool, uint64) error
-	ClientTLSConfig       *tls.Config
-	healty bool
+	ClientTLSConfig  *tls.Config
+	Healty           bool
 }
 
 type config struct {
-	ListenClientURLs []string
-	ListenPeerURLs []string
+	ListenClientURLs  []string
+	ListenPeerURLs    []string
 	ClusterClientURLs []string
 }
 
@@ -45,12 +45,12 @@ func newConfig() (*status, error) {
 	// etcd args
 	var name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, peerTrustedCAFile, initialAdvertisePeerURLs, listenPeerURLs, advertiseClientURLs, listenClientURLs, initialClusterToken, initialCluster string
 	flag.StringVar(&name, "name", "", "Human-readable name for this member.")
-	flag.StringVar(&certFile, "host-cert-file", "", "Host path to the client server TLS cert file.")
-	flag.StringVar(&keyFile, "host-key-file", "", "Host path to the client server TLS key file.")
-	flag.StringVar(&trustedCAFile, "host-trusted-ca-file", "", "Host path to the client server TLS trusted CA cert file.")
-	flag.StringVar(&peerCertFile, "host-peer-cert-file", "", "Host path to the peer server TLS cert file.")
-	flag.StringVar(&peerKeyFile, "host-peer-key-file", "", "Host path to the peer server TLS key file.")
-	flag.StringVar(&peerTrustedCAFile, "host-peer-trusted-ca-file", "", "Host path to the peer server TLS trusted CA file.")
+	flag.StringVar(&certFile, "cert-file", "", "Host path to the client server TLS cert file.")
+	flag.StringVar(&keyFile, "key-file", "", "Host path to the client server TLS key file.")
+	flag.StringVar(&trustedCAFile, "trusted-ca-file", "", "Host path to the client server TLS trusted CA cert file.")
+	flag.StringVar(&peerCertFile, "peer-cert-file", "", "Host path to the peer server TLS cert file.")
+	flag.StringVar(&peerKeyFile, "peer-key-file", "", "Host path to the peer server TLS key file.")
+	flag.StringVar(&peerTrustedCAFile, "peer-trusted-ca-file", "", "Host path to the peer server TLS trusted CA file.")
 	flag.StringVar(&initialAdvertisePeerURLs, "initial-advertise-peer-urls", "", "List of this member's peer URLs to advertise to the rest of the cluster.")
 	flag.StringVar(&listenPeerURLs, "listen-peer-urls", "", "List of URLs to listen on for peer traffic.")
 	flag.StringVar(&advertiseClientURLs, "advertise-client-urls", "", "List of this member's client URLs to advertise to the public.")
@@ -59,21 +59,21 @@ func newConfig() (*status, error) {
 	flag.StringVar(&initialCluster, "initial-cluster", "", "Initial cluster configuration for bootstrapping.")
 
 	// pod manifest args
-	var etcdPodName, etcdPodNamespace, etcdImage, snapRestoreFile, podManifestFile string
+	var etcdImage, etcdPodName, etcdPodNamespace, etcdSnapshotPath, etcdPodManifestPath string
+	flag.StringVar(&etcdImage, "etcd-image", "", "Etcd container image.")
 	flag.StringVar(&etcdPodName, "etcd-pod-name", "etcd", "Name of etcd pod.")
 	flag.StringVar(&etcdPodNamespace, "etcd-pod-namespace", "kube-system", "Namespace to launch etcd pod.")
-	flag.StringVar(&etcdImage, "etcd-image", "", "Etcd container image.")
-	flag.StringVar(&snapRestoreFile, "host-snap-restore-file", "/var/lib/etcd-restore/etcd.db", "Host path to restore snapshot file.")
-	flag.StringVar(&podManifestFile, "host-etcd-manifest-file", "", "Host path to write etcd pod manifest file. This should be where kubelet reads static pod manifests.")
+	flag.StringVar(&etcdSnapshotFile, "etcd-snaphot-file", "/var/lib/etcd/etcd.db", "Host path to restore snapshot file.")
+	flag.StringVar(&etcdPodManifestFile, "etcd-pod-manifest-file", "", "Host path to write etcd pod manifest file. This should be where kubelet reads static pod manifests.")
 
 	// etcd wrapper args
-	var clientCertFile, clientKeyFile, clusterClientURLs, s3SnapBackupPath string
+	var clientCertFile, clientKeyFile, clusterClientURLs, s3BackupResource string
 	var snapBackupInterval, healthCheckInterval, podManifestUpdateWait time.Duration
 	var healthCheckFailuresAllow int
 	flag.StringVar(&clientCertFile, "client-cert-file", "", "Path to the client server TLS cert file.")
 	flag.StringVar(&clientKeyFile, "client-key-file", "", "Path to the client server TLS key file.")
 	flag.StringVar(&initialClusterClients, "initial-cluster-clients", "", "List of etcd nodes and client URLs in same format as intial-cluster.")
-	flag.StringVar(&s3SnapBackupPath, "s3-backup-path", "", "S3 key name for backup.")
+	flag.StringVar(&s3BackupResource, "s3-backup-resource", "", "S3 resource name for backup.")
 	flag.DurationVar(&snapBackupInterval, "backup-interval", 30*time.Minute, "Backup trigger interval.")
 	flag.DurationVar(&healthCheckInterval, "healthcheck-interval", 5*time.Second, "Healthcheck interval.")
 	flag.IntVar(&healthCheckFailuresAllow, "healthcheck-failures-allow", 3, "Number of healthcheck failures to allow before updating etcd pod.")
@@ -99,7 +99,7 @@ func newConfig() (*status, error) {
 	for _, n := range strings.Split(initialCluster, ",") {
 		node = strings.Split(n, "=")
 		m = &member{
-			Name: node[0],
+			Name:    node[0],
 			PeerURL: node[1],
 			Healthy: false,
 		}
@@ -130,7 +130,7 @@ func newConfig() (*status, error) {
 		return fmt.Errorf("Member config not found for self (%s)", name)
 	}
 
-	status.WritePodManifest = func(initialClusterState string, snapRestore bool) {
+	status.WritePodManifest = func(initialClusterState string, runRestore bool) {
 		var id uint64
 		if status.MemberSelf.id != nil {
 			id = *status.MemberSelf.id
@@ -138,8 +138,8 @@ func newConfig() (*status, error) {
 		podspec.WriteManifest(
 			name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, peerTrustedCAFile, initialAdvertisePeerURLs,
 			listenPeerURLs, advertiseClientURLs, listenClientURLs, initialClusterToken, initialCluster,
-			etcdPodName, etcdPodNamespace, etcdImage, snapRestoreFile, podManifestFile,
-			initialClusterState, snapRestore, id,
+			etcdImage, etcdPodName, etcdPodNamespace, etcdSnapshotFile, etcdPodManifestFile,
+			initialClusterState, runRestore, id,
 		)
 		return nil
 	}
@@ -198,7 +198,7 @@ func (v *status) UpdateFromMembers() error {
 	// Match returned members by PeerURL field
 	peerURLsReturned := make(map[string]struct{})
 	for _, member := range members.Members {
-		var m *member
+		var m *Member
 		var ok bool
 
 		for _, peer := range member.PeerURLs {
@@ -215,13 +215,13 @@ func (v *status) UpdateFromMembers() error {
 
 	// Compare returned members with list and remove inactive ones
 	for peer, m := range v.MemberPeerMap {
-		if _, ok := peerURLsReturned[peer]; !ok	{
+		if _, ok := peerURLsReturned[peer]; !ok {
 			m.ID = nil
 		}
 	}
 }
 
-func (v *config) AddMemberSelf() error {
+func (v *status) AddMemberSelf() error {
 	if v.MemberSelf.id != nil {
 		return nil
 	}
@@ -234,7 +234,7 @@ func (v *config) AddMemberSelf() error {
 	return nil
 }
 
-func (v *config) RemoveMemberSelf() error {
+func (v *status) RemoveMemberSelf() error {
 	if v.MemberSelf.id == nil {
 		return nil
 	}
@@ -244,4 +244,42 @@ func (v *config) RemoveMemberSelf() error {
 	}
 	v.MemberSelf.id = nil
 	return nil
+}
+
+func (v *status) GetMaxRevisionMember() (*Member, error) {
+	var maxRevision uint64
+	var member *Member
+	err := v.UpdateFromStatus()
+	if err != nil {
+		return nil, err
+	}
+	for _, m := range v.MemberNameMap {
+		if member == nil {
+			maxRevision = m.Revision
+		}
+		if maxRevision < m.Revision {
+			maxRevision = m.Revision
+			member = m
+		}
+	}
+	return m, nil
+}
+
+func (v *status) HasSplitBrain() bool {
+	clusterMemberCounts := make(map[*uint64]int)
+	var maxClusterSize int
+
+	for _, m := range v.MemberNameMap {
+		clusterMemberCounts[m.ClusterID]++
+		if clusterMemberCounts[m.ClusterID] > maxClusterSize {
+			maxClusterSize = clusterMemberCounts[m.ClusterID]
+		}
+	}
+	// members have different clusterIDs - split brain?
+	if len(clusterMemberCounts) > 1 {
+		if clusterIDCounts[v.MemberSelf.ClusterID] <= maxCount {
+			return true
+		}
+	}
+	return false
 }
