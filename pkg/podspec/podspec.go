@@ -23,155 +23,6 @@ func WriteManifest(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKey
 	etcdImage, etcdPodName, etcdPodNamespace, etcdSnapshotFile, etcdPodManifestFile string,
 	initialClusterState string, runRestore bool, memberAnnotation uint64) error {
 
-	restoreContainerSpec := v1.Container{
-		Name:  restoreContainerName,
-		Image: etcdImage,
-		Env: []v1.EnvVar{
-			{
-				Name:  "ETCDCTL_API",
-				Value: "3",
-			},
-		},
-		Command: strings.Split(fmt.Sprintf("etcdutl snapshot restore %[1]s"+
-			" --name %[2]s"+
-			" --initial-cluster %[3]s"+
-			" --initial-cluster-token %[4]s"+
-			" --initial-advertise-peer-urls %[5]s"+
-			" --data-dir %[6]s",
-			etcdSnapshotFile, name, initialCluster, initialClusterToken, initialAdvertisePeerURLs, dbFile), " "),
-		VolumeMounts: []v1.VolumeMount{
-			{
-				Name:      "db",
-				MountPath: filepath.Dir(dbFile),
-			},
-			{
-				Name:      "snaphot-restore",
-				MountPath: etcdSnapshotFile,
-			},
-		},
-	}
-
-	etcdContainerSpec := v1.Container{
-		Name:  etcdContainerName,
-		Image: etcdImage,
-		Env: []v1.EnvVar{
-			{
-				Name:  "ETCD_NAME",
-				Value: name,
-			},
-			{
-				Name:  "ETCD_DATA_DIR",
-				Value: dbFile,
-			},
-			{
-				Name:  "ETCD_INITIAL_CLUSTER",
-				Value: initialCluster,
-			},
-			{
-				Name:  "ETCD_INITIAL_CLUSTER_STATE",
-				Value: initialClusterState,
-			},
-			{
-				Name:  "ETCD_INITIAL_CLUSTER_TOKEN",
-				Value: initialClusterToken,
-			},
-			{
-				Name:  "ETCD_ENABLE_V2",
-				Value: "false",
-			},
-			// Listen
-			{
-				Name:  "ETCD_LISTEN_CLIENT_URLS",
-				Value: listenClientURLs,
-			},
-			{
-				Name:  "ETCD_ADVERTISE_CLIENT_URLS",
-				Value: advertiseClientURLs,
-			},
-			{
-				Name:  "ETCD_LISTEN_PEER_URLS",
-				Value: listenPeerURLs,
-			},
-			{
-				Name:  "ETCD_INITIAL_ADVERTISE_PEER_URLS",
-				Value: initialAdvertisePeerURLs,
-			},
-			// TLS
-			{
-				Name:  "ETCD_PEER_CLIENT_CERT_AUTH",
-				Value: "true",
-			},
-			{
-				Name:  "ETCD_CLIENT_CERT_AUTH",
-				Value: "true",
-			},
-			{
-				Name:  "ETCD_CERT_FILE",
-				Value: "/etc/etcd/cert.pem",
-			},
-			{
-				Name:  "ETCD_KEY_FILE",
-				Value: "/etc/etcd/key.pem",
-			},
-			{
-				Name:  "ETCD_TRUSTED_CA_FILE",
-				Value: "/etc/etcd/ca.pem",
-			},
-			{
-				Name:  "ETCD_PEER_CERT_FILE",
-				Value: "/etc/etcd/peer-cert.pem",
-			},
-			{
-				Name:  "ETCD_PEER_KEY_FILE",
-				Value: "/etc/etcd/peer-key.pem",
-			},
-			{
-				Name:  "ETCD_PEER_TRUSTED_CA_FILE",
-				Value: "/etc/etcd/peer-ca.pem",
-			},
-			{
-				Name:  "ETCD_STRICT_RECONFIG_CHECK",
-				Value: "true",
-			},
-		},
-		VolumeMounts: []v1.VolumeMount{
-			{
-				Name:      "cert-file",
-				MountPath: "/etc/etcd/cert.pem",
-				ReadOnly:  true,
-			},
-			{
-				Name:      "key-file",
-				MountPath: "/etc/etcd/key.pem",
-				ReadOnly:  true,
-			},
-			{
-				Name:      "trusted-ca-file",
-				MountPath: "/etc/etcd/ca.pem",
-				ReadOnly:  true,
-			},
-			{
-				Name:      "peer-cert-file",
-				MountPath: "/etc/etcd/peer-cert.pem",
-				ReadOnly:  true,
-			},
-			{
-				Name:      "peer-key-file",
-				MountPath: "/etc/etcd/peer-key.pem",
-				ReadOnly:  true,
-			},
-			{
-				Name:      "peer-trusted-ca-file",
-				MountPath: "/etc/etcd/peer-ca.pem",
-				ReadOnly:  true,
-			},
-			{
-				Name:      "db",
-				MountPath: filepath.Dir(dbFile),
-			},
-		},
-	}
-
 	var priority int32 = 2000001000
 	hostPathFileType := v1.HostPathFile
 	pod := &v1.Pod{
@@ -190,7 +41,7 @@ func WriteManifest(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKey
 			HostNetwork:    true,
 			InitContainers: []v1.Container{},
 			Containers: []v1.Container{
-				createEtcdContainerSpec(),
+				etcdContainerSpec,
 			},
 			PriorityClassName: "system-node-critical",
 			Priority:          &priority,
@@ -262,31 +113,173 @@ func WriteManifest(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKey
 
 	// Run recovery for existing clusters
 	if runRestore {
-		info, err := os.Stat(etcdSnapshotFile)
-		switch err {
-		case os.IsNotExist(err):
-		case nil:
-			if info.IsRegular() {
-				pod.Spec.Volumes = append(pod.Spec.Volumes,
-					v1.Volume{
-						Name: "snaphot-restore",
-						VolumeSource: v1.VolumeSource{
-							HostPath: &v1.HostPathVolumeSource{
-								Path: filepath.Dir(etcdSnapshotFile),
-								Type: &hostPathFileType,
-							},
-						},
-					},
-				)
+		initialClusterState = "existing"
 
-				pod.Spec.InitContainers = append(pod.Spec.InitContainers,
-					createRestoreContainerSpec(),
-				)
-			}
-		default:
-			return err
-		}
+		pod.Spec.Volumes = append(pod.Spec.Volumes,
+			v1.Volume{
+				Name: "snaphot-restore",
+				VolumeSource: v1.VolumeSource{
+					HostPath: &v1.HostPathVolumeSource{
+						Path: filepath.Dir(etcdSnapshotFile),
+						Type: &hostPathFileType,
+					},
+				},
+			},
+		)
+
+		pod.Spec.InitContainers = append(pod.Spec.InitContainers,
+			v1.Container{
+				Name:  restoreContainerName,
+				Image: etcdImage,
+				Env: []v1.EnvVar{
+					{
+						Name:  "ETCDCTL_API",
+						Value: "3",
+					},
+				},
+				Command: strings.Split(fmt.Sprintf("etcdutl snapshot restore %[1]s"+
+					" --name %[2]s"+
+					" --initial-cluster %[3]s"+
+					" --initial-cluster-token %[4]s"+
+					" --initial-advertise-peer-urls %[5]s"+
+					" --data-dir %[6]s",
+					etcdSnapshotFile, name, initialCluster, initialClusterToken, initialAdvertisePeerURLs, dbFile), " "),
+				VolumeMounts: []v1.VolumeMount{
+					{
+						Name:      "db",
+						MountPath: filepath.Dir(dbFile),
+					},
+					{
+						Name:      "snaphot-restore",
+						MountPath: etcdSnapshotFile,
+					},
+				},
+			},
+		)
 	}
+
+	pod.Spec.Containers = append(pod.Spec.Containers,
+		v1.Container{
+			Name:  etcdContainerName,
+			Image: etcdImage,
+			Env: []v1.EnvVar{
+				{
+					Name:  "ETCD_NAME",
+					Value: name,
+				},
+				{
+					Name:  "ETCD_DATA_DIR",
+					Value: dbFile,
+				},
+				{
+					Name:  "ETCD_INITIAL_CLUSTER",
+					Value: initialCluster,
+				},
+				{
+					Name:  "ETCD_INITIAL_CLUSTER_STATE",
+					Value: initialClusterState,
+				},
+				{
+					Name:  "ETCD_INITIAL_CLUSTER_TOKEN",
+					Value: initialClusterToken,
+				},
+				{
+					Name:  "ETCD_ENABLE_V2",
+					Value: "false",
+				},
+				// Listen
+				{
+					Name:  "ETCD_LISTEN_CLIENT_URLS",
+					Value: listenClientURLs,
+				},
+				{
+					Name:  "ETCD_ADVERTISE_CLIENT_URLS",
+					Value: advertiseClientURLs,
+				},
+				{
+					Name:  "ETCD_LISTEN_PEER_URLS",
+					Value: listenPeerURLs,
+				},
+				{
+					Name:  "ETCD_INITIAL_ADVERTISE_PEER_URLS",
+					Value: initialAdvertisePeerURLs,
+				},
+				// TLS
+				{
+					Name:  "ETCD_PEER_CLIENT_CERT_AUTH",
+					Value: "true",
+				},
+				{
+					Name:  "ETCD_CLIENT_CERT_AUTH",
+					Value: "true",
+				},
+				{
+					Name:  "ETCD_CERT_FILE",
+					Value: "/etc/etcd/cert.pem",
+				},
+				{
+					Name:  "ETCD_KEY_FILE",
+					Value: "/etc/etcd/key.pem",
+				},
+				{
+					Name:  "ETCD_TRUSTED_CA_FILE",
+					Value: "/etc/etcd/ca.pem",
+				},
+				{
+					Name:  "ETCD_PEER_CERT_FILE",
+					Value: "/etc/etcd/peer-cert.pem",
+				},
+				{
+					Name:  "ETCD_PEER_KEY_FILE",
+					Value: "/etc/etcd/peer-key.pem",
+				},
+				{
+					Name:  "ETCD_PEER_TRUSTED_CA_FILE",
+					Value: "/etc/etcd/peer-ca.pem",
+				},
+				{
+					Name:  "ETCD_STRICT_RECONFIG_CHECK",
+					Value: "true",
+				},
+			},
+			VolumeMounts: []v1.VolumeMount{
+				{
+					Name:      "cert-file",
+					MountPath: "/etc/etcd/cert.pem",
+					ReadOnly:  true,
+				},
+				{
+					Name:      "key-file",
+					MountPath: "/etc/etcd/key.pem",
+					ReadOnly:  true,
+				},
+				{
+					Name:      "trusted-ca-file",
+					MountPath: "/etc/etcd/ca.pem",
+					ReadOnly:  true,
+				},
+				{
+					Name:      "peer-cert-file",
+					MountPath: "/etc/etcd/peer-cert.pem",
+					ReadOnly:  true,
+				},
+				{
+					Name:      "peer-key-file",
+					MountPath: "/etc/etcd/peer-key.pem",
+					ReadOnly:  true,
+				},
+				{
+					Name:      "peer-trusted-ca-file",
+					MountPath: "/etc/etcd/peer-ca.pem",
+					ReadOnly:  true,
+				},
+				{
+					Name:      "db",
+					MountPath: filepath.Dir(dbFile),
+				},
+			},
+		},
+	)
 
 	manifest, err := json.MarshalIndent(pod, "", "  ")
 	if err != nil {

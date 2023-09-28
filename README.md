@@ -20,8 +20,6 @@ There is no cleanup of etcd data on recovery steps which require removing old da
   - If a conflicting old member is found in the cluster, remove it using etcd API.
   - Add missing member using etcd API.
   
-![etcd-wrapper](images/etcd-wrapper.png)
-
 - Periodic snapshot sent to S3 bucket.
 
 ### Sample etcd-wrapper deployed as a static pod
