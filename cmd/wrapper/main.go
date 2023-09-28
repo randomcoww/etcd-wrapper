@@ -16,30 +16,48 @@ func main() {
 	}
 
 	for {
-		err = v.UpdateFromList()
-		if err != nil {
+		select {
+		case d := <-podRestartWait:
+			time.Sleep(d)
 
-		}
-
-		err = v.UpdateFromStatus()
-		if err != nil {
-
-		}
-
-		
-
-
-		// local member is running?
-		if v.MemberSelf.Healthy {
-			if v.HasSplitBrain() {
-				// restart as existing
+		case time.Tick():
+			err = v.SyncStatus()
+			if err != nil {
+				panic(err)
 			}
-			// do nothing
-		} else {
+			if v.ClusterID == nil {
+				// no cluster ID found
+				// run restore
+				if validateSnapShot() {
+					v.WritePodManifest("existing", true)
+				} else {
+					v.WritePodManifest("new", false)
+				}
+				podRestartWait <- 2*time.Minute
+				break
+			}
 
+			if !v.Healthy {
+				if validateSnapShot() {
+					v.WritePodManifest("existing", true)
+				} else {
+					v.WritePodManifest("new", false)
+				}
+				podRestartWait <- 2*time.Minute
+				break
+			}
 
-			// check if rest of cluster is healthy
-			// start as existing with no restore
+			if v.MemberSelf.ClusterID != v.ClusterID {
+				if v.MemberSelf.MemberIDFromCluster != v.MemberSelf.MemberID {
+					// do add remove
+					err := v.ReplaceMember()
+					if err != nil {
+
+					}
+				}
+				v.WritePodManifest("existing", false)
+			}
+
 		}
 	}
 }

@@ -19,9 +19,9 @@ const (
 )
 
 func WriteManifest(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, peerTrustedCAFile, initialAdvertisePeerURLs,
-	listenPeerURLs, advertiseClientURLs, listenClientURLs, initialClusterToken, initialCluster string,
+	listenPeerURLs, advertiseClientURLs, listenClientURLs, initialClusterToken, initialCluster, initialClusterState string,
 	etcdImage, etcdPodName, etcdPodNamespace, etcdSnapshotFile, etcdPodManifestFile string,
-	initialClusterState string, runRestore bool, memberAnnotation uint64) error {
+	runRestore bool, memberAnnotation uint64) error {
 
 	var priority int32 = 2000001000
 	hostPathFileType := v1.HostPathFile
@@ -113,8 +113,6 @@ func WriteManifest(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKey
 
 	// Run recovery for existing clusters
 	if runRestore {
-		initialClusterState = "existing"
-
 		pod.Spec.Volumes = append(pod.Spec.Volumes,
 			v1.Volume{
 				Name: "snaphot-restore",
