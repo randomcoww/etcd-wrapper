@@ -28,21 +28,13 @@ func main() {
 			if v.ClusterID == nil {
 				// no cluster ID found
 				// run restore
-				if validateSnapShot() {
-					v.WritePodManifest("existing", true)
-				} else {
-					v.WritePodManifest("new", false)
-				}
+				v.StartEtcdPod(true)
 				podRestartWait <- 2*time.Minute
 				break
 			}
 
 			if !v.Healthy {
-				if validateSnapShot() {
-					v.WritePodManifest("existing", true)
-				} else {
-					v.WritePodManifest("new", false)
-				}
+				v.StartEtcdPod(true)
 				podRestartWait <- 2*time.Minute
 				break
 			}
@@ -52,12 +44,22 @@ func main() {
 					// do add remove
 					err := v.ReplaceMember()
 					if err != nil {
-
+						v.StartEtcdPod(true)
+						podRestartWait <- 2*time.Minute
+						break
 					}
+					v.StartEtcdPod(false)
+					podRestartWait <- 2*time.Minute
+					break
 				}
-				v.WritePodManifest("existing", false)
+
+				// this should never happen
+				v.StartEtcdPod(true)
+				podRestartWait <- 2*time.Minute
+				break
 			}
 
+			// handle backup
 		}
 	}
 }

@@ -22,12 +22,14 @@ type Member struct {
 
 type Status struct {
 	ClusterID        *uint64
+	LeaderID        *uint64
+	BackupMemberID *uint64
 	Revision        *uint64
 	MemberMap    map[string]*Member
 	MemberPeerMap    map[string]*Member
 	MemberClientMap  map[string]*Member
-	Members []*Member
 	MemberSelf       *Member
+	Members []*Member
 	MembersHealthy []*Member
 	ClientTLSConfig  *tls.Config
 	Healthy bool
@@ -236,12 +238,28 @@ func (v *Status) SyncStatus() error {
 	}
 }
 
+func (v *Status) PickBackupMember() error {
+	if !v.Healthy {
+		return fmt.Errorf("cluster is unhealthy")
+	}
+
+	v.BackupMemberID = nil
+
+	for _, m := range v.MembersHealthy {
+		if m.Revision < v.Revision {
+			continue
+			
+		}
+		if v.BackupMemberID == nil || *m.MemberID < *v.BackupMemberID {
+			v.BackupMemberID = m.MemberID
+		}
+	}
+}
+
 func (v *Status) ReplaceMember(m *Member) error {
 	var clientsHealhty []string
-	for _, m := range members {
-		if m.ClusterID == v.ClusterID {
-			clientsHealhty = append(clientsHealhty, m.ClientURL)
-		}
+	for _, m := range v.MembersHealthy {
+		clientsHealhty = append(clientsHealhty, m.ClientURL)
 	}
 
 	if m.MemberIDFromCluster != m.MemberID {
@@ -261,4 +279,17 @@ func (v *Status) ReplaceMember(m *Member) error {
 		m.MemberIDFromCluster = &memberID
 	}
 	return nil
+}
+
+func (v *Status) StartEtcdPod(runRestore bool) {
+	if runRestore {
+		err := v.RestoreSnapshot(v.S3BackupResource, v.EtcdSnapshotFile)
+		if err != nil {
+			v.WritePodManifest("new", false)
+			return
+		}
+		v.WritePodManifest("existing", true)
+		return
+	}
+	v.WritePodManifest("existing", false)
 }
