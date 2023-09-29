@@ -181,7 +181,9 @@ func (v *Status) SyncStatus() error {
 
 	clusterIDCounts := make(map[uint64]int)
 	var count int
-	for resp := range respCh {
+
+	for {
+		resp := <- respCh
 		count++
 		m, ok := v.MemberClientMap[resp.Endpoint]
 		if !ok || m == nil || resp.Err != nil {
