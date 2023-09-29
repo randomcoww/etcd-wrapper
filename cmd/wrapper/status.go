@@ -10,30 +10,32 @@ import (
 )
 
 type Member struct {
-	Name      string
-	PeerURL   string
-	ClientURL string
-	MemberID        *uint64
+	Name                string
+	PeerURL             string
+	ClientURL           string
+	MemberID            *uint64
 	MemberIDFromCluster *uint64
-	Revision  *int64
-	ClusterID *uint64
-	LeaderID  *uint64
+	Revision            *int64
+	ClusterID           *uint64
+	LeaderID            *uint64
 }
 
 type Status struct {
 	ClusterID        *uint64
-	LeaderID        *uint64
-	BackupMemberID *uint64
-	Revision        *uint64
-	MemberMap    map[string]*Member
+	LeaderID         *uint64
+	BackupMemberID   *uint64
+	Revision         *uint64
+	MemberMap        map[string]*Member
 	MemberPeerMap    map[string]*Member
 	MemberClientMap  map[string]*Member
 	MemberSelf       *Member
-	Members []*Member
-	MembersHealthy []*Member
+	Members          []*Member
+	MembersHealthy   []*Member
+	Healthy          bool
 	ClientTLSConfig  *tls.Config
-	Healthy bool
-	WritePodManifest func(string, bool, uint64) error
+	S3BackupResource string
+	EtcdSnapshotFile string
+	writePodManifest func(string, bool, uint64) error
 }
 
 func newStatus() (*Status, error) {
@@ -88,6 +90,9 @@ func newStatus() (*Status, error) {
 		return err
 	}
 
+	status.S3BackupResource = s3BackupResource
+	status.EtcdSnapshotFile = etcdSnapshotFile
+
 	status.MemberMap = make(map[string]*Member)
 	status.MemberPeerMap = make(map[string]*Member)
 	status.MemberClientMap = make(map[string]*Member)
@@ -127,16 +132,17 @@ func newStatus() (*Status, error) {
 		return fmt.Errorf("Member config not found for self (%s)", name)
 	}
 
-	status.WritePodManifest = func(initialClusterState string, runRestore bool) {
-		var id uint64
+	status.writePodManifest = func(initialClusterState string, runRestore bool) {
+		var memberID uint64
 		if status.MemberSelf.id != nil {
-			id = *status.MemberSelf.id
+			memberID = *status.MemberSelf.id
 		}
+
 		podspec.WriteManifest(
 			name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, peerTrustedCAFile, initialAdvertisePeerURLs,
 			listenPeerURLs, advertiseClientURLs, listenClientURLs, initialClusterToken, initialCluster,
 			etcdImage, etcdPodName, etcdPodNamespace, etcdSnapshotFile, etcdPodManifestFile,
-			initialClusterState, runRestore, id,
+			initialClusterState, runRestore, memberID,
 		)
 		return nil
 	}
@@ -146,6 +152,7 @@ func newStatus() (*Status, error) {
 func (v *Status) SyncStatus() error {
 	v.MembersHealty = []*Members
 	v.Healthy = false
+	v.BackupMemberID = nil
 
 	var clients []string
 	for _, m := range v.Members {
@@ -233,23 +240,18 @@ func (v *Status) SyncStatus() error {
 	}
 
 	// check health status
-	if err := v.HealthCheck(clientsHealhty); err == nil {
-		v.Healthy = true
-	}
-}
-
-func (v *Status) PickBackupMember() error {
-	if !v.Healthy {
-		return fmt.Errorf("cluster is unhealthy")
+	if err := v.HealthCheck(clientsHealhty); err != nil {
+		return nil
 	}
 
-	v.BackupMemberID = nil
+	v.Healthy = true
 
+	// pick backup member
 	for _, m := range v.MembersHealthy {
 		if m.Revision < v.Revision {
 			continue
-			
 		}
+
 		if v.BackupMemberID == nil || *m.MemberID < *v.BackupMemberID {
 			v.BackupMemberID = m.MemberID
 		}
@@ -283,7 +285,7 @@ func (v *Status) ReplaceMember(m *Member) error {
 
 func (v *Status) StartEtcdPod(runRestore bool) {
 	if runRestore {
-		err := v.RestoreSnapshot(v.S3BackupResource, v.EtcdSnapshotFile)
+		err := snapshot.Restore(v.S3BackupResource, v.EtcdSnapshotFile)
 		if err != nil {
 			v.WritePodManifest("new", false)
 			return

@@ -59,6 +59,19 @@ func AddMember(endpoints, peerURLs []string, tlsConfig *tls.Config) (*clientv3.M
 	return resp, err
 }
 
+func RemoveMember(endpoints []string, tlsConfig *tls.Config, id uint64) error {
+	ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultRequestTimeout)
+	client, err := newClient(ctx, endpoints, tlsConfig)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	_, err = client.Cluster.MemberRemove(ctx, id)
+	cancel()
+	return err
+}
+
 func ListMembers(endpoints []string, tlsConfig *tls.Config) (*clientv3.MemberListResponse, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultRequestTimeout)
 	client, err := newClient(ctx, endpoints, tlsConfig)
@@ -71,19 +84,6 @@ func ListMembers(endpoints []string, tlsConfig *tls.Config) (*clientv3.MemberLis
 	cancel()
 	client.Close()
 	return resp, err
-}
-
-func RemoveMember(endpoints []string, tlsConfig *tls.Config, id uint64) error {
-	ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultRequestTimeout)
-	client, err := newClient(ctx, endpoints, tlsConfig)
-	if err != nil {
-		return err
-	}
-	defer client.Close()
-
-	_, err = client.Cluster.MemberRemove(ctx, id)
-	cancel()
-	return err
 }
 
 func HealthCheck(endpoints []string, tlsConfig *tls.Config) error {

@@ -15,12 +15,17 @@ func main() {
 		panic(err)
 	}
 
+	var waitCount int
+
 	for {
 		select {
-		case d := <-podRestartWait:
-			time.Sleep(d)
 
-		case time.Tick():
+		case time.Tick(6 * time.Second):
+			if waitCount > 0 {
+				waitCount--
+				continue
+			}
+
 			err = v.SyncStatus()
 			if err != nil {
 				panic(err)
@@ -29,36 +34,36 @@ func main() {
 				// no cluster ID found
 				// run restore
 				v.StartEtcdPod(true)
-				podRestartWait <- 2*time.Minute
+				// podRestartWait <- 2 * time.Minute
+				waitCount = 10
 				break
 			}
 
 			if !v.Healthy {
 				v.StartEtcdPod(true)
-				podRestartWait <- 2*time.Minute
+				waitCount = 10
 				break
 			}
 
 			if v.MemberSelf.ClusterID != v.ClusterID {
 				if v.MemberSelf.MemberIDFromCluster != v.MemberSelf.MemberID {
 					// do add remove
-					err := v.ReplaceMember()
+					err := v.ReplaceMember(v.MemberSelf)
 					if err != nil {
 						v.StartEtcdPod(true)
-						podRestartWait <- 2*time.Minute
+						waitCount = 10
 						break
 					}
 					v.StartEtcdPod(false)
-					podRestartWait <- 2*time.Minute
+					waitCount = 10
 					break
 				}
 
 				// this should never happen
 				v.StartEtcdPod(true)
-				podRestartWait <- 2*time.Minute
+				waitCount = 10
 				break
 			}
-
 			// handle backup
 		}
 	}
