@@ -49,7 +49,7 @@ spec:
       echo -e "$client_cert" > ${pki_path}/client-cert.pem && \
       echo -e "$client_key" > ${pki_path}/client-key.pem
     volumeMounts:
-    - name: pki
+    - name: pki-volume
       mountPath: ${pki_path}
   containers:
   - name: etcd-wrapper

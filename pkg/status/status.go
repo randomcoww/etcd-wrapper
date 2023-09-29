@@ -161,8 +161,6 @@ func New() (*Status, error) {
 			initialClusterState, runRestore, memberID,
 		)
 	}
-
-	fmt.Printf("\n%+v\n", status)
 	return status, nil
 }
 
@@ -182,7 +180,9 @@ func (v *Status) SyncStatus() error {
 	}
 
 	clusterIDCounts := make(map[uint64]int)
+	var count int
 	for resp := range respCh {
+		count++
 		m, ok := v.MemberClientMap[resp.Endpoint]
 		if !ok || m == nil || resp.Err != nil {
 			continue
@@ -208,6 +208,11 @@ func (v *Status) SyncStatus() error {
 		m.ClusterID = &clusterID
 		m.LeaderID = &leaderID
 		m.Revision = &revision
+
+		if count >= len(clients) {
+			close(respCh)
+			break
+		}
 	}
 
 	if v.ClusterID == nil {
@@ -282,22 +287,20 @@ func (v *Status) ReplaceMember(m *Member) error {
 		clientsHealhty = append(clientsHealhty, m.ClientURL)
 	}
 
-	if m.MemberIDFromCluster != m.MemberID {
-		err := etcdutil.RemoveMember(clientsHealhty, v.ClientTLSConfig, *m.MemberIDFromCluster)
-		if err != nil {
-			return err
-		}
-		resp, err := etcdutil.AddMember(clientsHealhty, v.ListenPeerURLs, v.ClientTLSConfig)
-		if err != nil {
-			return err
-		}
-		memberID := resp.Member.ID
-		if memberID == 0 {
-			return fmt.Errorf("add member returned member ID 0")
-		}
-		m.MemberID = &memberID
-		m.MemberIDFromCluster = &memberID
+	err := etcdutil.RemoveMember(clientsHealhty, v.ClientTLSConfig, *m.MemberIDFromCluster)
+	if err != nil {
+		return err
 	}
+	resp, err := etcdutil.AddMember(clientsHealhty, v.ListenPeerURLs, v.ClientTLSConfig)
+	if err != nil {
+		return err
+	}
+	memberID := resp.Member.ID
+	if memberID == 0 {
+		return fmt.Errorf("add member returned member ID 0")
+	}
+	m.MemberID = &memberID
+	m.MemberIDFromCluster = &memberID
 	return nil
 }
 

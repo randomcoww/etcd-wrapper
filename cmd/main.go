@@ -3,92 +3,98 @@ package main
 import (
 	"github.com/randomcoww/etcd-wrapper/pkg/status"
 	"time"
+	"log"
 )
 
 func main() {
-	status, err := status.New()
+	v, err := status.New()
 	if err != nil {
 		panic(err)
 	}
 
-	sync := make(chan struct{})
-	syncDone := make(chan struct{})
+	waitDuration := 6 * time.Second
+	for {
+		log.Printf("wait %v", waitDuration)
+		time.Sleep(waitDuration)
 
-	go func() {
-		for {
-			select {
-			case <-sync:
-				err = status.SyncStatus()
-				if err != nil {
-					panic(err)
-				}
-				syncDone <- struct{}{}
-			}
+		err = v.SyncStatus()
+		if err != nil {
+			panic(err)
 		}
-	}()
 
-	go func() {
-		for {
-			sync <- struct{}{}
-			<-syncDone
+		log.Printf("status: %+v", v)
 
-			if status.ClusterID == nil {
-				// no cluster ID found
-				// run restore
-				err = status.WritePodManifest(true)
-				if err != nil {
+		if v.ClusterID == nil {
+			log.Printf("No cluster found. Write manifest for new cluster")
 
-				}
-				time.Sleep(1 * time.Minute)
-				continue
-			}
-
-			if !status.Healthy {
-				err = status.WritePodManifest(true)
-				if err != nil {
-
-				}
-				time.Sleep(1 * time.Minute)
-				continue
-			}
-
-			if status.ClusterID != status.MemberSelf.ClusterID {
-				// do add remove
-				err = status.ReplaceMember(status.MemberSelf)
-				if err != nil {
-					err = status.WritePodManifest(true)
-					if err != nil {
-
-					}
-					time.Sleep(1 * time.Minute)
-					continue
-				}
-				err = status.WritePodManifest(false)
-				if err != nil {
-
-				}
-				time.Sleep(1 * time.Minute)
-				continue
-			}
-
-			time.Sleep(6 * time.Second)
-		}
-	}()
-
-	go func() {
-		for {
-			sync <- struct{}{}
-			<-syncDone
-
-			err = status.BackupSnapshot()
+			err = v.WritePodManifest(true)
 			if err != nil {
-
+				log.Fatalf("failed to write pod manifest: %v", err)
 			}
-			time.Sleep(12 * time.Minute)
+			waitDuration = 1 * time.Minute
+			continue
 		}
-	}()
 
-	<-make(chan struct{}, 1)
+		if !v.Healthy {
+			log.Printf("Cluster unhealthy. Write manifest for new cluster")
+
+			err = v.WritePodManifest(true)
+			if err != nil {
+				log.Fatalf("failed to write pod manifest: %v", err)
+			}
+			waitDuration = 1 * time.Minute
+			continue
+		}
+
+		if v.ClusterID != v.MemberSelf.ClusterID {
+			log.Printf("Possible split brain. Write manifest for new cluster")
+
+			// do add remove
+			err = v.ReplaceMember(v.MemberSelf)
+			log.Printf("Replacing existing member: %v", v.MemberSelf.MemberIDFromCluster)
+			if err != nil {
+				log.Fatalf("Failed to replace existing member.")
+
+				err = v.WritePodManifest(true)
+				if err != nil {
+					log.Fatalf("failed to write pod manifest: %v", err)
+				}
+				waitDuration = 1 * time.Minute
+				continue
+			}
+			log.Printf("Got new member ID: %v", v.MemberSelf.MemberIDFromCluster)
+			err = v.WritePodManifest(false)
+			if err != nil {
+				log.Fatalf("failed to write pod manifest: %v", err)
+			}
+			waitDuration = 1 * time.Minute
+			continue
+		}
+
+		if v.MemberSelf.MemberIDFromCluster != v.MemberSelf.MemberID {
+			log.Printf("Join existing cluster.")
+
+			err = v.ReplaceMember(v.MemberSelf)
+			log.Printf("Replacing existing member: %v", v.MemberSelf.MemberIDFromCluster)
+			if err != nil {
+				log.Fatalf("Failed to replace existing member.")
+
+				err = v.WritePodManifest(true)
+				if err != nil {
+					log.Fatalf("failed to write pod manifest: %v", err)
+				}
+				waitDuration = 1 * time.Minute
+				continue
+			}
+			log.Printf("Got new member ID: %v", v.MemberSelf.MemberIDFromCluster)
+			err = v.WritePodManifest(false)
+			if err != nil {
+				log.Fatalf("failed to write pod manifest: %v", err)
+			}
+		}
+
+		waitDuration = 6 * time.Second
+	}
 }
 
 // func main() {
@@ -158,7 +164,7 @@ func main() {
 // 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 // 	client, err := newClient(ctx, endpoints, tlsConfig)
 // 	if err != nil {
-// 		return nil, fmt.Errorf("list members failed: creating etcd client failed: %v", err)
+// 		return nil, fmt.Fatalf("list members failed: creating etcd client failed: %v", err)
 // 	}
 // 	defer client.Close()
 
