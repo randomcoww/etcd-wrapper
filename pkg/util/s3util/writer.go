@@ -6,7 +6,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/aws/aws-sdk-go/service/s3/s3manager"
-	"github.com/randomcoww/etcd-wrapper/pkg/backup/util"
 	"io"
 )
 
@@ -26,7 +25,7 @@ func NewWriter(s3 *s3.S3) Writer {
 
 // Write writes the backup file to the given s3 path, "bucket/key".
 func (v *writer) Write(ctx context.Context, path string, r io.Reader) (int64, error) {
-	buket, key, err := parseBucketAndKey(path)
+	bucket, key, err := parseBucketAndKey(path)
 	if err != nil {
 		return 0, err
 	}

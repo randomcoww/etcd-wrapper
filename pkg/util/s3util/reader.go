@@ -1,10 +1,8 @@
 package s3util
 
 import (
-	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/randomcoww/etcd-wrapper/pkg/backup/util"
 	"io"
 )
 
@@ -17,7 +15,7 @@ type Reader interface {
 }
 
 func NewReader(s3 *s3.S3) Reader {
-	return &Reader{s3}
+	return &reader{s3}
 }
 
 // Open opens the file on path where path must be in the format "bucket/key"

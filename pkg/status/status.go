@@ -1,11 +1,18 @@
-package wrapper
+package status
 
 import (
-	"github.com/randomcoww/etcd-wrapper/pkg/config"
+	"bytes"
+	"crypto/tls"
+	"encoding/json"
+	"flag"
+	"fmt"
+	"github.com/randomcoww/etcd-wrapper/pkg/podspec"
+	"github.com/randomcoww/etcd-wrapper/pkg/snapshot"
+	"github.com/randomcoww/etcd-wrapper/pkg/util"
 	"github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
-	"github.com/sirupsen/logrus"
 	"go.etcd.io/etcd/pkg/transport"
-	"os"
+	"k8s.io/api/core/v1"
+	"strings"
 	"time"
 )
 
@@ -21,24 +28,26 @@ type Member struct {
 }
 
 type Status struct {
-	ClusterID        *uint64
-	LeaderID         *uint64
-	BackupMemberID   *uint64
-	Revision         *uint64
-	MemberMap        map[string]*Member
-	MemberPeerMap    map[string]*Member
-	MemberClientMap  map[string]*Member
-	MemberSelf       *Member
-	Members          []*Member
-	MembersHealthy   []*Member
-	Healthy          bool
-	ClientTLSConfig  *tls.Config
-	S3BackupResource string
-	EtcdSnapshotFile string
-	writePodManifest func(string, bool, uint64) error
+	ClusterID           *uint64
+	LeaderID            *uint64
+	BackupMemberID      *uint64
+	Revision            *int64
+	MemberMap           map[string]*Member
+	MemberPeerMap       map[string]*Member
+	MemberClientMap     map[string]*Member
+	MemberSelf          *Member
+	Members             []*Member
+	MembersHealthy      []*Member
+	Healthy             bool
+	ClientTLSConfig     *tls.Config
+	S3BackupResource    string
+	EtcdSnapshotFile    string
+	EtcdPodManifestFile string
+	PodSpec             func(string, bool) *v1.Pod
+	ListenPeerURLs      []string
 }
 
-func newStatus() (*Status, error) {
+func New() (*Status, error) {
 	status := &Status{}
 	var err error
 
@@ -59,7 +68,7 @@ func newStatus() (*Status, error) {
 	flag.StringVar(&initialCluster, "initial-cluster", "", "Initial cluster configuration for bootstrapping.")
 
 	// pod manifest args
-	var etcdImage, etcdPodName, etcdPodNamespace, etcdSnapshotPath, etcdPodManifestPath string
+	var etcdImage, etcdPodName, etcdPodNamespace, etcdSnapshotFile, etcdPodManifestFile string
 	flag.StringVar(&etcdImage, "etcd-image", "", "Etcd container image.")
 	flag.StringVar(&etcdPodName, "etcd-pod-name", "etcd", "Name of etcd pod.")
 	flag.StringVar(&etcdPodNamespace, "etcd-pod-namespace", "kube-system", "Namespace to launch etcd pod.")
@@ -87,22 +96,24 @@ func newStatus() (*Status, error) {
 	}
 	status.ClientTLSConfig, err = tlsInfo.ClientConfig()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	status.S3BackupResource = s3BackupResource
 	status.EtcdSnapshotFile = etcdSnapshotFile
+	status.EtcdPodManifestFile = etcdPodManifestFile
 
 	status.MemberMap = make(map[string]*Member)
 	status.MemberPeerMap = make(map[string]*Member)
 	status.MemberClientMap = make(map[string]*Member)
 
+	status.ListenPeerURLs = strings.Split(listenPeerURLs, ",")
+
 	for _, n := range strings.Split(initialCluster, ",") {
-		node = strings.Split(n, "=")
-		m = &member{
+		node := strings.Split(n, "=")
+		m := &Member{
 			Name:    node[0],
 			PeerURL: node[1],
-			Healthy: false,
 		}
 		status.MemberMap[m.Name] = m
 		status.MemberPeerMap[m.PeerURL] = m
@@ -112,8 +123,8 @@ func newStatus() (*Status, error) {
 		}
 	}
 
-	for _, client := range strings.Split(initialClusterClients, ",") {
-		node = strings.Split(n, "=")
+	for _, n := range strings.Split(initialClusterClients, ",") {
+		node := strings.Split(n, "=")
 		name := node[0]
 		client := node[1]
 		m, ok := status.MemberMap[name]
@@ -129,28 +140,27 @@ func newStatus() (*Status, error) {
 	}
 
 	if status.MemberSelf == nil {
-		return fmt.Errorf("Member config not found for self (%s)", name)
+		return nil, fmt.Errorf("Member config not found for self (%s)", name)
 	}
 
-	status.writePodManifest = func(initialClusterState string, runRestore bool) {
+	status.PodSpec = func(initialClusterState string, runRestore bool) *v1.Pod {
 		var memberID uint64
-		if status.MemberSelf.id != nil {
-			memberID = *status.MemberSelf.id
+		if status.MemberSelf.MemberID != nil {
+			memberID = *status.MemberSelf.MemberID
 		}
 
-		podspec.WriteManifest(
+		return podspec.Create(
 			name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, peerTrustedCAFile, initialAdvertisePeerURLs,
 			listenPeerURLs, advertiseClientURLs, listenClientURLs, initialClusterToken, initialCluster,
 			etcdImage, etcdPodName, etcdPodNamespace, etcdSnapshotFile, etcdPodManifestFile,
 			initialClusterState, runRestore, memberID,
 		)
-		return nil
 	}
-	return status
+	return status, nil
 }
 
 func (v *Status) SyncStatus() error {
-	v.MembersHealty = []*Members
+	v.MembersHealthy = []*Member{}
 	v.Healthy = false
 	v.BackupMemberID = nil
 
@@ -159,22 +169,22 @@ func (v *Status) SyncStatus() error {
 		clients = append(clients, m.ClientURL)
 	}
 
-	respCh, err := v.GetStatus(clients, v.ClientTLSConfig)
+	respCh, err := etcdutil.Status(clients, v.ClientTLSConfig)
 	if err != nil {
 		return err
 	}
 
 	clusterIDCounts := make(map[uint64]int)
-	for i, resp := range <-respCh {
-		m, ok := v.MemberClientMap[resp.endpoint]
-		if !ok || m == nil || resp.err != nil {
+	for resp := range respCh {
+		m, ok := v.MemberClientMap[resp.Endpoint]
+		if !ok || m == nil || resp.Err != nil {
 			continue
 		}
 
-		memberID := resp.status.ResponseHeader.MemberID
-		clusterID := resp.status.ResponseHeader.ClusterID
-		leaderID := resp.status.Leader
-		revision := resp.status.ResponseHeader.Revision
+		// memberID := resp.Status.Header.MemberId
+		clusterID := resp.Status.Header.ClusterId
+		leaderID := resp.Status.Leader
+		revision := resp.Status.Header.Revision
 
 		if clusterID == 0 {
 			continue
@@ -194,19 +204,19 @@ func (v *Status) SyncStatus() error {
 	}
 
 	if v.ClusterID == nil {
-		return
+		return nil
 	}
 
 	var clientsHealhty []string
-	for _, m := range members {
+	for _, m := range v.Members {
 		if m.ClusterID == v.ClusterID {
-			v.MembersHealty = append(v.MembersHealty, m)
+			v.MembersHealthy = append(v.MembersHealthy, m)
 			clientsHealhty = append(clientsHealhty, m.ClientURL)
 		}
 	}
 
 	// run a list on healthy members to get non existent members to remove
-	members, err := v.ListMembers(clientsHealhty)
+	members, err := etcdutil.ListMembers(clientsHealhty, v.ClientTLSConfig)
 	if err != nil {
 		return err
 	}
@@ -219,7 +229,7 @@ func (v *Status) SyncStatus() error {
 		var ok bool
 
 		for _, peer := range member.PeerURLs {
-			var id uint64
+			var memberID uint64
 			if m, ok = v.MemberPeerMap[peer]; ok {
 				memberID = member.ID
 				if memberID != 0 {
@@ -240,7 +250,7 @@ func (v *Status) SyncStatus() error {
 	}
 
 	// check health status
-	if err := v.HealthCheck(clientsHealhty); err != nil {
+	if err := etcdutil.HealthCheck(clientsHealhty, v.ClientTLSConfig); err != nil {
 		return nil
 	}
 
@@ -248,7 +258,7 @@ func (v *Status) SyncStatus() error {
 
 	// pick backup member
 	for _, m := range v.MembersHealthy {
-		if m.Revision < v.Revision {
+		if *m.Revision < *v.Revision {
 			continue
 		}
 
@@ -256,6 +266,7 @@ func (v *Status) SyncStatus() error {
 			v.BackupMemberID = m.MemberID
 		}
 	}
+	return nil
 }
 
 func (v *Status) ReplaceMember(m *Member) error {
@@ -265,15 +276,15 @@ func (v *Status) ReplaceMember(m *Member) error {
 	}
 
 	if m.MemberIDFromCluster != m.MemberID {
-		err := v.RemoveMember(clientsHealhty, v.ClientTLSConfig)
+		err := etcdutil.RemoveMember(clientsHealhty, v.ClientTLSConfig, *m.MemberIDFromCluster)
 		if err != nil {
 			return err
 		}
-		resp, err := v.AddMember(clientsHealhty, v.ClientTLSConfig)
+		resp, err := etcdutil.AddMember(clientsHealhty, v.ListenPeerURLs, v.ClientTLSConfig)
 		if err != nil {
 			return err
 		}
-		memberID = resp.Member.ID
+		memberID := resp.Member.ID
 		if memberID == 0 {
 			return fmt.Errorf("add member returned member ID 0")
 		}
@@ -283,15 +294,33 @@ func (v *Status) ReplaceMember(m *Member) error {
 	return nil
 }
 
-func (v *Status) StartEtcdPod(runRestore bool) {
+func (v *Status) WritePodManifest(runRestore bool) error {
+	var pod *v1.Pod
 	if runRestore {
 		err := snapshot.Restore(v.S3BackupResource, v.EtcdSnapshotFile)
 		if err != nil {
-			v.WritePodManifest("new", false)
-			return
+			pod = v.PodSpec("new", false)
+		} else {
+			pod = v.PodSpec("existing", true)
 		}
-		v.WritePodManifest("existing", true)
-		return
+	} else {
+		pod = v.PodSpec("existing", false)
 	}
-	v.WritePodManifest("existing", false)
+
+	manifest, err := json.MarshalIndent(pod, "", "  ")
+	if err != nil {
+		return err
+	}
+	return util.WriteFile(bytes.NewReader(manifest), v.EtcdPodManifestFile)
+}
+
+func (v *Status) BackupSnapshot() error {
+	if v.Healthy && v.BackupMemberID != nil && v.BackupMemberID == v.MemberSelf.MemberID {
+
+		err := snapshot.Backup(v.S3BackupResource)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }

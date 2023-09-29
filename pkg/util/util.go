@@ -6,9 +6,7 @@ import (
 	"path/filepath"
 )
 
-func WriteFile(rc io.ReadCloser, writePath string) error {
-	defer rc.Close()
-
+func WriteFile(rc io.Reader, writePath string) error {
 	err := os.MkdirAll(filepath.Dir(writePath), os.FileMode(0644))
 	if err != nil {
 		return err

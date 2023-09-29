@@ -1,13 +1,9 @@
 package podspec
 
 import (
-	"bytes"
-	"encoding/json"
 	"fmt"
-	"io"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"os"
 	"path/filepath"
 	"strings"
 )
@@ -18,10 +14,10 @@ const (
 	restoreContainerName string = "etcd-snap-restore"
 )
 
-func WriteManifest(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, peerTrustedCAFile, initialAdvertisePeerURLs,
-	listenPeerURLs, advertiseClientURLs, listenClientURLs, initialClusterToken, initialCluster, initialClusterState string,
+func Create(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, peerTrustedCAFile, initialAdvertisePeerURLs,
+	listenPeerURLs, advertiseClientURLs, listenClientURLs, initialClusterToken, initialCluster string,
 	etcdImage, etcdPodName, etcdPodNamespace, etcdSnapshotFile, etcdPodManifestFile string,
-	runRestore bool, memberAnnotation uint64) error {
+	initialClusterState string, runRestore bool, memberAnnotation uint64) *v1.Pod {
 
 	var priority int32 = 2000001000
 	hostPathFileType := v1.HostPathFile
@@ -38,11 +34,9 @@ func WriteManifest(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKey
 			},
 		},
 		Spec: v1.PodSpec{
-			HostNetwork:    true,
-			InitContainers: []v1.Container{},
-			Containers: []v1.Container{
-				etcdContainerSpec,
-			},
+			HostNetwork:       true,
+			InitContainers:    []v1.Container{},
+			Containers:        []v1.Container{},
 			PriorityClassName: "system-node-critical",
 			Priority:          &priority,
 			RestartPolicy:     v1.RestartPolicyAlways,
@@ -51,7 +45,7 @@ func WriteManifest(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKey
 					Name: "cert-file",
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
-							Path: m.CertFile,
+							Path: certFile,
 							Type: &hostPathFileType,
 						},
 					},
@@ -60,7 +54,7 @@ func WriteManifest(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKey
 					Name: "key-file",
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
-							Path: m.KeyFile,
+							Path: keyFile,
 							Type: &hostPathFileType,
 						},
 					},
@@ -69,7 +63,7 @@ func WriteManifest(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKey
 					Name: "trusted-ca-file",
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
-							Path: m.TrustedCAFile,
+							Path: trustedCAFile,
 							Type: &hostPathFileType,
 						},
 					},
@@ -78,7 +72,7 @@ func WriteManifest(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKey
 					Name: "peer-cert-file",
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
-							Path: m.PeerCertFile,
+							Path: peerCertFile,
 							Type: &hostPathFileType,
 						},
 					},
@@ -87,7 +81,7 @@ func WriteManifest(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKey
 					Name: "peer-key-file",
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
-							Path: m.PeerKeyFile,
+							Path: peerKeyFile,
 							Type: &hostPathFileType,
 						},
 					},
@@ -96,7 +90,7 @@ func WriteManifest(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKey
 					Name: "peer-trusted-ca-file",
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
-							Path: m.PeerTrustedCAFile,
+							Path: peerTrustedCAFile,
 							Type: &hostPathFileType,
 						},
 					},
@@ -279,9 +273,5 @@ func WriteManifest(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKey
 		},
 	)
 
-	manifest, err := json.MarshalIndent(pod, "", "  ")
-	if err != nil {
-		return err
-	}
-	return util.WriteFile(bytes.NewReader(manifest), etcdPodManifestFile)
+	return pod
 }

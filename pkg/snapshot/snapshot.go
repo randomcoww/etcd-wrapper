@@ -1,11 +1,12 @@
 package snapshot
 
 import (
-	"context"
+	// "context"
 	"fmt"
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/randomcoww/etcd-wrapper/pkg/s3util"
+	"github.com/randomcoww/etcd-wrapper/pkg/util/s3util"
 	"io"
 	"os"
 	"path/filepath"
@@ -13,14 +14,14 @@ import (
 
 func Restore(s3resource string, restoreFile string) error {
 	sess := session.Must(session.NewSession(&aws.Config{}))
-	reader := s3Util.NewReader(sess)
+	reader := s3util.NewReader(s3.New(sess))
 	readCloser, err := reader.Open(s3resource)
 	if err != nil {
 		return err
 	}
 	defer readCloser.Close()
 
-	err := os.MkdirAll(filepath.Dir(restoreFile), os.FileMode(0644))
+	err = os.MkdirAll(filepath.Dir(restoreFile), os.FileMode(0644))
 	if err != nil {
 		return err
 	}
@@ -36,7 +37,7 @@ func Restore(s3resource string, restoreFile string) error {
 		return err
 	}
 
-	info, err := os.Stat(f)
+	info, err := os.Stat(restoreFile)
 	if err != nil {
 		return err
 	}
@@ -48,16 +49,17 @@ func Restore(s3resource string, restoreFile string) error {
 }
 
 func Backup(s3resource string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultRequestTimeout)
-	readCloser, err := etcdcli.Snapshot(ctx)
-	if err != nil {
-		return err
-	}
-	defer readCloser.Close()
+	// ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultRequestTimeout)
+	// readCloser, err := etcdcli.Snapshot(ctx)
+	// if err != nil {
+	// 	return err
+	// }
+	// defer readCloser.Close()
 
-	sess := session.Must(session.NewSession(&aws.Config{}))
-	writer := s3Util.NewWriter(sess)
-	_, err := writer.Write(ctx, s3Resource, readCloser)
-	cancel()
-	return err
+	// sess := session.Must(session.NewSession(&aws.Config{}))
+	// writer := s3util.NewWriter(s3.New(sess))
+	// _, err := writer.Write(ctx, s3Resource, readCloser)
+	// cancel()
+	// return err
+	return nil
 }
