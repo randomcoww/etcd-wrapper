@@ -6,11 +6,15 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/randomcoww/etcd-wrapper/pkg/podspec"
-	"github.com/randomcoww/etcd-wrapper/pkg/snapshot"
 	"github.com/randomcoww/etcd-wrapper/pkg/util"
 	"github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
+	"github.com/randomcoww/etcd-wrapper/pkg/util/s3util"
 	"go.etcd.io/etcd/pkg/transport"
+	"io"
 	"k8s.io/api/core/v1"
 	"strings"
 	"time"
@@ -297,7 +301,7 @@ func (v *Status) ReplaceMember(m *Member) error {
 func (v *Status) WritePodManifest(runRestore bool) error {
 	var pod *v1.Pod
 	if runRestore {
-		err := snapshot.Restore(v.S3BackupResource, v.EtcdSnapshotFile)
+		err := v.RestoreSnapshot()
 		if err != nil {
 			pod = v.PodSpec("new", false)
 		} else {
@@ -311,16 +315,30 @@ func (v *Status) WritePodManifest(runRestore bool) error {
 	if err != nil {
 		return err
 	}
-	return util.WriteFile(bytes.NewReader(manifest), v.EtcdPodManifestFile)
+	return util.WriteFile(io.NopCloser(bytes.NewReader(manifest)), v.EtcdPodManifestFile)
 }
 
 func (v *Status) BackupSnapshot() error {
 	if v.Healthy && v.BackupMemberID != nil && v.BackupMemberID == v.MemberSelf.MemberID {
+		var clientsHealhty []string
+		for _, m := range v.MembersHealthy {
+			clientsHealhty = append(clientsHealhty, m.ClientURL)
+		}
 
-		err := snapshot.Backup(v.S3BackupResource)
+		sess := session.Must(session.NewSession(&aws.Config{}))
+		err := etcdutil.BackupSnapshot(clientsHealhty, v.S3BackupResource, s3util.NewWriter(s3.New(sess)), v.ClientTLSConfig)
 		if err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+func (v *Status) RestoreSnapshot() error {
+	sess := session.Must(session.NewSession(&aws.Config{}))
+	err := etcdutil.RestoreSnapshot(v.EtcdSnapshotFile, v.S3BackupResource, s3util.NewReader(s3.New(sess)))
+	if err != nil {
+		return err
 	}
 	return nil
 }

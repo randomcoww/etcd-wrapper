@@ -4,8 +4,11 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"github.com/randomcoww/etcd-wrapper/pkg/util"
+	"github.com/randomcoww/etcd-wrapper/pkg/util/s3util"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"os"
 	"time"
 )
 
@@ -110,25 +113,44 @@ func HealthCheck(endpoints []string, tlsConfig *tls.Config) error {
 	}
 }
 
-// func Snapshot(endpoints []string, tlsConfig *tls.Config) (*io.ReadCloser, func(){}, error) {
-// 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
-// 	client, err := newClient(ctx, endpoints, tlsConfig)
-// 	if err != nil {
-// 		return nil, nil, err
-// 	}
-// 	defer client.Close()
+func BackupSnapshot(endpoints []string, s3Resource string, writer s3util.Writer, tlsConfig *tls.Config) error {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
+	client, err := newClient(ctx, endpoints, tlsConfig)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
 
-// 	readCloser, err := client.Snapshot(ctx)
-// 	if err != nil {
-// 		return nil, nil, err
-// 	}
-// 	// defer readCloser.Close()
-// 	// cancel()
+	readCloser, err := client.Snapshot(ctx)
+	if err != nil {
+		return err
+	}
+	defer readCloser.Close()
 
-// 	switch err {
-// 	case nil, rpctypes.ErrPermissionDenied:
-// 		return nil
-// 	default:
-// 		return err
-// 	}
-// }
+	_, err = writer.Write(ctx, s3Resource, readCloser)
+	cancel()
+	return err
+}
+
+func RestoreSnapshot(restoreFile string, s3resource string, reader s3util.Reader) error {
+	readCloser, err := reader.Open(s3resource)
+	if err != nil {
+		return err
+	}
+	defer readCloser.Close()
+
+	err = util.WriteFile(readCloser, restoreFile)
+	if err != nil {
+		return err
+	}
+
+	info, err := os.Stat(restoreFile)
+	if err != nil {
+		return err
+	}
+
+	if info.Size() == 0 {
+		return fmt.Errorf("snapshot file size is zero")
+	}
+	return nil
+}
