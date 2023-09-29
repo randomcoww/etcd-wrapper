@@ -32,22 +32,23 @@ type Member struct {
 }
 
 type Status struct {
-	ClusterID           *uint64
-	LeaderID            *uint64
-	BackupMemberID      *uint64
-	Revision            *int64
-	MemberMap           map[string]*Member
-	MemberPeerMap       map[string]*Member
-	MemberClientMap     map[string]*Member
-	MemberSelf          *Member
-	Members             []*Member
-	MembersHealthy      []*Member
-	Healthy             bool
-	ClientTLSConfig     *tls.Config
+	ClusterID       *uint64
+	LeaderID        *uint64
+	BackupMemberID  *uint64
+	Revision        *int64
+	MemberMap       map[string]*Member
+	MemberPeerMap   map[string]*Member
+	MemberClientMap map[string]*Member
+	MemberSelf      *Member
+	Members         []*Member
+	MembersHealthy  []*Member
+	Healthy         bool
+	ClientTLSConfig *tls.Config
+	PodSpec         func(string, bool) *v1.Pod
+	//
 	S3BackupResource    string
 	EtcdSnapshotFile    string
 	EtcdPodManifestFile string
-	PodSpec             func(string, bool) *v1.Pod
 	ListenPeerURLs      []string
 }
 
@@ -160,6 +161,8 @@ func New() (*Status, error) {
 			initialClusterState, runRestore, memberID,
 		)
 	}
+
+	fmt.Printf("\n%+v\n", status)
 	return status, nil
 }
 

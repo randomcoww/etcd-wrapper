@@ -40,7 +40,7 @@ func main() {
 
 				}
 				time.Sleep(1 * time.Minute)
-				break
+				continue
 			}
 
 			if !status.Healthy {
@@ -49,7 +49,7 @@ func main() {
 
 				}
 				time.Sleep(1 * time.Minute)
-				break
+				continue
 			}
 
 			if status.ClusterID != status.MemberSelf.ClusterID {
@@ -61,14 +61,14 @@ func main() {
 
 					}
 					time.Sleep(1 * time.Minute)
-					break
+					continue
 				}
 				err = status.WritePodManifest(false)
 				if err != nil {
 
 				}
 				time.Sleep(1 * time.Minute)
-				break
+				continue
 			}
 
 			time.Sleep(6 * time.Second)
