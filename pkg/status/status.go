@@ -14,6 +14,7 @@ import (
 	"github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
 	"github.com/randomcoww/etcd-wrapper/pkg/util/s3util"
 	"go.etcd.io/etcd/pkg/transport"
+	"gopkg.in/yaml.v3"
 	"io"
 	"k8s.io/api/core/v1"
 	"strings"
@@ -21,35 +22,35 @@ import (
 )
 
 type Member struct {
-	Name                string
-	PeerURL             string
-	ClientURL           string
-	MemberID            *uint64
-	MemberIDFromCluster *uint64
-	Revision            *int64
-	ClusterID           *uint64
-	LeaderID            *uint64
+	Name                string  `yaml:"name,omitempty"`
+	PeerURL             string  `yaml:"-"`
+	ClientURL           string  `yaml:"-"`
+	MemberID            *uint64 `yaml:"memberID,omitempty"`
+	MemberIDFromCluster *uint64 `yaml:"memberIDFromCluster,omitempty"`
+	Revision            *int64  `yaml:"revision,omitempty"`
+	ClusterID           *uint64 `yaml:"clusterID,omitempty"`
+	LeaderID            *uint64 `yaml:"leaderID,omitempty"`
 }
 
 type Status struct {
-	ClusterID       *uint64
-	LeaderID        *uint64
-	BackupMemberID  *uint64
-	Revision        *int64
-	MemberMap       map[string]*Member
-	MemberPeerMap   map[string]*Member
-	MemberClientMap map[string]*Member
-	MemberSelf      *Member
-	Members         []*Member
-	MembersHealthy  []*Member
-	Healthy         bool
-	ClientTLSConfig *tls.Config
-	PodSpec         func(string, bool) *v1.Pod
+	Healthy         bool                       `yaml:"healthy"`
+	ClusterID       *uint64                    `yaml:"clusterID,omitempty"`
+	LeaderID        *uint64                    `yaml:"leaderID,omitempty"`
+	BackupMemberID  *uint64                    `yaml:"backupMemberID,omitempty"`
+	Revision        *int64                     `yaml:"revision,omitempty"`
+	MemberMap       map[string]*Member         `yaml:"-"`
+	MemberPeerMap   map[string]*Member         `yaml:"-"`
+	MemberClientMap map[string]*Member         `yaml:"-"`
+	MemberSelf      *Member                    `yaml:"-"`
+	Members         []*Member                  `yaml:"-"`
+	MembersHealthy  []*Member                  `yaml:"-"`
+	ClientTLSConfig *tls.Config                `yaml:"-"`
+	PodSpec         func(string, bool) *v1.Pod `yaml:"-"`
 	//
-	S3BackupResource    string
-	EtcdSnapshotFile    string
-	EtcdPodManifestFile string
-	ListenPeerURLs      []string
+	S3BackupResource    string   `yaml:"-"`
+	EtcdSnapshotFile    string   `yaml:"-"`
+	EtcdPodManifestFile string   `yaml:"-"`
+	ListenPeerURLs      []string `yaml:"-"`
 }
 
 func New() (*Status, error) {
@@ -120,8 +121,8 @@ func New() (*Status, error) {
 			Name:    node[0],
 			PeerURL: node[1],
 		}
-		status.MemberMap[m.Name] = m
-		status.MemberPeerMap[m.PeerURL] = m
+		status.MemberMap[node[0]] = m
+		status.MemberPeerMap[node[1]] = m
 		status.Members = append(status.Members, m)
 		if node[0] == name {
 			status.MemberSelf = m
@@ -130,14 +131,12 @@ func New() (*Status, error) {
 
 	for _, n := range strings.Split(initialClusterClients, ",") {
 		node := strings.Split(n, "=")
-		name := node[0]
-		client := node[1]
-		m, ok := status.MemberMap[name]
+		m, ok := status.MemberMap[node[0]]
 		if !ok {
 			return nil, fmt.Errorf("Mismatch in initial-cluster and initial-cluster-clients members")
 		}
-		m.ClientURL = client
-		status.MemberClientMap[client] = m
+		m.ClientURL = node[1]
+		status.MemberClientMap[node[1]] = m
 	}
 
 	if len(status.MemberClientMap) != len(status.MemberMap) {
@@ -164,22 +163,54 @@ func New() (*Status, error) {
 	return status, nil
 }
 
-func (v *Status) SyncStatus() error {
+func (v *Status) clearState() {
 	v.MembersHealthy = []*Member{}
 	v.Healthy = false
+	v.ClusterID = nil
+	v.LeaderID = nil
+	v.Revision = nil
 	v.BackupMemberID = nil
+}
+
+func (v *Status) ToYaml() (b []byte, err error) {
+	b, err = yaml.Marshal(v)
+	return
+}
+
+func (v *Member) clearState() {
+	v.MemberID = nil
+	v.MemberIDFromCluster = nil
+	v.ClusterID = nil
+	v.LeaderID = nil
+	v.Revision = nil
+}
+
+func (v *Member) ToYaml() (b []byte, err error) {
+	b, err = yaml.Marshal(v)
+	return
+}
+
+func (v *Status) SyncStatus() error {
+	v.clearState()
 
 	var clients []string
 	for _, m := range v.Members {
+		m.clearState()
 		clients = append(clients, m.ClientURL)
 	}
 
+	// check health status
+	err := etcdutil.HealthCheck(clients, v.ClientTLSConfig)
+	if err != nil {
+		return nil
+	}
 	respCh, err := etcdutil.Status(clients, v.ClientTLSConfig)
 	if err != nil {
-		return err
+		return nil
 	}
 
-	clusterIDCounts := make(map[uint64]int)
+	v.Healthy = true
+	clusterMap := make(map[uint64]int)
 	var count int
 
 	for {
@@ -189,17 +220,13 @@ func (v *Status) SyncStatus() error {
 		}
 
 		resp := <-respCh
-
 		count++
+
 		m, ok := v.MemberClientMap[resp.Endpoint]
 		if !ok || m == nil {
 			continue
 		}
 		if resp.Err != nil {
-			m.MemberID = nil
-			m.ClusterID = nil
-			m.LeaderID = nil
-			m.Revision = nil
 			continue
 		}
 
@@ -209,13 +236,13 @@ func (v *Status) SyncStatus() error {
 		}
 
 		memberID := resp.Status.Header.MemberId
-		leaderID := resp.Status.Leader
 		revision := resp.Status.Header.Revision
+		leaderID := resp.Status.Leader
 
 		// pick consistent majority clusterID in case of split brain
-		clusterIDCounts[clusterID]++
-		if v.ClusterID == nil || clusterIDCounts[clusterID] > clusterIDCounts[*v.ClusterID] ||
-			(clusterIDCounts[clusterID] == clusterIDCounts[*v.ClusterID] && clusterID < *v.ClusterID) {
+		clusterMap[clusterID]++
+		if v.ClusterID == nil || clusterMap[clusterID] > clusterMap[*v.ClusterID] ||
+			(clusterMap[clusterID] == clusterMap[*v.ClusterID] && clusterID < *v.ClusterID) {
 			v.ClusterID = &clusterID
 			v.LeaderID = &leaderID
 			v.Revision = &revision
@@ -246,41 +273,19 @@ func (v *Status) SyncStatus() error {
 	if err != nil {
 		return err
 	}
-
 	// member Name field may not be populated right away
 	// Match returned members by PeerURL field
-	peerURLsReturned := make(map[string]struct{})
 	for _, member := range members.Members {
-		var m *Member
-		var ok bool
-
-		for _, peer := range member.PeerURLs {
-			var memberID uint64
-			if m, ok = v.MemberPeerMap[peer]; ok {
-				memberID = member.ID
-				if memberID != 0 {
+		if member.ID != 0 {
+			memberID := member.ID
+			for _, peer := range member.PeerURLs {
+				if m, ok := v.MemberPeerMap[peer]; ok {
 					m.MemberIDFromCluster = &memberID
+					break
 				}
-
-				peerURLsReturned[peer] = struct{}{}
-				break
 			}
 		}
 	}
-
-	// Compare returned members with list and remove inactive ones
-	for peer, m := range v.MemberPeerMap {
-		if _, ok := peerURLsReturned[peer]; !ok {
-			m.MemberIDFromCluster = nil
-		}
-	}
-
-	// check health status
-	if err := etcdutil.HealthCheck(clientsHealhty, v.ClientTLSConfig); err != nil {
-		return nil
-	}
-
-	v.Healthy = true
 
 	// pick backup member
 	for _, m := range v.MembersHealthy {
@@ -313,7 +318,7 @@ func (v *Status) ReplaceMember(m *Member) error {
 	}
 	memberID := resp.Member.ID
 	if memberID == 0 {
-		return fmt.Errorf("add member returned member ID 0")
+		return fmt.Errorf("Add member returned ID 0")
 	}
 	m.MemberID = &memberID
 	m.MemberIDFromCluster = &memberID

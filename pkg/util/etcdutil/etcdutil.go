@@ -90,7 +90,7 @@ func ListMembers(endpoints []string, tlsConfig *tls.Config) (*clientv3.MemberLis
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
 	client, err := newClient(ctx, endpoints, tlsConfig)
 	if err != nil {
-		return nil, fmt.Errorf("list members failed: creating etcd client failed: %v", err)
+		return nil, err
 	}
 	defer client.Close()
 
@@ -156,7 +156,7 @@ func RestoreSnapshot(restoreFile string, s3resource string, reader s3util.Reader
 	}
 
 	if info.Size() == 0 {
-		return fmt.Errorf("snapshot file size is zero")
+		return fmt.Errorf("Snapshot file size is 0")
 	}
 	return nil
 }

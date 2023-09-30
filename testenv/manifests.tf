@@ -37,11 +37,11 @@ locals {
         name                   = name
         pki_path               = abspath("${path.module}/output/${name}/pki")
         etcd_snapshot_path     = abspath("${path.module}/output/${name}/snapshot")
-        etcd_pod_manifest_path = abspath("${path.module}/output/${name}/manifests/etcd.json")
+        etcd_pod_manifest_path = "${var.pod_manifest_path}/etcd-${name}.json"
 
         container_images = {
           etcd         = "gcr.io/etcd-development/etcd:v3.5.8-amd64"
-          etcd_wrapper = "ghcr.io/randomcoww/etcd-wrapper:20230929"
+          etcd_wrapper = "ghcr.io/randomcoww/etcd-wrapper:20230930"
         }
 
         cluster_token               = "test"

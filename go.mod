@@ -7,6 +7,7 @@ require (
 	go.etcd.io/etcd v3.3.27+incompatible
 	go.etcd.io/etcd/api/v3 v3.5.9
 	go.etcd.io/etcd/client/v3 v3.5.9
+	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.28.1
 	k8s.io/apimachinery v0.28.1
 )

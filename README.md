@@ -30,8 +30,8 @@ tw() {
   podman run -it --rm --security-opt label=disable \
     --entrypoint='' \
     -v $(pwd):$(pwd) \
-    -v $HOME/.aws:/root/.aws \
     -w $(pwd) \
+    -v $HOME/.aws:/root/.aws \
     --net=host \
     docker.io/hashicorp/terraform:latest "$@"
   rc=$?; set +x; return $rc
@@ -46,25 +46,13 @@ tw terraform -chdir=testenv apply
 Run each node
 
 ```bash
-podman play kube testenv/output/node0.yaml & \
-podman play kube testenv/output/node1.yaml & \
-podman play kube testenv/output/node2.yaml
+podman play kube etcd-wrapper/testenv/output/node0.yaml & \
+podman play kube etcd-wrapper/testenv/output/node1.yaml & \
+podman play kube etcd-wrapper/testenv/output/node2.yaml
 
-podman play kube testenv/output/node0.yaml --down & \
-podman play kube testenv/output/node1.yaml --down & \
-podman play kube testenv/output/node2.yaml --down
-```
-
-Start etcd
-
-```bash
-podman play kube testenv/output/node0/manifests/etcd.json & \
-podman play kube testenv/output/node1/manifests/etcd.json & \
-podman play kube testenv/output/node2/manifests/etcd.json
-
-podman play kube testenv/output/node0/manifests/etcd.json --down & \
-podman play kube testenv/output/node1/manifests/etcd.json --down & \
-podman play kube testenv/output/node2/manifests/etcd.json --down
+podman play kube etcd-wrapper/testenv/output/node0.yaml --down & \
+podman play kube etcd-wrapper/testenv/output/node1.yaml --down & \
+podman play kube etcd-wrapper/testenv/output/node2.yaml --down
 ```
 
 ```bash

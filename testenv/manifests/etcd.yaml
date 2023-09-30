@@ -72,8 +72,8 @@ spec:
     # pod manifest args
     - --etcd-image=${container_images.etcd}
     - --etcd-snaphot-file=${etcd_snapshot_path}
-    - --etcd-pod-manifest-file=${etcd_pod_manifest_path}
     - --etcd-pod-name=etcd-${name}
+    - --etcd-pod-manifest-file=${etcd_pod_manifest_path}
     # wrapper args
     - --client-cert-file=${pki_path}/client-cert.pem
     - --client-key-file=${pki_path}/client-key.pem
@@ -93,10 +93,18 @@ spec:
       mountPath: ${pki_path}
     - name: snapshot-volume
       mountPath: ${dirname(etcd_snapshot_path)}
+    - name: manifest-volume
+      mountPath: ${dirname(etcd_pod_manifest_path)}
   volumes:
   - name: pki-volume
     hostPath:
       path: ${pki_path}
+      DirectoryOrCreate: true
   - name: snapshot-volume
     hostPath:
       path: ${dirname(etcd_snapshot_path)}
+      DirectoryOrCreate: true
+  - name: manifest-volume
+    hostPath:
+      path: ${dirname(etcd_pod_manifest_path)}
+      DirectoryOrCreate: true
