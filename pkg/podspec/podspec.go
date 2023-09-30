@@ -30,7 +30,7 @@ func Create(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, p
 			Name:      etcdPodName,
 			Namespace: etcdPodNamespace,
 			Annotations: map[string]string{
-				"etcd-wrapper/member": fmt.Sprintf("%s", memberAnnotation),
+				"etcd-wrapper/member": fmt.Sprintf("%v", memberAnnotation),
 			},
 		},
 		Spec: v1.PodSpec{
@@ -96,9 +96,11 @@ func Create(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, p
 					},
 				},
 				{
-					Name: "db",
+					Name: fmt.Sprintf("db-%s", name),
 					VolumeSource: v1.VolumeSource{
-						EmptyDir: &v1.EmptyDirVolumeSource{},
+						EmptyDir: &v1.EmptyDirVolumeSource{
+							Medium: v1.StorageMediumMemory,
+						},
 					},
 				},
 			},
@@ -138,7 +140,7 @@ func Create(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, p
 					etcdSnapshotFile, name, initialCluster, initialClusterToken, initialAdvertisePeerURLs, dbFile), " "),
 				VolumeMounts: []v1.VolumeMount{
 					{
-						Name:      "db",
+						Name:      fmt.Sprintf("db-%s", name),
 						MountPath: filepath.Dir(dbFile),
 					},
 					{
@@ -266,7 +268,7 @@ func Create(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, p
 					ReadOnly:  true,
 				},
 				{
-					Name:      "db",
+					Name:      fmt.Sprintf("db-%s", name),
 					MountPath: filepath.Dir(dbFile),
 				},
 			},

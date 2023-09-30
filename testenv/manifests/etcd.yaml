@@ -2,7 +2,7 @@ kind: Pod
 apiVersion: v1
 metadata:
   namespace: kube-system
-  name: etcd-wrapper
+  name: etcd-wrapper-${name}
 spec:
   priorityClassName: system-node-critical
   priority: 2000001000
@@ -73,6 +73,7 @@ spec:
     - --etcd-image=${container_images.etcd}
     - --etcd-snaphot-file=${etcd_snapshot_path}
     - --etcd-pod-manifest-file=${etcd_pod_manifest_path}
+    - --etcd-pod-name=etcd-${name}
     # wrapper args
     - --client-cert-file=${pki_path}/client-cert.pem
     - --client-key-file=${pki_path}/client-key.pem

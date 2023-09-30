@@ -9,6 +9,7 @@ import (
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -33,15 +34,17 @@ func newClient(ctx context.Context, endpoints []string, tlsConfig *tls.Config) (
 }
 
 func Status(endpoints []string, tlsConfig *tls.Config) (chan *StatusResp, error) {
-	ctx, _ := context.WithTimeout(context.Background(), defaultRequestTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
 	client, err := newClient(ctx, endpoints, tlsConfig)
 	if err != nil {
 		return nil, err
 	}
 	defer client.Close()
 
+	var wg sync.WaitGroup
 	respCh := make(chan *StatusResp, len(endpoints))
 	for _, endpoint := range endpoints {
+		wg.Add(1)
 		go func(endpoint string) {
 			status, err := client.Status(ctx, endpoint)
 			respCh <- &StatusResp{
@@ -49,8 +52,11 @@ func Status(endpoints []string, tlsConfig *tls.Config) (chan *StatusResp, error)
 				Status:   status,
 				Err:      err,
 			}
+			wg.Done()
 		}(endpoint)
 	}
+	wg.Wait()
+	cancel()
 	return respCh, nil
 }
 

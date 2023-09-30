@@ -183,21 +183,34 @@ func (v *Status) SyncStatus() error {
 	var count int
 
 	for {
-		resp := <- respCh
+		if count >= len(clients) {
+			close(respCh)
+			break
+		}
+
+		resp := <-respCh
+
 		count++
 		m, ok := v.MemberClientMap[resp.Endpoint]
-		if !ok || m == nil || resp.Err != nil {
+		if !ok || m == nil {
+			continue
+		}
+		if resp.Err != nil {
+			m.MemberID = nil
+			m.ClusterID = nil
+			m.LeaderID = nil
+			m.Revision = nil
 			continue
 		}
 
-		// memberID := resp.Status.Header.MemberId
 		clusterID := resp.Status.Header.ClusterId
-		leaderID := resp.Status.Leader
-		revision := resp.Status.Header.Revision
-
 		if clusterID == 0 {
 			continue
 		}
+
+		memberID := resp.Status.Header.MemberId
+		leaderID := resp.Status.Leader
+		revision := resp.Status.Header.Revision
 
 		// pick consistent majority clusterID in case of split brain
 		clusterIDCounts[clusterID]++
@@ -210,11 +223,7 @@ func (v *Status) SyncStatus() error {
 		m.ClusterID = &clusterID
 		m.LeaderID = &leaderID
 		m.Revision = &revision
-
-		if count >= len(clients) {
-			close(respCh)
-			break
-		}
+		m.MemberID = &memberID
 	}
 
 	if v.ClusterID == nil {
@@ -223,7 +232,10 @@ func (v *Status) SyncStatus() error {
 
 	var clientsHealhty []string
 	for _, m := range v.Members {
-		if m.ClusterID == v.ClusterID {
+		if m.ClusterID == nil {
+			continue
+		}
+		if *m.ClusterID == *v.ClusterID {
 			v.MembersHealthy = append(v.MembersHealthy, m)
 			clientsHealhty = append(clientsHealhty, m.ClientURL)
 		}
@@ -289,9 +301,11 @@ func (v *Status) ReplaceMember(m *Member) error {
 		clientsHealhty = append(clientsHealhty, m.ClientURL)
 	}
 
-	err := etcdutil.RemoveMember(clientsHealhty, v.ClientTLSConfig, *m.MemberIDFromCluster)
-	if err != nil {
-		return err
+	if m.MemberIDFromCluster != nil {
+		err := etcdutil.RemoveMember(clientsHealhty, v.ClientTLSConfig, *m.MemberIDFromCluster)
+		if err != nil {
+			return err
+		}
 	}
 	resp, err := etcdutil.AddMember(clientsHealhty, v.ListenPeerURLs, v.ClientTLSConfig)
 	if err != nil {

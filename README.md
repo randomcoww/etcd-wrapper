@@ -46,17 +46,37 @@ tw terraform -chdir=testenv apply
 Run each node
 
 ```bash
-podman play kube testenv/output/node0.yaml
-podman play kube testenv/output/node1.yaml
+podman play kube testenv/output/node0.yaml & \
+podman play kube testenv/output/node1.yaml & \
 podman play kube testenv/output/node2.yaml
+
+podman play kube testenv/output/node0.yaml --down & \
+podman play kube testenv/output/node1.yaml --down & \
+podman play kube testenv/output/node2.yaml --down
 ```
 
 Start etcd
 
 ```bash
-podman play kube testenv/output/node0/manifests/etcd.json
-podman play kube testenv/output/node1/manifests/etcd.json
+podman play kube testenv/output/node0/manifests/etcd.json & \
+podman play kube testenv/output/node1/manifests/etcd.json & \
 podman play kube testenv/output/node2/manifests/etcd.json
+
+podman play kube testenv/output/node0/manifests/etcd.json --down & \
+podman play kube testenv/output/node1/manifests/etcd.json --down & \
+podman play kube testenv/output/node2/manifests/etcd.json --down
+```
+
+```bash
+podman logs -f etcd-wrapper-node0-etcd-wrapper
+podman logs -f etcd-wrapper-node1-etcd-wrapper
+podman logs -f etcd-wrapper-node2-etcd-wrapper
+```
+
+```bash
+podman logs -f etcd-node0-etcd
+podman logs -f etcd-node1-etcd
+podman logs -f etcd-node2-etcd
 ```
 
 Cleanup formatting
