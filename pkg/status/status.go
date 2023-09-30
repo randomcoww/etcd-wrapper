@@ -22,6 +22,7 @@ import (
 )
 
 type Member struct {
+	Healthy             bool    `yaml:"healthy"`
 	Name                string  `yaml:"name,omitempty"`
 	PeerURL             string  `yaml:"-"`
 	ClientURL           string  `yaml:"-"`
@@ -174,6 +175,7 @@ func (v *Status) ToYaml() (b []byte, err error) {
 }
 
 func (v *Member) clearState() {
+	v.Healthy = false
 	v.MemberID = nil
 	v.MemberIDFromCluster = nil
 	v.ClusterID = nil
@@ -282,18 +284,14 @@ func (v *Status) SyncStatus() error {
 		}
 	}
 
-	if v.MemberSelf.MemberIDFromCluster == nil {
-		return nil
-	}
-
 	v.Healthy = true
 
-	// pick backup member
 	for _, m := range v.MembersHealthy {
+		m.Healthy = m.MemberID != nil && m.MemberIDFromCluster != nil && *m.MemberID == *m.MemberIDFromCluster
+
 		if *m.Revision < *v.Revision {
 			continue
 		}
-
 		if v.BackupMemberID == nil || *m.MemberID < *v.BackupMemberID {
 			v.BackupMemberID = m.MemberID
 		}
