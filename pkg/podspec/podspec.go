@@ -17,7 +17,7 @@ const (
 func Create(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, peerTrustedCAFile, initialAdvertisePeerURLs,
 	listenPeerURLs, advertiseClientURLs, listenClientURLs, initialClusterToken, initialCluster string,
 	etcdImage, etcdPodName, etcdPodNamespace, etcdSnapshotFile, etcdPodManifestFile string,
-	initialClusterState string, runRestore bool, memberAnnotation uint64) *v1.Pod {
+	initialClusterState string, runRestore bool, memberAnnotation uint64, versionAnnotation string) *v1.Pod {
 
 	var priority int32 = 2000001000
 	hostPathFileType := v1.HostPathFile
@@ -30,7 +30,8 @@ func Create(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, p
 			Name:      etcdPodName,
 			Namespace: etcdPodNamespace,
 			Annotations: map[string]string{
-				"etcd-wrapper/member": fmt.Sprintf("%v", memberAnnotation),
+				"etcd-wrapper/member":  fmt.Sprintf("%v", memberAnnotation),
+				"etcd-wrapper/version": versionAnnotation,
 			},
 		},
 		Spec: v1.PodSpec{

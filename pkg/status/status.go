@@ -33,19 +33,19 @@ type Member struct {
 }
 
 type Status struct {
-	Healthy         bool                       `yaml:"healthy"`
-	ClusterID       *uint64                    `yaml:"clusterID,omitempty"`
-	LeaderID        *uint64                    `yaml:"leaderID,omitempty"`
-	BackupMemberID  *uint64                    `yaml:"backupMemberID,omitempty"`
-	Revision        *int64                     `yaml:"revision,omitempty"`
-	MemberMap       map[string]*Member         `yaml:"-"`
-	MemberPeerMap   map[string]*Member         `yaml:"-"`
-	MemberClientMap map[string]*Member         `yaml:"-"`
-	MemberSelf      *Member                    `yaml:"-"`
-	Members         []*Member                  `yaml:"-"`
-	MembersHealthy  []*Member                  `yaml:"-"`
-	ClientTLSConfig *tls.Config                `yaml:"-"`
-	PodSpec         func(string, bool) *v1.Pod `yaml:"-"`
+	Healthy         bool                               `yaml:"healthy"`
+	ClusterID       *uint64                            `yaml:"clusterID,omitempty"`
+	LeaderID        *uint64                            `yaml:"leaderID,omitempty"`
+	BackupMemberID  *uint64                            `yaml:"backupMemberID,omitempty"`
+	Revision        *int64                             `yaml:"revision,omitempty"`
+	MemberMap       map[string]*Member                 `yaml:"-"`
+	MemberPeerMap   map[string]*Member                 `yaml:"-"`
+	MemberClientMap map[string]*Member                 `yaml:"-"`
+	MemberSelf      *Member                            `yaml:"-"`
+	Members         []*Member                          `yaml:"-"`
+	MembersHealthy  []*Member                          `yaml:"-"`
+	ClientTLSConfig *tls.Config                        `yaml:"-"`
+	PodSpec         func(string, bool, string) *v1.Pod `yaml:"-"`
 	//
 	S3BackupResource    string   `yaml:"-"`
 	EtcdSnapshotFile    string   `yaml:"-"`
@@ -143,11 +143,7 @@ func New() (*Status, error) {
 		return nil, fmt.Errorf("Mismatch in initial-cluster and initial-cluster-clients members")
 	}
 
-	if status.MemberSelf == nil {
-		return nil, fmt.Errorf("Member config not found for self (%s)", name)
-	}
-
-	status.PodSpec = func(initialClusterState string, runRestore bool) *v1.Pod {
+	status.PodSpec = func(initialClusterState string, runRestore bool, versionAnnotation string) *v1.Pod {
 		var memberID uint64
 		if status.MemberSelf.MemberID != nil {
 			memberID = *status.MemberSelf.MemberID
@@ -157,7 +153,7 @@ func New() (*Status, error) {
 			name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, peerTrustedCAFile, initialAdvertisePeerURLs,
 			listenPeerURLs, advertiseClientURLs, listenClientURLs, initialClusterToken, initialCluster,
 			etcdImage, etcdPodName, etcdPodNamespace, etcdSnapshotFile, etcdPodManifestFile,
-			initialClusterState, runRestore, memberID,
+			initialClusterState, runRestore, memberID, versionAnnotation,
 		)
 	}
 	return status, nil
@@ -209,7 +205,6 @@ func (v *Status) SyncStatus() error {
 		return nil
 	}
 
-	v.Healthy = true
 	clusterMap := make(map[uint64]int)
 	var count int
 
@@ -287,6 +282,12 @@ func (v *Status) SyncStatus() error {
 		}
 	}
 
+	if v.MemberSelf.MemberIDFromCluster == nil {
+		return nil
+	}
+
+	v.Healthy = true
+
 	// pick backup member
 	for _, m := range v.MembersHealthy {
 		if *m.Revision < *v.Revision {
@@ -327,15 +328,16 @@ func (v *Status) ReplaceMember(m *Member) error {
 
 func (v *Status) WritePodManifest(runRestore bool) error {
 	var pod *v1.Pod
+	manifestVersion := fmt.Sprintf("%v", time.Now().Unix())
 	if runRestore {
 		err := v.RestoreSnapshot()
 		if err != nil {
-			pod = v.PodSpec("new", false)
+			pod = v.PodSpec("new", false, manifestVersion)
 		} else {
-			pod = v.PodSpec("existing", true)
+			pod = v.PodSpec("existing", true, manifestVersion)
 		}
 	} else {
-		pod = v.PodSpec("existing", false)
+		pod = v.PodSpec("existing", false, manifestVersion)
 	}
 
 	manifest, err := json.MarshalIndent(pod, "", "  ")
