@@ -112,10 +112,10 @@ func Create(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, p
 	if runRestore {
 		pod.Spec.Volumes = append(pod.Spec.Volumes,
 			v1.Volume{
-				Name: "snaphot-restore",
+				Name: "snapshot-restore",
 				VolumeSource: v1.VolumeSource{
 					HostPath: &v1.HostPathVolumeSource{
-						Path: filepath.Dir(etcdSnapshotFile),
+						Path: etcdSnapshotFile,
 						Type: &hostPathFileType,
 					},
 				},
@@ -145,7 +145,7 @@ func Create(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, p
 						MountPath: filepath.Dir(dbFile),
 					},
 					{
-						Name:      "snaphot-restore",
+						Name:      "snapshot-restore",
 						MountPath: etcdSnapshotFile,
 					},
 				},

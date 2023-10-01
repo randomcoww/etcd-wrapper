@@ -17,28 +17,31 @@ import (
 	"gopkg.in/yaml.v3"
 	"io"
 	"k8s.io/api/core/v1"
+	"log"
 	"strings"
 	"time"
 )
 
 type Member struct {
-	Healthy             bool    `yaml:"healthy"`
 	Name                string  `yaml:"name,omitempty"`
-	PeerURL             string  `yaml:"-"`
-	ClientURL           string  `yaml:"-"`
+	Healthy             bool    `yaml:"healthy"`
 	MemberID            *uint64 `yaml:"memberID,omitempty"`
 	MemberIDFromCluster *uint64 `yaml:"memberIDFromCluster,omitempty"`
 	Revision            *int64  `yaml:"revision,omitempty"`
 	ClusterID           *uint64 `yaml:"clusterID,omitempty"`
 	LeaderID            *uint64 `yaml:"leaderID,omitempty"`
+	//
+	PeerURL   string `yaml:"-"`
+	ClientURL string `yaml:"-"`
 }
 
 type Status struct {
-	Healthy         bool                               `yaml:"healthy"`
-	ClusterID       *uint64                            `yaml:"clusterID,omitempty"`
-	LeaderID        *uint64                            `yaml:"leaderID,omitempty"`
-	BackupMemberID  *uint64                            `yaml:"backupMemberID,omitempty"`
-	Revision        *int64                             `yaml:"revision,omitempty"`
+	Healthy        bool    `yaml:"healthy"`
+	ClusterID      *uint64 `yaml:"clusterID,omitempty"`
+	LeaderID       *uint64 `yaml:"leaderID,omitempty"`
+	BackupMemberID *uint64 `yaml:"backupMemberID,omitempty"`
+	Revision       *int64  `yaml:"revision,omitempty"`
+	//
 	MemberMap       map[string]*Member                 `yaml:"-"`
 	MemberPeerMap   map[string]*Member                 `yaml:"-"`
 	MemberClientMap map[string]*Member                 `yaml:"-"`
@@ -48,10 +51,13 @@ type Status struct {
 	ClientTLSConfig *tls.Config                        `yaml:"-"`
 	PodSpec         func(string, bool, string) *v1.Pod `yaml:"-"`
 	//
-	S3BackupResource    string   `yaml:"-"`
-	EtcdSnapshotFile    string   `yaml:"-"`
-	EtcdPodManifestFile string   `yaml:"-"`
-	ListenPeerURLs      []string `yaml:"-"`
+	S3BackupResource            string        `yaml:"-"`
+	EtcdSnapshotFile            string        `yaml:"-"`
+	EtcdPodManifestFile         string        `yaml:"-"`
+	ListenPeerURLs              []string      `yaml:"-"`
+	HealthCheckInterval         time.Duration `yaml:"-"`
+	BackupInterval              time.Duration `yaml:"-"`
+	HealthCheckFailCountAllowed int           `yaml:"-"`
 }
 
 func New() (*Status, error) {
@@ -84,16 +90,15 @@ func New() (*Status, error) {
 
 	// etcd wrapper args
 	var clientCertFile, clientKeyFile, initialClusterClients, s3BackupResource string
-	var snapBackupInterval, healthCheckInterval, podManifestUpdateWait time.Duration
-	var healthCheckFailuresAllow int
+	var healthCheckInterval, backupInterval time.Duration
+	var healthCheckFailCountAllowed int
 	flag.StringVar(&clientCertFile, "client-cert-file", "", "Path to the client server TLS cert file.")
 	flag.StringVar(&clientKeyFile, "client-key-file", "", "Path to the client server TLS key file.")
 	flag.StringVar(&initialClusterClients, "initial-cluster-clients", "", "List of etcd nodes and client URLs in same format as intial-cluster.")
 	flag.StringVar(&s3BackupResource, "s3-backup-resource", "", "S3 resource name for backup.")
-	flag.DurationVar(&snapBackupInterval, "backup-interval", 30*time.Minute, "Backup trigger interval.")
-	flag.DurationVar(&healthCheckInterval, "healthcheck-interval", 5*time.Second, "Healthcheck interval.")
-	flag.IntVar(&healthCheckFailuresAllow, "healthcheck-failures-allow", 3, "Number of healthcheck failures to allow before updating etcd pod.")
-	flag.DurationVar(&podManifestUpdateWait, "pod-update-wait", 30*time.Second, "Time to wait after pod manifest update to resume health checks.")
+	flag.DurationVar(&healthCheckInterval, "healthcheck-interval", 6*time.Second, "Healthcheck interval.")
+	flag.DurationVar(&backupInterval, "backup-interval", 15*time.Minute, "Backup trigger interval.")
+	flag.IntVar(&healthCheckFailCountAllowed, "healthcheck-fail-count-allowed", 16, "Number of healthcheck failures to allow before restarting etcd pod.")
 	flag.Parse()
 
 	tlsInfo := transport.TLSInfo{
@@ -115,6 +120,9 @@ func New() (*Status, error) {
 	status.MemberClientMap = make(map[string]*Member)
 
 	status.ListenPeerURLs = strings.Split(listenPeerURLs, ",")
+	status.HealthCheckInterval = healthCheckInterval
+	status.BackupInterval = backupInterval
+	status.HealthCheckFailCountAllowed = healthCheckFailCountAllowed
 
 	for _, n := range strings.Split(initialCluster, ",") {
 		node := strings.Split(n, "=")
@@ -310,6 +318,7 @@ func (v *Status) ReplaceMember(m *Member) error {
 		if err != nil {
 			return err
 		}
+		log.Printf("Removed member %v", *m.MemberIDFromCluster)
 	}
 	resp, err := etcdutil.AddMember(clientsHealhty, v.ListenPeerURLs, v.ClientTLSConfig)
 	if err != nil {
@@ -330,8 +339,11 @@ func (v *Status) WritePodManifest(runRestore bool) error {
 	if runRestore {
 		err := v.RestoreSnapshot()
 		if err != nil {
+			log.Printf("Restore snapshot failed: %v. Starting new cluster", err)
 			pod = v.PodSpec("new", false, manifestVersion)
+
 		} else {
+			log.Printf("Snapshot pull succeeded. Restoring cluster")
 			pod = v.PodSpec("existing", true, manifestVersion)
 		}
 	} else {

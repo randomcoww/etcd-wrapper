@@ -9,11 +9,9 @@ import (
 type clusterState int
 
 const (
-	clusterStateNew             clusterState  = 0
-	clusterStateHealthy         clusterState  = 1
-	clusterStateWait            clusterState  = 2
-	healthcheckFailCountAllowed int           = 16
-	intervalDuration            time.Duration = 6 * time.Second
+	clusterStateNew     clusterState = 0
+	clusterStateHealthy clusterState = 1
+	clusterStateWait    clusterState = 2
 )
 
 func main() {
@@ -25,10 +23,35 @@ func main() {
 	var healthcheckFailCount int
 	var state clusterState = clusterStateNew
 
+	intervalTick := time.NewTicker(v.HealthCheckInterval)
+	backupIntervalTick := time.NewTicker(v.BackupInterval)
+
 L:
 	for {
 		select {
-		case <-time.After(intervalDuration):
+		case <-backupIntervalTick.C:
+
+			err = v.SyncStatus()
+			if err != nil {
+				log.Printf("Cluster status update failed: %v", err)
+				continue
+			}
+
+			if !v.MemberSelf.Healthy ||
+				*v.MemberSelf.MemberID != *v.BackupMemberID {
+
+				log.Printf("Member not selected for backup")
+				continue
+			}
+			log.Printf("Member selected for backup. Starting snapshot backup")
+			if err := v.BackupSnapshot(); err != nil {
+				log.Fatalf("Snapshot backup failed: %v", err)
+				continue
+			}
+			log.Printf("Snapshot backup success")
+			continue
+
+		case <-intervalTick.C:
 
 			err = v.SyncStatus()
 			if err != nil {
@@ -63,6 +86,7 @@ L:
 					log.Printf("Cluster not found. Writing manifest for restore or new cluster")
 					if err = v.WritePodManifest(true); err != nil {
 						log.Fatalf("Failed to write pod manifest: %v", err)
+						panic(err)
 					}
 					state = clusterStateWait
 					continue L
@@ -83,6 +107,7 @@ L:
 
 						if err = v.WritePodManifest(true); err != nil {
 							log.Fatalf("Failed to write pod manifest: %v", err)
+							panic(err)
 						}
 						state = clusterStateWait
 						continue L
@@ -91,15 +116,16 @@ L:
 
 					if err = v.WritePodManifest(false); err != nil {
 						log.Fatalf("Failed to write pod manifest: %v", err)
+						panic(err)
 					}
 					state = clusterStateWait
 					continue L
 
 				default:
 					healthcheckFailCount++
-					log.Printf("Health check failed count: %v (of %v)", healthcheckFailCount, healthcheckFailCountAllowed)
+					log.Printf("Health check failed count: %v (of %v)", healthcheckFailCount, v.HealthCheckFailCountAllowed)
 
-					if healthcheckFailCount < healthcheckFailCountAllowed {
+					if healthcheckFailCount < v.HealthCheckFailCountAllowed {
 						continue L
 					}
 					state = clusterStateNew

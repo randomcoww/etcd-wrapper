@@ -71,14 +71,17 @@ spec:
     - --initial-cluster=${initial_cluster}
     # pod manifest args
     - --etcd-image=${container_images.etcd}
-    - --etcd-snaphot-file=${etcd_snapshot_path}
+    - --etcd-snaphot-file=${etcd_snapshot_file}
     - --etcd-pod-name=etcd-${name}
-    - --etcd-pod-manifest-file=${etcd_pod_manifest_path}
+    - --etcd-pod-manifest-file=${etcd_pod_manifest_file}
     # wrapper args
     - --client-cert-file=${pki_path}/client-cert.pem
     - --client-key-file=${pki_path}/client-key.pem
     - --initial-cluster-clients=${initial_cluster_clients}
     - --s3-backup-resource=${backup_resource.resource}
+    - --healthcheck-interval=${healthcheck_interval}
+    - --backup-interval=${backup_resource.interval}
+    - --healthcheck-fail-count-allowed=${healthcheck_fail_count_allowed}
     env:
     - name: AWS_ACCESS_KEY_ID
       value: "${backup_resource.access_key_id}"
@@ -92,9 +95,9 @@ spec:
     - name: pki-volume
       mountPath: ${pki_path}
     - name: snapshot-volume
-      mountPath: ${dirname(etcd_snapshot_path)}
+      mountPath: ${dirname(etcd_snapshot_file)}
     - name: manifest-volume
-      mountPath: ${dirname(etcd_pod_manifest_path)}
+      mountPath: ${dirname(etcd_pod_manifest_file)}
   volumes:
   - name: pki-volume
     hostPath:
@@ -102,9 +105,9 @@ spec:
       DirectoryOrCreate: true
   - name: snapshot-volume
     hostPath:
-      path: ${dirname(etcd_snapshot_path)}
+      path: ${dirname(etcd_snapshot_file)}
       DirectoryOrCreate: true
   - name: manifest-volume
     hostPath:
-      path: ${dirname(etcd_pod_manifest_path)}
+      path: ${dirname(etcd_pod_manifest_file)}
       DirectoryOrCreate: true

@@ -36,8 +36,8 @@ locals {
       templatefile(f, merge({
         name                   = name
         pki_path               = abspath("${path.module}/output/${name}/pki")
-        etcd_snapshot_path     = abspath("${path.module}/output/${name}/snapshot")
-        etcd_pod_manifest_path = "${var.pod_manifest_path}/etcd-${name}.json"
+        etcd_snapshot_file     = abspath("${path.module}/output/${name}/etcd.db")
+        etcd_pod_manifest_file = "${var.pod_manifest_path}/etcd-${name}.json"
 
         container_images = {
           etcd         = "gcr.io/etcd-development/etcd:v3.5.8-amd64"
@@ -52,11 +52,14 @@ locals {
         initial_cluster             = local.initial_cluster
         initial_cluster_clients     = local.initial_cluster_clients
 
+        healthcheck_interval           = "6s"
+        healthcheck_fail_count_allowed = 4
         backup_resource = {
           resource          = "${aws_s3_bucket.s3.bucket}/etcd.db"
           access_key_id     = aws_iam_access_key.s3.id
           secret_access_key = aws_iam_access_key.s3.secret
           aws_region        = local.aws_region
+          interval          = "3m"
         }
 
         ca_cert      = tls_self_signed_cert.etcd-ca.cert_pem
