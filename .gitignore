@@ -1,1 +1,9 @@
 etcd-wrapper
+.terraform
+.terraform.*
+*.tfstate
+*.tfstate.*
+secrets.tfvars
+*.log
+output/
+build/

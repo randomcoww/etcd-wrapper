@@ -4,93 +4,111 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"github.com/randomcoww/etcd-wrapper/pkg/util/constants"
+	"github.com/randomcoww/etcd-wrapper/pkg/util"
+	"github.com/randomcoww/etcd-wrapper/pkg/util/s3util"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"os"
+	"sync"
+	"time"
 )
 
-func newClient(clientURLs []string, tc *tls.Config) (*clientv3.Client, error) {
+const (
+	defaultRequestTimeout time.Duration = 2 * time.Second
+	defaultDialTimeout    time.Duration = 2 * time.Second
+)
+
+type StatusResp struct {
+	Endpoint string
+	Status   *clientv3.StatusResponse
+	Err      error
+}
+
+func newClient(ctx context.Context, endpoints []string, tlsConfig *tls.Config) (*clientv3.Client, error) {
 	return clientv3.New(clientv3.Config{
-		Endpoints:   clientURLs,
-		DialTimeout: constants.DefaultDialTimeout,
-		TLS:         tc,
+		Endpoints:   endpoints,
+		DialTimeout: defaultDialTimeout,
+		TLS:         tlsConfig,
+		Context:     ctx,
 	})
 }
 
-func Status(clientURLs []string, tc *tls.Config) (*clientv3.StatusResponse, error) {
-	etcdcli, err := newClient(clientURLs, tc)
+func Status(endpoints []string, tlsConfig *tls.Config) (chan *StatusResp, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
+	client, err := newClient(ctx, endpoints, tlsConfig)
 	if err != nil {
 		return nil, err
 	}
-	defer etcdcli.Close()
+	defer client.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultRequestTimeout)
-	resp, err := etcdcli.Status(ctx, clientURLs[0])
+	var wg sync.WaitGroup
+	respCh := make(chan *StatusResp, len(endpoints))
+	for _, endpoint := range endpoints {
+		wg.Add(1)
+		go func(endpoint string) {
+			status, err := client.Status(ctx, endpoint)
+			respCh <- &StatusResp{
+				Endpoint: endpoint,
+				Status:   status,
+				Err:      err,
+			}
+			wg.Done()
+		}(endpoint)
+	}
+	wg.Wait()
 	cancel()
-	return resp, err
+	return respCh, nil
 }
 
-func AddMember(clientURLs, peerURLs []string, tc *tls.Config) (*clientv3.MemberAddResponse, error) {
-	etcdcli, err := newClient(clientURLs, tc)
+func AddMember(endpoints, peerURLs []string, tlsConfig *tls.Config) (*clientv3.MemberAddResponse, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
+	client, err := newClient(ctx, endpoints, tlsConfig)
 	if err != nil {
 		return nil, err
 	}
-	defer etcdcli.Close()
+	defer client.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultRequestTimeout)
-	resp, err := etcdcli.Cluster.MemberAdd(ctx, peerURLs)
+	resp, err := client.Cluster.MemberAdd(ctx, peerURLs)
 	cancel()
 	return resp, err
 }
 
-// https://github.com/coreos/etcd-operator/blob/master/pkg/util/etcdutil/etcdutil.go
-func ListMembers(clientURLs []string, tc *tls.Config) (*clientv3.MemberListResponse, error) {
-	cfg := clientv3.Config{
-		Endpoints:   clientURLs,
-		DialTimeout: constants.DefaultDialTimeout,
-		TLS:         tc,
-	}
-	etcdcli, err := clientv3.New(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("list members failed: creating etcd client failed: %v", err)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultRequestTimeout)
-	resp, err := etcdcli.MemberList(ctx)
-	cancel()
-	etcdcli.Close()
-	return resp, err
-}
-
-// https://github.com/coreos/etcd-operator/blob/master/pkg/util/etcdutil/etcdutil.go
-func RemoveMember(clientURLs []string, tc *tls.Config, id uint64) error {
-	cfg := clientv3.Config{
-		Endpoints:   clientURLs,
-		DialTimeout: constants.DefaultDialTimeout,
-		TLS:         tc,
-	}
-	etcdcli, err := clientv3.New(cfg)
+func RemoveMember(endpoints []string, tlsConfig *tls.Config, id uint64) error {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
+	client, err := newClient(ctx, endpoints, tlsConfig)
 	if err != nil {
 		return err
 	}
-	defer etcdcli.Close()
+	defer client.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultRequestTimeout)
-	_, err = etcdcli.Cluster.MemberRemove(ctx, id)
+	_, err = client.Cluster.MemberRemove(ctx, id)
 	cancel()
 	return err
 }
 
-// https://github.com/etcd-io/etcd/blob/ff455e3567d6465717d3ced6dc889d4eec9ed890/etcdctl/ctlv3/command/ep_command.go#L121
-func HealthCheck(clientURLs []string, tc *tls.Config) error {
-	etcdcli, err := newClient(clientURLs, tc)
+func ListMembers(endpoints []string, tlsConfig *tls.Config) (*clientv3.MemberListResponse, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
+	client, err := newClient(ctx, endpoints, tlsConfig)
+	if err != nil {
+		return nil, err
+	}
+	defer client.Close()
+
+	resp, err := client.MemberList(ctx)
+	cancel()
+	client.Close()
+	return resp, err
+}
+
+func HealthCheck(endpoints []string, tlsConfig *tls.Config) error {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
+	client, err := newClient(ctx, endpoints, tlsConfig)
 	if err != nil {
 		return err
 	}
-	defer etcdcli.Close()
+	defer client.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), constants.DefaultRequestTimeout)
-	_, err = etcdcli.Get(ctx, "health")
+	_, err = client.Get(ctx, "health")
 	cancel()
 
 	switch err {
@@ -99,4 +117,46 @@ func HealthCheck(clientURLs []string, tc *tls.Config) error {
 	default:
 		return err
 	}
+}
+
+func BackupSnapshot(endpoints []string, s3Resource string, writer s3util.Writer, tlsConfig *tls.Config) error {
+	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
+	client, err := newClient(ctx, endpoints, tlsConfig)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	readCloser, err := client.Snapshot(ctx)
+	if err != nil {
+		return err
+	}
+	defer readCloser.Close()
+
+	_, err = writer.Write(ctx, s3Resource, readCloser)
+	cancel()
+	return err
+}
+
+func RestoreSnapshot(restoreFile string, s3resource string, reader s3util.Reader) error {
+	readCloser, err := reader.Open(s3resource)
+	if err != nil {
+		return err
+	}
+	defer readCloser.Close()
+
+	err = util.WriteFile(readCloser, restoreFile)
+	if err != nil {
+		return err
+	}
+
+	info, err := os.Stat(restoreFile)
+	if err != nil {
+		return err
+	}
+
+	if info.Size() == 0 {
+		return fmt.Errorf("Snapshot file size is 0")
+	}
+	return nil
 }
