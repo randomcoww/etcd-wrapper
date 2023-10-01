@@ -9,15 +9,11 @@ import (
 type clusterState int
 
 const (
-	clusterStateNew          clusterState  = 0
-	clusterStateExisting     clusterState  = 1
-	clusterStateWait         clusterState  = 2
-	clusterStateWaitExisting clusterState  = 3
-	clusterStateWaitHealthy  clusterState  = 4
-	waitExistingCountAllowed int           = 16
-	waitHealthyCountAllowed  int           = 4
-	failureCountAllowed      int           = 16
-	waitDuration             time.Duration = 6 * time.Second
+	clusterStateNew             clusterState  = 0
+	clusterStateHealthy         clusterState  = 1
+	clusterStateWait            clusterState  = 2
+	healthcheckFailCountAllowed int           = 16
+	intervalDuration            time.Duration = 6 * time.Second
 )
 
 func main() {
@@ -26,13 +22,13 @@ func main() {
 		panic(err)
 	}
 
-	var failureCount, waitExistingCount, waitHealthyCount int
+	var healthcheckFailCount int
 	var state clusterState = clusterStateNew
 
 L:
 	for {
 		select {
-		case <-time.After(waitDuration):
+		case <-time.After(intervalDuration):
 
 			err = v.SyncStatus()
 			if err != nil {
@@ -55,91 +51,35 @@ L:
 			}
 
 			switch state {
-			case clusterStateWaitHealthy:
-				waitHealthyCount++
-				log.Printf("Wait healthy confirm count: %v (of %v)", waitHealthyCount, waitHealthyCountAllowed)
-
-				if v.MemberSelf.MemberID == nil && waitHealthyCount < waitHealthyCountAllowed {
-					continue L
-				}
-				log.Printf("Wait healthy confirm passed.")
-				state = clusterStateExisting
-				waitHealthyCount = 0
-				continue L
-
-			case clusterStateWait:
-				if v.Healthy {
-					log.Printf("Health check passed.")
-
-					state = clusterStateWaitHealthy
-					failureCount = 0
-					waitExistingCount = 0
-					continue L
-				}
-
-			case clusterStateWaitExisting:
-				if v.Healthy {
-					log.Printf("Health check passed.")
-
-					state = clusterStateWaitHealthy
-					failureCount = 0
-					waitExistingCount = 0
-					continue L
-				}
-
-				waitExistingCount++
-				log.Printf("Wait existing failed count: %v (of %v)", waitExistingCount, waitExistingCountAllowed)
-
-				if waitExistingCount < waitExistingCountAllowed {
-					continue L
-				}
-
-				log.Printf("Wait existing exceeded allowed count.")
-				state = clusterStateNew
-				waitExistingCount = 0
-				continue L
 
 			case clusterStateNew:
-				if v.Healthy {
-					log.Printf("Health check passed.")
-
-					state = clusterStateWaitHealthy
-					failureCount = 0
-					waitExistingCount = 0
+				switch {
+				case v.MemberSelf.Healthy, v.Healthy:
+					log.Printf("Cluster healthy")
+					state = clusterStateHealthy
 					continue L
-				}
 
-				log.Printf("Cluster not found. Writing manifest for restore or new cluster.")
-				if err = v.WritePodManifest(true); err != nil {
-					log.Fatalf("Failed to write pod manifest: %v", err)
-				}
-				state = clusterStateWait
-				continue L
-
-			case clusterStateExisting:
-				if !v.Healthy {
-					failureCount++
-					log.Printf("Health check failed count: %v (of %v)", failureCount, failureCountAllowed)
-
-					if failureCount < failureCountAllowed {
-						continue L
-					}
-
-					log.Printf("Failure exceeded allowed count. Writing manifest for restore or new cluster.")
+				default:
+					log.Printf("Cluster not found. Writing manifest for restore or new cluster")
 					if err = v.WritePodManifest(true); err != nil {
 						log.Fatalf("Failed to write pod manifest: %v", err)
 					}
 					state = clusterStateWait
-					failureCount = 0
 					continue L
 				}
 
-				if v.MemberSelf.MemberID == nil ||
-					*v.MemberSelf.MemberIDFromCluster != *v.MemberSelf.MemberID {
+			case clusterStateHealthy:
+				switch {
+				case v.MemberSelf.Healthy:
+					log.Printf("Cluster healthy")
+					healthcheckFailCount = 0
+					continue L
 
+				case v.Healthy:
 					log.Printf("Member mismatch with %v. Replacing member.", *v.MemberSelf.MemberIDFromCluster)
+					healthcheckFailCount = 0
 					if err = v.ReplaceMember(v.MemberSelf); err != nil {
-						log.Fatalf("Failed to replace member. Writing manifest for restore or new cluster.")
+						log.Fatalf("Failed to replace member. Writing manifest for restore or new cluster")
 
 						if err = v.WritePodManifest(true); err != nil {
 							log.Fatalf("Failed to write pod manifest: %v", err)
@@ -147,16 +87,36 @@ L:
 						state = clusterStateWait
 						continue L
 					}
-					log.Printf("Replaced member with new %v. Writing manifest to join existing cluster.", *v.MemberSelf.MemberIDFromCluster)
+					log.Printf("Replaced member with new %v. Writing manifest to join existing cluster", *v.MemberSelf.MemberIDFromCluster)
 
 					if err = v.WritePodManifest(false); err != nil {
 						log.Fatalf("Failed to write pod manifest: %v", err)
 					}
-					state = clusterStateWaitExisting
+					state = clusterStateWait
+					continue L
+
+				default:
+					healthcheckFailCount++
+					log.Printf("Health check failed count: %v (of %v)", healthcheckFailCount, healthcheckFailCountAllowed)
+
+					if healthcheckFailCount < healthcheckFailCountAllowed {
+						continue L
+					}
+					state = clusterStateNew
 					continue L
 				}
 
-				log.Printf("Cluster %v healthy.", *v.ClusterID)
+			case clusterStateWait:
+				switch {
+				case v.MemberSelf.Healthy:
+					log.Printf("Cluster healthy")
+					state = clusterStateHealthy
+					continue L
+
+				default:
+					log.Printf("Waiting health check pass")
+					continue L
+				}
 			}
 		}
 	}
