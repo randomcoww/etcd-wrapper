@@ -1,5 +1,6 @@
 locals {
   aws_region = "us-west-2"
+  s3_path    = "snapshot"
 
   nodes = {
     node0 = {
@@ -41,7 +42,7 @@ locals {
 
         container_images = {
           etcd         = "gcr.io/etcd-development/etcd:v3.5.8-amd64"
-          etcd_wrapper = "ghcr.io/randomcoww/etcd-wrapper:20230930"
+          etcd_wrapper = "ghcr.io/randomcoww/etcd-wrapper:20231009"
         }
 
         cluster_token               = "test"
@@ -55,7 +56,7 @@ locals {
         healthcheck_interval           = "6s"
         healthcheck_fail_count_allowed = 4
         backup_resource = {
-          resource          = "${aws_s3_bucket.s3.bucket}/etcd.db"
+          resource          = "${aws_s3_bucket.s3.bucket}/${local.s3_path}/etcd.db"
           access_key_id     = aws_iam_access_key.s3.id
           secret_access_key = aws_iam_access_key.s3.secret
           aws_region        = local.aws_region

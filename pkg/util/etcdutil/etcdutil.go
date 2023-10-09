@@ -16,6 +16,7 @@ import (
 const (
 	defaultRequestTimeout time.Duration = 2 * time.Second
 	defaultDialTimeout    time.Duration = 2 * time.Second
+	snapshotBackupTimeout time.Duration = 16 * time.Second
 )
 
 type StatusResp struct {
@@ -96,7 +97,6 @@ func ListMembers(endpoints []string, tlsConfig *tls.Config) (*clientv3.MemberLis
 
 	resp, err := client.MemberList(ctx)
 	cancel()
-	client.Close()
 	return resp, err
 }
 
@@ -120,7 +120,7 @@ func HealthCheck(endpoints []string, tlsConfig *tls.Config) error {
 }
 
 func BackupSnapshot(endpoints []string, s3Resource string, writer s3util.Writer, tlsConfig *tls.Config) error {
-	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), snapshotBackupTimeout)
 	client, err := newClient(ctx, endpoints, tlsConfig)
 	if err != nil {
 		return err
