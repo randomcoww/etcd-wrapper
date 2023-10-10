@@ -14,9 +14,9 @@ import (
 )
 
 const (
-	defaultRequestTimeout time.Duration = 2 * time.Second
-	defaultDialTimeout    time.Duration = 2 * time.Second
-	snapshotBackupTimeout time.Duration = 16 * time.Second
+	defaultRequestTimeout time.Duration = 4 * time.Second
+	defaultDialTimeout    time.Duration = 4 * time.Second
+	snapshotBackupTimeout time.Duration = 2 * time.Minute
 )
 
 type StatusResp struct {
