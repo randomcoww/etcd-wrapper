@@ -47,13 +47,13 @@ tw terraform -chdir=testenv apply
 Run each node
 
 ```bash
-podman play kube etcd-wrapper/testenv/output/node0.yaml & \
-podman play kube etcd-wrapper/testenv/output/node1.yaml & \
-podman play kube etcd-wrapper/testenv/output/node2.yaml
+podman play kube testenv/output/node0.yaml & \
+podman play kube testenv/output/node1.yaml & \
+podman play kube testenv/output/node2.yaml
 
-podman play kube etcd-wrapper/testenv/output/node0.yaml --down & \
-podman play kube etcd-wrapper/testenv/output/node1.yaml --down & \
-podman play kube etcd-wrapper/testenv/output/node2.yaml --down
+podman play kube testenv/output/node0.yaml --down & \
+podman play kube testenv/output/node1.yaml --down & \
+podman play kube testenv/output/node2.yaml --down
 ```
 
 ```bash

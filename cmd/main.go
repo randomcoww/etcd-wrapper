@@ -21,7 +21,7 @@ func main() {
 	}
 
 	var healthcheckFailCount int
-	var state clusterState = clusterStateNew
+	var state clusterState = clusterStateHealthy
 
 	intervalTick := time.NewTicker(v.HealthCheckInterval)
 	backupIntervalTick := time.NewTicker(v.BackupInterval)

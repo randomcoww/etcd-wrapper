@@ -42,7 +42,7 @@ locals {
 
         container_images = {
           etcd         = "gcr.io/etcd-development/etcd:v3.5.8-amd64"
-          etcd_wrapper = "ghcr.io/randomcoww/etcd-wrapper:20231009"
+          etcd_wrapper = "ghcr.io/randomcoww/etcd-wrapper:20231010"
         }
 
         cluster_token               = "test"
