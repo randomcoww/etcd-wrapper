@@ -23,7 +23,7 @@ import (
 )
 
 type Member struct {
-	Name                string  `yaml:"name,omitempty"`
+	Name                string  `yaml:"-"`
 	Healthy             bool    `yaml:"healthy"`
 	MemberID            *uint64 `yaml:"memberID,omitempty"`
 	MemberIDFromCluster *uint64 `yaml:"memberIDFromCluster,omitempty"`
@@ -164,7 +164,7 @@ func New() (*Status, error) {
 		return podspec.Create(
 			name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, peerTrustedCAFile, initialAdvertisePeerURLs,
 			listenPeerURLs, advertiseClientURLs, listenClientURLs, initialClusterToken, initialCluster,
-			etcdImage, etcdPodName, etcdPodNamespace, etcdSnapshotFile, etcdPodManifestFile,
+			etcdImage, etcdPodName, etcdPodNamespace, etcdSnapshotFile,
 			initialClusterState, runRestore, memberID, versionAnnotation,
 		)
 	}
@@ -356,6 +356,10 @@ func (v *Status) WritePodManifest(runRestore bool) error {
 		return err
 	}
 	return util.WriteFile(io.NopCloser(bytes.NewReader(manifest)), v.EtcdPodManifestFile)
+}
+
+func (v *Status) DeletePodManifest() error {
+	return util.DeleteFile(v.EtcdPodManifestFile)
 }
 
 func (v *Status) BackupSnapshot() error {

@@ -139,8 +139,11 @@ L:
 					if readinessFailCount < v.ReadinessFailCountAllowed {
 						continue L
 					}
-					state = clusterStateNew
-					continue L
+					err := v.DeletePodManifest()
+					if err != nil {
+						log.Fatalf("Failed to clean up etcd pod manifest file: %v", err)
+					}
+					panic("Quitting with readiness failed")
 				}
 			}
 		}

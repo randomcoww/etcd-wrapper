@@ -6,13 +6,13 @@ import (
 	"path/filepath"
 )
 
-func WriteFile(rc io.Reader, writePath string) error {
-	err := os.MkdirAll(filepath.Dir(writePath), os.FileMode(0644))
+func WriteFile(rc io.Reader, path string) error {
+	err := os.MkdirAll(filepath.Dir(path), os.FileMode(0644))
 	if err != nil {
 		return err
 	}
 
-	f, err := os.OpenFile(writePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
 	if err != nil {
 		return err
 	}
@@ -24,4 +24,8 @@ func WriteFile(rc io.Reader, writePath string) error {
 	}
 
 	return nil
+}
+
+func DeleteFile(path string) error {
+	return os.Remove(path)
 }

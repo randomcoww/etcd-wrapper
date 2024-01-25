@@ -16,7 +16,7 @@ const (
 
 func Create(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, peerTrustedCAFile, initialAdvertisePeerURLs,
 	listenPeerURLs, advertiseClientURLs, listenClientURLs, initialClusterToken, initialCluster string,
-	etcdImage, etcdPodName, etcdPodNamespace, etcdSnapshotFile, etcdPodManifestFile string,
+	etcdImage, etcdPodName, etcdPodNamespace, etcdSnapshotFile string,
 	initialClusterState string, runRestore bool, memberAnnotation uint64, versionAnnotation string) *v1.Pod {
 
 	var priority int32 = 2000001000
