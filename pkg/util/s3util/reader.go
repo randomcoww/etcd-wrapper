@@ -6,6 +6,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"github.com/aws/smithy-go"
 	"io"
 )
 
@@ -31,15 +32,14 @@ func (v *reader) Open(ctx context.Context, path string) (io.ReadCloser, bool, er
 		Bucket: aws.String(bucket),
 		Key:    aws.String(key),
 	})
-	if err != nil {
-		var nsk *types.NoSuchKey
-		var nsb *types.NoSuchBucket
-		switch {
-		case errors.As(err, &nsk), errors.As(err, &nsb):
+
+	var apiError smithy.APIError
+	if errors.As(err, &apiError) {
+		switch apiError.(type) {
+		case *types.NotFound, *types.NoSuchKey, *types.NoSuchBucket:
 			return nil, false, nil
 		}
 		return nil, false, err
 	}
-
 	return resp.Body, true, nil
 }
