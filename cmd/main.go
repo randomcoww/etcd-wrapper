@@ -64,25 +64,15 @@ L:
 			if err != nil {
 				log.Fatalf("Failed to parse cluster status: %v", err)
 			}
-			log.Printf("Cluster:\n%s", statusYaml)
-
-			for _, m := range v.Members {
-				statusYaml, err = m.ToYaml()
-				if err != nil {
-					log.Fatalf("Failed to parse member: %v", err)
-				}
-				log.Printf("Member %s:\n%s", m.Name, statusYaml)
-			}
+			log.Printf("Cluster status:\n%s", statusYaml)
 
 			switch state {
-
 			case clusterStateNew:
 				healthcheckFailCount = 0
 				readinessFailCount = 0
 
 				switch {
 				case v.MemberSelf.Healthy, v.Healthy:
-					log.Printf("Cluster entered healthy state")
 					state = clusterStateHealthy
 					continue L
 
@@ -99,7 +89,6 @@ L:
 			case clusterStateHealthy:
 				switch {
 				case v.MemberSelf.Healthy:
-					log.Printf("Cluster healthy")
 					healthcheckFailCount = 0
 					continue L
 
@@ -139,7 +128,6 @@ L:
 			case clusterStateWait:
 				switch {
 				case v.MemberSelf.Healthy:
-					log.Printf("Cluster entered healthy state")
 					state = clusterStateHealthy
 					readinessFailCount = 0
 					continue L

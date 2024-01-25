@@ -42,7 +42,7 @@ type Status struct {
 	BackupMemberID *uint64 `yaml:"backupMemberID,omitempty"`
 	Revision       *int64  `yaml:"revision,omitempty"`
 	//
-	MemberMap       map[string]*Member                 `yaml:"-"`
+	MemberMap       map[string]*Member                 `yaml:"members"`
 	MemberPeerMap   map[string]*Member                 `yaml:"-"`
 	MemberClientMap map[string]*Member                 `yaml:"-"`
 	MemberSelf      *Member                            `yaml:"-"`
@@ -192,11 +192,6 @@ func (v *Member) clearState() {
 	v.ClusterID = nil
 	v.LeaderID = nil
 	v.Revision = nil
-}
-
-func (v *Member) ToYaml() (b []byte, err error) {
-	b, err = yaml.Marshal(v)
-	return
 }
 
 func (v *Status) SyncStatus() error {
