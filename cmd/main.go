@@ -77,9 +77,12 @@ L:
 			switch state {
 
 			case clusterStateNew:
+				healthcheckFailCount = 0
+				readinessFailCount = 0
+
 				switch {
 				case v.MemberSelf.Healthy, v.Healthy:
-					log.Printf("Cluster healthy")
+					log.Printf("Cluster entered healthy state")
 					state = clusterStateHealthy
 					continue L
 
@@ -136,9 +139,9 @@ L:
 			case clusterStateWait:
 				switch {
 				case v.MemberSelf.Healthy:
-					log.Printf("Cluster healthy")
-					readinessFailCount = 0
+					log.Printf("Cluster entered healthy state")
 					state = clusterStateHealthy
+					readinessFailCount = 0
 					continue L
 
 				default:

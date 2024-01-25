@@ -371,9 +371,9 @@ func (v *Status) BackupSnapshot() error {
 		}
 		cfg, err := config.LoadDefaultConfig(context.TODO())
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
-		err = etcdutil.BackupSnapshot(clientsHealhty, v.S3BackupResource, s3util.NewWriter(s3.NewFromConfig(cfg)), v.ClientTLSConfig)
+		err = etcdutil.BackupSnapshot(clientsHealhty, v.S3BackupResource, s3util.New(s3.NewFromConfig(cfg)), v.ClientTLSConfig)
 		if err != nil {
 			return err
 		}
@@ -384,10 +384,9 @@ func (v *Status) BackupSnapshot() error {
 func (v *Status) RestoreSnapshot() (bool, error) {
 	cfg, err := config.LoadDefaultConfig(context.TODO())
 	if err != nil {
-		log.Fatal(err)
 		return false, err
 	}
-	ok, err := etcdutil.RestoreSnapshot(v.EtcdSnapshotFile, v.S3BackupResource, s3util.NewReader(s3.NewFromConfig(cfg)))
+	ok, err := etcdutil.RestoreSnapshot(v.EtcdSnapshotFile, v.S3BackupResource, s3util.New(s3.NewFromConfig(cfg)))
 	if err != nil {
 		return false, err
 	}

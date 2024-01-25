@@ -3,12 +3,10 @@ package etcdutil
 import (
 	"context"
 	"crypto/tls"
-	"fmt"
 	"github.com/randomcoww/etcd-wrapper/pkg/util"
 	"github.com/randomcoww/etcd-wrapper/pkg/util/s3util"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	clientv3 "go.etcd.io/etcd/client/v3"
-	"os"
 	"sync"
 	"time"
 )
@@ -25,7 +23,7 @@ type StatusResp struct {
 	Err      error
 }
 
-func newClient(ctx context.Context, endpoints []string, tlsConfig *tls.Config) (*clientv3.Client, error) {
+func new(ctx context.Context, endpoints []string, tlsConfig *tls.Config) (*clientv3.Client, error) {
 	return clientv3.New(clientv3.Config{
 		Endpoints:   endpoints,
 		DialTimeout: defaultDialTimeout,
@@ -36,7 +34,7 @@ func newClient(ctx context.Context, endpoints []string, tlsConfig *tls.Config) (
 
 func Status(endpoints []string, tlsConfig *tls.Config) (chan *StatusResp, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
-	client, err := newClient(ctx, endpoints, tlsConfig)
+	client, err := new(ctx, endpoints, tlsConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +61,7 @@ func Status(endpoints []string, tlsConfig *tls.Config) (chan *StatusResp, error)
 
 func AddMember(endpoints, peerURLs []string, tlsConfig *tls.Config) (*clientv3.MemberAddResponse, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
-	client, err := newClient(ctx, endpoints, tlsConfig)
+	client, err := new(ctx, endpoints, tlsConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +74,7 @@ func AddMember(endpoints, peerURLs []string, tlsConfig *tls.Config) (*clientv3.M
 
 func RemoveMember(endpoints []string, tlsConfig *tls.Config, id uint64) error {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
-	client, err := newClient(ctx, endpoints, tlsConfig)
+	client, err := new(ctx, endpoints, tlsConfig)
 	if err != nil {
 		return err
 	}
@@ -89,7 +87,7 @@ func RemoveMember(endpoints []string, tlsConfig *tls.Config, id uint64) error {
 
 func ListMembers(endpoints []string, tlsConfig *tls.Config) (*clientv3.MemberListResponse, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
-	client, err := newClient(ctx, endpoints, tlsConfig)
+	client, err := new(ctx, endpoints, tlsConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -102,7 +100,7 @@ func ListMembers(endpoints []string, tlsConfig *tls.Config) (*clientv3.MemberLis
 
 func HealthCheck(endpoints []string, tlsConfig *tls.Config) error {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
-	client, err := newClient(ctx, endpoints, tlsConfig)
+	client, err := new(ctx, endpoints, tlsConfig)
 	if err != nil {
 		return err
 	}
@@ -119,9 +117,9 @@ func HealthCheck(endpoints []string, tlsConfig *tls.Config) error {
 	}
 }
 
-func BackupSnapshot(endpoints []string, s3Resource string, writer s3util.Writer, tlsConfig *tls.Config) error {
+func BackupSnapshot(endpoints []string, s3Resource string, s3 *s3util.Client, tlsConfig *tls.Config) error {
 	ctx, cancel := context.WithTimeout(context.Background(), snapshotBackupTimeout)
-	client, err := newClient(ctx, endpoints, tlsConfig)
+	client, err := new(ctx, endpoints, tlsConfig)
 	if err != nil {
 		return err
 	}
@@ -133,18 +131,18 @@ func BackupSnapshot(endpoints []string, s3Resource string, writer s3util.Writer,
 	}
 	defer readCloser.Close()
 
-	_, err = writer.Write(ctx, s3Resource, readCloser)
+	_, err = s3.Write(ctx, s3Resource, readCloser)
 	cancel()
 	return err
 }
 
-func RestoreSnapshot(restoreFile string, s3resource string, reader s3util.Reader) (bool, error) {
+func RestoreSnapshot(restoreFile string, s3resource string, s3 *s3util.Client) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), snapshotBackupTimeout)
-	readCloser, ok, err := reader.Open(ctx, s3resource)
+	readCloser, err := s3.Open(ctx, s3resource)
 	if err != nil {
 		return false, err
 	}
-	if !ok {
+	if readCloser == nil {
 		return false, nil
 	}
 	defer readCloser.Close()
@@ -154,14 +152,5 @@ func RestoreSnapshot(restoreFile string, s3resource string, reader s3util.Reader
 		return false, err
 	}
 	cancel()
-
-	info, err := os.Stat(restoreFile)
-	if err != nil {
-		return false, err
-	}
-
-	if info.Size() == 0 {
-		return false, fmt.Errorf("Snapshot file size is 0")
-	}
 	return true, nil
 }
