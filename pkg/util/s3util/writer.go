@@ -3,14 +3,15 @@ package s3util
 import (
 	"context"
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/aws/aws-sdk-go/service/s3/s3manager"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"io"
 )
 
 type writer struct {
-	*s3.S3
+	*s3.Client
 }
 
 type Writer interface {
@@ -19,7 +20,7 @@ type Writer interface {
 	Delete(context.Context, string) error
 }
 
-func NewWriter(s3 *s3.S3) Writer {
+func NewWriter(s3 *s3.Client) Writer {
 	return &writer{s3}
 }
 
@@ -30,7 +31,10 @@ func (v *writer) Write(ctx context.Context, path string, r io.Reader) (int64, er
 		return 0, err
 	}
 
-	_, err = s3manager.NewUploaderWithClient(v.S3).UploadWithContext(ctx, &s3manager.UploadInput{
+	var partMiBs int64 = 10
+	_, err = manager.NewUploader(v.Client, func(u *manager.Uploader) {
+		u.PartSize = partMiBs * 1024 * 1024
+	}).Upload(ctx, &s3.PutObjectInput{
 		Bucket: aws.String(bucket),
 		Key:    aws.String(key),
 		Body:   r,
@@ -39,7 +43,7 @@ func (v *writer) Write(ctx context.Context, path string, r io.Reader) (int64, er
 		return 0, err
 	}
 
-	resp, err := v.GetObject(&s3.GetObjectInput{
+	resp, err := v.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: aws.String(bucket),
 		Key:    aws.String(key),
 	})
@@ -61,7 +65,7 @@ func (v *writer) List(ctx context.Context, basePath string) ([]string, error) {
 		return nil, err
 	}
 
-	objects, err := v.ListObjectsWithContext(ctx, &s3.ListObjectsInput{
+	objects, err := v.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
 		Bucket: aws.String(bucket),
 		Prefix: aws.String(key),
 	})
@@ -81,9 +85,11 @@ func (v *writer) Delete(ctx context.Context, path string) error {
 		return err
 	}
 
-	_, err = v.DeleteObjectWithContext(ctx, &s3.DeleteObjectInput{
+	_, err = v.DeleteObjects(ctx, &s3.DeleteObjectsInput{
 		Bucket: aws.String(bucket),
-		Key:    aws.String(key),
+		Delete: &types.Delete{Objects: []types.ObjectIdentifier{
+			types.ObjectIdentifier{Key: aws.String(key)},
+		}},
 	})
 	return err
 }

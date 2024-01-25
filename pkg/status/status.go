@@ -2,13 +2,13 @@ package status
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/randomcoww/etcd-wrapper/pkg/podspec"
 	"github.com/randomcoww/etcd-wrapper/pkg/util"
 	"github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
@@ -337,14 +337,17 @@ func (v *Status) WritePodManifest(runRestore bool) error {
 	var pod *v1.Pod
 	manifestVersion := fmt.Sprintf("%v", time.Now().Unix())
 	if runRestore {
-		err := v.RestoreSnapshot()
+		ok, err := v.RestoreSnapshot()
 		if err != nil {
-			log.Printf("Restore snapshot failed: %v. Starting new cluster", err)
-			pod = v.PodSpec("new", false, manifestVersion)
-
-		} else {
+			log.Printf("Read S3 snapshot resource failed: %v", err)
+			return err
+		}
+		if ok {
 			log.Printf("Snapshot pull succeeded. Restoring cluster")
 			pod = v.PodSpec("existing", true, manifestVersion)
+		} else {
+			log.Printf("Snapshot not found. Starting new cluster")
+			pod = v.PodSpec("new", false, manifestVersion)
 		}
 	} else {
 		pod = v.PodSpec("existing", false, manifestVersion)
@@ -363,9 +366,11 @@ func (v *Status) BackupSnapshot() error {
 		for _, m := range v.MembersHealthy {
 			clientsHealhty = append(clientsHealhty, m.ClientURL)
 		}
-
-		sess := session.Must(session.NewSession(&aws.Config{}))
-		err := etcdutil.BackupSnapshot(clientsHealhty, v.S3BackupResource, s3util.NewWriter(s3.New(sess)), v.ClientTLSConfig)
+		cfg, err := config.LoadDefaultConfig(context.TODO())
+		if err != nil {
+			log.Fatal(err)
+		}
+		err = etcdutil.BackupSnapshot(clientsHealhty, v.S3BackupResource, s3util.NewWriter(s3.NewFromConfig(cfg)), v.ClientTLSConfig)
 		if err != nil {
 			return err
 		}
@@ -373,11 +378,15 @@ func (v *Status) BackupSnapshot() error {
 	return nil
 }
 
-func (v *Status) RestoreSnapshot() error {
-	sess := session.Must(session.NewSession(&aws.Config{}))
-	err := etcdutil.RestoreSnapshot(v.EtcdSnapshotFile, v.S3BackupResource, s3util.NewReader(s3.New(sess)))
+func (v *Status) RestoreSnapshot() (bool, error) {
+	cfg, err := config.LoadDefaultConfig(context.TODO())
 	if err != nil {
-		return err
+		log.Fatal(err)
+		return false, err
 	}
-	return nil
+	ok, err := etcdutil.RestoreSnapshot(v.EtcdSnapshotFile, v.S3BackupResource, s3util.NewReader(s3.NewFromConfig(cfg)))
+	if err != nil {
+		return false, err
+	}
+	return ok, nil
 }

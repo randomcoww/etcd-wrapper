@@ -138,25 +138,30 @@ func BackupSnapshot(endpoints []string, s3Resource string, writer s3util.Writer,
 	return err
 }
 
-func RestoreSnapshot(restoreFile string, s3resource string, reader s3util.Reader) error {
-	readCloser, err := reader.Open(s3resource)
+func RestoreSnapshot(restoreFile string, s3resource string, reader s3util.Reader) (bool, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), snapshotBackupTimeout)
+	readCloser, ok, err := reader.Open(ctx, s3resource)
 	if err != nil {
-		return err
+		return false, err
+	}
+	if !ok {
+		return false, nil
 	}
 	defer readCloser.Close()
 
 	err = util.WriteFile(readCloser, restoreFile)
 	if err != nil {
-		return err
+		return false, err
 	}
+	cancel()
 
 	info, err := os.Stat(restoreFile)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	if info.Size() == 0 {
-		return fmt.Errorf("Snapshot file size is 0")
+		return false, fmt.Errorf("Snapshot file size is 0")
 	}
-	return nil
+	return true, nil
 }
