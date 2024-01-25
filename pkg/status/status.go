@@ -58,6 +58,7 @@ type Status struct {
 	HealthCheckInterval         time.Duration `yaml:"-"`
 	BackupInterval              time.Duration `yaml:"-"`
 	HealthCheckFailCountAllowed int           `yaml:"-"`
+	ReadinessFailCountAllowed   int           `yaml:"-"`
 }
 
 func New() (*Status, error) {
@@ -91,7 +92,7 @@ func New() (*Status, error) {
 	// etcd wrapper args
 	var clientCertFile, clientKeyFile, initialClusterClients, s3BackupResource string
 	var healthCheckInterval, backupInterval time.Duration
-	var healthCheckFailCountAllowed int
+	var healthCheckFailCountAllowed, readinessFailCountAllowed int
 	flag.StringVar(&clientCertFile, "client-cert-file", "", "Path to the client server TLS cert file.")
 	flag.StringVar(&clientKeyFile, "client-key-file", "", "Path to the client server TLS key file.")
 	flag.StringVar(&initialClusterClients, "initial-cluster-clients", "", "List of etcd nodes and client URLs in same format as intial-cluster.")
@@ -99,6 +100,7 @@ func New() (*Status, error) {
 	flag.DurationVar(&healthCheckInterval, "healthcheck-interval", 6*time.Second, "Healthcheck interval.")
 	flag.DurationVar(&backupInterval, "backup-interval", 15*time.Minute, "Backup trigger interval.")
 	flag.IntVar(&healthCheckFailCountAllowed, "healthcheck-fail-count-allowed", 16, "Number of healthcheck failures to allow before restarting etcd pod.")
+	flag.IntVar(&readinessFailCountAllowed, "readiness-fail-count-allowed", 64, "Number of readiness check failures to allow before restarting etcd pod.")
 	flag.Parse()
 
 	tlsInfo := transport.TLSInfo{
@@ -123,6 +125,7 @@ func New() (*Status, error) {
 	status.HealthCheckInterval = healthCheckInterval
 	status.BackupInterval = backupInterval
 	status.HealthCheckFailCountAllowed = healthCheckFailCountAllowed
+	status.ReadinessFailCountAllowed = readinessFailCountAllowed
 
 	for _, n := range strings.Split(initialCluster, ",") {
 		node := strings.Split(n, "=")

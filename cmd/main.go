@@ -21,6 +21,7 @@ func main() {
 	}
 
 	var healthcheckFailCount int
+	var readinessFailCount int
 	var state clusterState = clusterStateHealthy
 
 	intervalTick := time.NewTicker(v.HealthCheckInterval)
@@ -136,11 +137,18 @@ L:
 				switch {
 				case v.MemberSelf.Healthy:
 					log.Printf("Cluster healthy")
+					readinessFailCount = 0
 					state = clusterStateHealthy
 					continue L
 
 				default:
-					log.Printf("Waiting health check pass")
+					readinessFailCount++
+					log.Printf("Readiness check failed count: %v (of %v)", readinessFailCount, v.ReadinessFailCountAllowed)
+
+					if readinessFailCount < v.ReadinessFailCountAllowed {
+						continue L
+					}
+					state = clusterStateNew
 					continue L
 				}
 			}
