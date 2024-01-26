@@ -1,7 +1,7 @@
 ### Image build
 
 ```
-TAG=ghcr.io/randomcoww/etcd-wrapper:$(date -u +'%Y%m%d').3
+TAG=ghcr.io/randomcoww/etcd-wrapper:$(date -u +'%Y%m%d').4
 
 mkdir -p build
 TMPDIR=$(pwd)/build podman build \

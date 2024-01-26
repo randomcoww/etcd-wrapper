@@ -66,7 +66,7 @@ func New() (*Status, error) {
 	var err error
 
 	// etcd args
-	var name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, peerTrustedCAFile, initialAdvertisePeerURLs, listenPeerURLs, advertiseClientURLs, listenClientURLs, initialClusterToken, initialCluster string
+	var name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, peerTrustedCAFile, initialAdvertisePeerURLs, listenPeerURLs, advertiseClientURLs, listenClientURLs, initialClusterToken, initialCluster, autoCompationRetention string
 	flag.StringVar(&name, "name", "", "Human-readable name for this member.")
 	flag.StringVar(&certFile, "cert-file", "", "Host path to the client server TLS cert file.")
 	flag.StringVar(&keyFile, "key-file", "", "Host path to the client server TLS key file.")
@@ -80,6 +80,7 @@ func New() (*Status, error) {
 	flag.StringVar(&listenClientURLs, "listen-client-urls", "", "List of URLs to listen on for client traffic.")
 	flag.StringVar(&initialClusterToken, "initial-cluster-token", "", "Initial cluster token for the etcd cluster during bootstrap.")
 	flag.StringVar(&initialCluster, "initial-cluster", "", "Initial cluster configuration for bootstrapping.")
+	flag.StringVar(&autoCompationRetention, "auto-compaction-retention", "0", "Auto compaction retention length. 0 means disable auto compaction.")
 
 	// pod manifest args
 	var etcdImage, etcdPodName, etcdPodNamespace, etcdSnapshotFile, etcdPodManifestFile string
@@ -164,7 +165,7 @@ func New() (*Status, error) {
 		return podspec.Create(
 			name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, peerTrustedCAFile, initialAdvertisePeerURLs,
 			listenPeerURLs, advertiseClientURLs, listenClientURLs, initialClusterToken, initialCluster,
-			etcdImage, etcdPodName, etcdPodNamespace, etcdSnapshotFile,
+			etcdImage, etcdPodName, etcdPodNamespace, etcdSnapshotFile, autoCompationRetention,
 			initialClusterState, runRestore, memberID, versionAnnotation,
 		)
 	}

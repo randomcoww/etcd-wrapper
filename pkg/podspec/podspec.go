@@ -16,7 +16,7 @@ const (
 
 func Create(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, peerTrustedCAFile, initialAdvertisePeerURLs,
 	listenPeerURLs, advertiseClientURLs, listenClientURLs, initialClusterToken, initialCluster string,
-	etcdImage, etcdPodName, etcdPodNamespace, etcdSnapshotFile string,
+	etcdImage, etcdPodName, etcdPodNamespace, etcdSnapshotFile, autoCompationRetention string,
 	initialClusterState string, runRestore bool, memberAnnotation uint64, versionAnnotation string) *v1.Pod {
 
 	var priority int32 = 2000001000
@@ -181,6 +181,18 @@ func Create(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, p
 				{
 					Name:  "ETCD_ENABLE_V2",
 					Value: "false",
+				},
+				{
+					Name:  "ETCD_STRICT_RECONFIG_CHECK",
+					Value: "true",
+				},
+				{
+					Name:  "ETCD_AUTO_COMPACTION_RETENTION",
+					Value: autoCompationRetention,
+				},
+				{
+					Name:  "ETCD_AUTO_COMPACTION_MODE",
+					Value: "revision",
 				},
 				// Listen
 				{
