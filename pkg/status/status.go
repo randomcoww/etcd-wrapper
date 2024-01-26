@@ -363,6 +363,16 @@ func (v *Status) DeletePodManifest() error {
 	return util.DeleteFile(v.EtcdPodManifestFile)
 }
 
+func (v *Status) Defragment() error {
+	if v.Healthy {
+		err := etcdutil.Defragment(v.MemberSelf.ClientURL, v.ClientTLSConfig)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (v *Status) BackupSnapshot() error {
 	if v.Healthy && v.BackupMemberID != nil && v.BackupMemberID == v.MemberSelf.MemberID {
 		var clientsHealhty []string

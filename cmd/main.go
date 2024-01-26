@@ -37,10 +37,17 @@ L:
 				log.Printf("Cluster status update failed: %v", err)
 				continue
 			}
+			if !v.MemberSelf.Healthy {
+				log.Printf("Member unhealthy. Not performing backup")
+				continue
+			}
 
-			if !v.MemberSelf.Healthy ||
-				*v.MemberSelf.MemberID != *v.BackupMemberID {
-
+			if err := v.Defragment(); err != nil {
+				log.Fatalf("Member defragment failed: %v", err)
+				continue
+			}
+			log.Printf("Defragment success")
+			if *v.MemberSelf.MemberID != *v.BackupMemberID {
 				log.Printf("Member not selected for backup")
 				continue
 			}

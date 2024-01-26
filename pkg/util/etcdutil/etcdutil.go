@@ -15,6 +15,7 @@ const (
 	defaultRequestTimeout time.Duration = 5 * time.Second
 	defaultDialTimeout    time.Duration = 5 * time.Second
 	snapshotBackupTimeout time.Duration = 1 * time.Minute
+	defragmentTimeout     time.Duration = 1 * time.Minute
 )
 
 type StatusResp struct {
@@ -34,6 +35,8 @@ func new(ctx context.Context, endpoints []string, tlsConfig *tls.Config) (*clien
 
 func Status(endpoints []string, tlsConfig *tls.Config) (chan *StatusResp, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
+	defer cancel()
+
 	client, err := new(ctx, endpoints, tlsConfig)
 	if err != nil {
 		return nil, err
@@ -55,12 +58,13 @@ func Status(endpoints []string, tlsConfig *tls.Config) (chan *StatusResp, error)
 		}(endpoint)
 	}
 	wg.Wait()
-	cancel()
 	return respCh, nil
 }
 
 func AddMember(endpoints, peerURLs []string, tlsConfig *tls.Config) (*clientv3.MemberAddResponse, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
+	defer cancel()
+
 	client, err := new(ctx, endpoints, tlsConfig)
 	if err != nil {
 		return nil, err
@@ -68,12 +72,13 @@ func AddMember(endpoints, peerURLs []string, tlsConfig *tls.Config) (*clientv3.M
 	defer client.Close()
 
 	resp, err := client.Cluster.MemberAdd(ctx, peerURLs)
-	cancel()
 	return resp, err
 }
 
 func RemoveMember(endpoints []string, tlsConfig *tls.Config, id uint64) error {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
+	defer cancel()
+
 	client, err := new(ctx, endpoints, tlsConfig)
 	if err != nil {
 		return err
@@ -81,12 +86,13 @@ func RemoveMember(endpoints []string, tlsConfig *tls.Config, id uint64) error {
 	defer client.Close()
 
 	_, err = client.Cluster.MemberRemove(ctx, id)
-	cancel()
 	return err
 }
 
 func ListMembers(endpoints []string, tlsConfig *tls.Config) (*clientv3.MemberListResponse, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
+	defer cancel()
+
 	client, err := new(ctx, endpoints, tlsConfig)
 	if err != nil {
 		return nil, err
@@ -94,12 +100,13 @@ func ListMembers(endpoints []string, tlsConfig *tls.Config) (*clientv3.MemberLis
 	defer client.Close()
 
 	resp, err := client.MemberList(ctx)
-	cancel()
 	return resp, err
 }
 
 func HealthCheck(endpoints []string, tlsConfig *tls.Config) error {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
+	defer cancel()
+
 	client, err := new(ctx, endpoints, tlsConfig)
 	if err != nil {
 		return err
@@ -107,8 +114,6 @@ func HealthCheck(endpoints []string, tlsConfig *tls.Config) error {
 	defer client.Close()
 
 	_, err = client.Get(ctx, "health")
-	cancel()
-
 	switch err {
 	case nil, rpctypes.ErrPermissionDenied:
 		return nil
@@ -117,8 +122,24 @@ func HealthCheck(endpoints []string, tlsConfig *tls.Config) error {
 	}
 }
 
+func Defragment(endpoint string, tlsConfig *tls.Config) error {
+	ctx, cancel := context.WithTimeout(context.Background(), defragmentTimeout)
+	defer cancel()
+
+	client, err := new(ctx, []string{endpoint}, tlsConfig)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+
+	_, err = client.Defragment(ctx, endpoint)
+	return err
+}
+
 func BackupSnapshot(endpoints []string, s3Resource string, s3 *s3util.Client, tlsConfig *tls.Config) error {
 	ctx, cancel := context.WithTimeout(context.Background(), snapshotBackupTimeout)
+	defer cancel()
+
 	client, err := new(ctx, endpoints, tlsConfig)
 	if err != nil {
 		return err
@@ -132,12 +153,13 @@ func BackupSnapshot(endpoints []string, s3Resource string, s3 *s3util.Client, tl
 	defer readCloser.Close()
 
 	_, err = s3.Write(ctx, s3Resource, readCloser)
-	cancel()
 	return err
 }
 
 func RestoreSnapshot(restoreFile string, s3resource string, s3 *s3util.Client) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), snapshotBackupTimeout)
+	defer cancel()
+
 	readCloser, err := s3.Open(ctx, s3resource)
 	if err != nil {
 		return false, err
@@ -151,6 +173,5 @@ func RestoreSnapshot(restoreFile string, s3resource string, s3 *s3util.Client) (
 	if err != nil {
 		return false, err
 	}
-	cancel()
 	return true, nil
 }
