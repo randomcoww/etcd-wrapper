@@ -6,4 +6,3 @@ etcd-wrapper
 secrets.tfvars
 *.log
 output/
-build/

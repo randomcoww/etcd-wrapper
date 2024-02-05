@@ -57,9 +57,9 @@ podman play kube testenv/output/node2.yaml --down
 ```
 
 ```bash
-podman logs -f etcd-wrapper-node0-etcd-wrapper
-podman logs -f etcd-wrapper-node1-etcd-wrapper
-podman logs -f etcd-wrapper-node2-etcd-wrapper
+podman logs -f etcd-node0-wrapper-etcd-wrapper
+podman logs -f etcd-node1-wrapper-etcd-wrapper
+podman logs -f etcd-node2-wrapper-etcd-wrapper
 ```
 
 ```bash
