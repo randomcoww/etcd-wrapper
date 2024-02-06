@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/randomcoww/etcd-wrapper/pkg/status"
+	"github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
 	"log"
 	"time"
 )
@@ -23,6 +24,7 @@ func main() {
 	var healthcheckFailCount int
 	var readinessFailCount int
 	var state clusterState = clusterStateHealthy
+	var etcd etcdutil.StatusCheck
 
 	intervalTick := time.NewTicker(v.HealthCheckInterval)
 	backupIntervalTick := time.NewTicker(v.BackupInterval)
@@ -32,7 +34,7 @@ L:
 		select {
 		case <-backupIntervalTick.C:
 
-			err = v.SyncStatus()
+			err = v.SyncStatus(etcd)
 			if err != nil {
 				log.Printf("Cluster status update failed: %v", err)
 				continue
@@ -61,7 +63,7 @@ L:
 
 		case <-intervalTick.C:
 
-			err = v.SyncStatus()
+			err = v.SyncStatus(etcd)
 			if err != nil {
 				log.Printf("Cluster status update failed: %v", err)
 				continue

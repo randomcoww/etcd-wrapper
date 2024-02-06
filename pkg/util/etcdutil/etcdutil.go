@@ -3,6 +3,7 @@ package etcdutil
 import (
 	"context"
 	"crypto/tls"
+	"fmt"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"io"
@@ -18,9 +19,22 @@ const (
 )
 
 type StatusResp struct {
-	Endpoint string
-	Status   *clientv3.StatusResponse
-	Err      error
+	Endpoint  string
+	ClusterID *uint64
+	MemberID  *uint64
+	LeaderID  *uint64
+	Revision  *int64
+}
+
+type MemberResp struct {
+	ID       *uint64
+	PeerURLs []string
+}
+
+type StatusCheck interface {
+	Status(endpoints []string, handler func(*StatusResp), tlsConfig *tls.Config) error
+	ListMembers(endpoints []string, tlsConfig *tls.Config) ([]*MemberResp, error)
+	HealthCheck(endpoints []string, tlsConfig *tls.Config) error
 }
 
 func new(ctx context.Context, endpoints []string, tlsConfig *tls.Config) (*clientv3.Client, error) {
@@ -32,35 +46,53 @@ func new(ctx context.Context, endpoints []string, tlsConfig *tls.Config) (*clien
 	})
 }
 
-func Status(endpoints []string, tlsConfig *tls.Config) (chan *StatusResp, error) {
+func Status(endpoints []string, handler func(*StatusResp), tlsConfig *tls.Config) error {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
 	defer cancel()
 
 	client, err := new(ctx, endpoints, tlsConfig)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer client.Close()
 
 	var wg sync.WaitGroup
-	respCh := make(chan *StatusResp, len(endpoints))
+	defer wg.Wait()
+
 	for _, endpoint := range endpoints {
 		wg.Add(1)
-		go func(endpoint string) {
-			status, err := client.Status(ctx, endpoint)
-			respCh <- &StatusResp{
-				Endpoint: endpoint,
-				Status:   status,
-				Err:      err,
+		go func(ctx context.Context, endpoint string) {
+			defer wg.Done()
+			resp, err := client.Status(ctx, endpoint)
+			if err != nil {
+				return
 			}
-			wg.Done()
-		}(endpoint)
+			clusterID := resp.Header.ClusterId
+			if clusterID == 0 {
+				return
+			}
+			memberID := resp.Header.MemberId
+			leaderID := resp.Leader
+			revision := resp.Header.Revision
+
+			status := &StatusResp{
+				Endpoint:  endpoint,
+				Revision:  &revision,
+				ClusterID: &clusterID,
+			}
+			if memberID != 0 {
+				status.MemberID = &memberID
+			}
+			if leaderID != 0 {
+				status.LeaderID = &leaderID
+			}
+			handler(status)
+		}(ctx, endpoint)
 	}
-	wg.Wait()
-	return respCh, nil
+	return nil
 }
 
-func AddMember(endpoints, peerURLs []string, tlsConfig *tls.Config) (*clientv3.MemberAddResponse, error) {
+func AddMember(endpoints, peerURLs []string, tlsConfig *tls.Config) (*MemberResp, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
 	defer cancel()
 
@@ -71,7 +103,17 @@ func AddMember(endpoints, peerURLs []string, tlsConfig *tls.Config) (*clientv3.M
 	defer client.Close()
 
 	resp, err := client.Cluster.MemberAdd(ctx, peerURLs)
-	return resp, err
+	if err != nil {
+		return nil, err
+	}
+	id := resp.Member.ID
+	if id == 0 {
+		return nil, fmt.Errorf("Member ID is 0")
+	}
+	return &MemberResp{
+		ID:       &id,
+		PeerURLs: resp.Member.PeerURLs,
+	}, nil
 }
 
 func RemoveMember(endpoints []string, tlsConfig *tls.Config, id uint64) error {
@@ -88,7 +130,7 @@ func RemoveMember(endpoints []string, tlsConfig *tls.Config, id uint64) error {
 	return err
 }
 
-func ListMembers(endpoints []string, tlsConfig *tls.Config) (*clientv3.MemberListResponse, error) {
+func ListMembers(endpoints []string, tlsConfig *tls.Config) ([]*MemberResp, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
 	defer cancel()
 
@@ -98,8 +140,21 @@ func ListMembers(endpoints []string, tlsConfig *tls.Config) (*clientv3.MemberLis
 	}
 	defer client.Close()
 
+	var members []*MemberResp
 	resp, err := client.MemberList(ctx)
-	return resp, err
+	if err != nil {
+		return members, err
+	}
+	for _, member := range resp.Members {
+		id := member.ID
+		if id != 0 {
+			members = append(members, &MemberResp{
+				ID:       &id,
+				PeerURLs: member.PeerURLs,
+			})
+		}
+	}
+	return members, nil
 }
 
 func HealthCheck(endpoints []string, tlsConfig *tls.Config) error {

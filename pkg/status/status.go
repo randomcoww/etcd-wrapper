@@ -28,7 +28,7 @@ type Member struct {
 	Revision            *int64  `yaml:"revision,omitempty"`
 	ClusterID           *uint64 `yaml:"clusterID,omitempty"`
 	LeaderID            *uint64 `yaml:"leaderID,omitempty"`
-	Self                bool    `yaml:"self"`
+	Self                bool    `yaml:"self,omitempty"`
 	//
 	PeerURL   string `yaml:"-"`
 	ClientURL string `yaml:"-"`
@@ -50,6 +50,7 @@ type Status struct {
 	ClientTLSConfig *tls.Config                        `yaml:"-"`
 	PodSpec         func(string, bool, string) *v1.Pod `yaml:"-"`
 	//
+	s3Client                    *s3util.Client `yaml:"-"`
 	S3BackupBucket              string         `yaml:"-"`
 	S3BackupKey                 string         `yaml:"-"`
 	EtcdSnapshotFile            string         `yaml:"-"`
@@ -59,7 +60,6 @@ type Status struct {
 	BackupInterval              time.Duration  `yaml:"-"`
 	HealthCheckFailCountAllowed int            `yaml:"-"`
 	ReadinessFailCountAllowed   int            `yaml:"-"`
-	s3Client                    *s3util.Client `yaml:"-"`
 }
 
 func New() (*Status, error) {
@@ -129,11 +129,11 @@ func New() (*Status, error) {
 	status.HealthCheckFailCountAllowed = healthCheckFailCountAllowed
 	status.ReadinessFailCountAllowed = readinessFailCountAllowed
 
-	status.S3BackupBucket, status.S3BackupKey, err = s3util.ParseBucketAndKey(s3BackupResource)
+	status.s3Client, err = s3util.New(s3BackupEndpoint)
 	if err != nil {
 		return nil, err
 	}
-	status.s3Client, err = s3util.New(s3BackupEndpoint)
+	status.S3BackupBucket, status.S3BackupKey, err = s3util.ParseBucketAndKey(s3BackupResource)
 	if err != nil {
 		return nil, err
 	}
@@ -150,8 +150,6 @@ func New() (*Status, error) {
 		if node[0] == name {
 			m.Self = true
 			status.MemberSelf = m
-		} else {
-			m.Self = false
 		}
 	}
 
@@ -208,7 +206,7 @@ func (v *Member) clearState() {
 	v.Revision = nil
 }
 
-func (v *Status) SyncStatus() error {
+func (v *Status) SyncStatus(etcd etcdutil.StatusCheck) error {
 	v.clearState()
 
 	var clients []string
@@ -218,56 +216,34 @@ func (v *Status) SyncStatus() error {
 	}
 
 	// check health status
-	err := etcdutil.HealthCheck(clients, v.ClientTLSConfig)
-	if err != nil {
-		return nil
-	}
-	respCh, err := etcdutil.Status(clients, v.ClientTLSConfig)
+	err := etcd.HealthCheck(clients, v.ClientTLSConfig)
 	if err != nil {
 		return nil
 	}
 
-	clusterMap := make(map[uint64]int)
-	var count int
-
-	for {
-		if count >= len(clients) {
-			close(respCh)
-			break
-		}
-
-		resp := <-respCh
-		count++
-
-		m, ok := v.MemberClientMap[resp.Endpoint]
+	clusterIDCount := make(map[uint64]int)
+	err = etcd.Status(clients, func(status *etcdutil.StatusResp) {
+		m, ok := v.MemberClientMap[status.Endpoint]
 		if !ok || m == nil {
-			continue
+			return
 		}
-		if resp.Err != nil {
-			continue
-		}
+		m.ClusterID = status.ClusterID
+		m.LeaderID = status.LeaderID
+		m.Revision = status.Revision
+		m.MemberID = status.MemberID
 
-		clusterID := resp.Status.Header.ClusterId
-		if clusterID == 0 {
-			continue
+		// set cluster wide IDs by majority found among members
+		clusterIDCount[*status.ClusterID]++
+		if v.ClusterID == nil ||
+			clusterIDCount[*status.ClusterID] > clusterIDCount[*v.ClusterID] ||
+			(clusterIDCount[*status.ClusterID] == clusterIDCount[*v.ClusterID] && *status.ClusterID < *v.ClusterID) {
+			v.ClusterID = status.ClusterID
+			v.LeaderID = status.LeaderID
+			v.Revision = status.Revision
 		}
-
-		memberID := resp.Status.Header.MemberId
-		revision := resp.Status.Header.Revision
-		leaderID := resp.Status.Leader
-
-		// pick consistent majority clusterID in case of split brain
-		clusterMap[clusterID]++
-		if v.ClusterID == nil || clusterMap[clusterID] > clusterMap[*v.ClusterID] ||
-			(clusterMap[clusterID] == clusterMap[*v.ClusterID] && clusterID < *v.ClusterID) {
-			v.ClusterID = &clusterID
-			v.LeaderID = &leaderID
-			v.Revision = &revision
-		}
-		m.ClusterID = &clusterID
-		m.LeaderID = &leaderID
-		m.Revision = &revision
-		m.MemberID = &memberID
+	}, v.ClientTLSConfig)
+	if err != nil {
+		return nil
 	}
 
 	if v.ClusterID == nil {
@@ -286,20 +262,17 @@ func (v *Status) SyncStatus() error {
 	}
 
 	// run a list on healthy members to get non existent members to remove
-	members, err := etcdutil.ListMembers(clientsHealhty, v.ClientTLSConfig)
+	members, err := etcd.ListMembers(clientsHealhty, v.ClientTLSConfig)
 	if err != nil {
 		return err
 	}
 	// member Name field may not be populated right away
 	// Match returned members by PeerURL field
-	for _, member := range members.Members {
-		if member.ID != 0 {
-			memberID := member.ID
-			for _, peer := range member.PeerURLs {
-				if m, ok := v.MemberPeerMap[peer]; ok {
-					m.MemberIDFromCluster = &memberID
-					break
-				}
+	for _, member := range members {
+		for _, peer := range member.PeerURLs {
+			if m, ok := v.MemberPeerMap[peer]; ok {
+				m.MemberIDFromCluster = member.ID
+				break
 			}
 		}
 	}
@@ -332,16 +305,12 @@ func (v *Status) ReplaceMember(m *Member) error {
 		}
 		log.Printf("Removed member %v", *m.MemberIDFromCluster)
 	}
-	resp, err := etcdutil.AddMember(clientsHealhty, v.ListenPeerURLs, v.ClientTLSConfig)
+	member, err := etcdutil.AddMember(clientsHealhty, v.ListenPeerURLs, v.ClientTLSConfig)
 	if err != nil {
 		return err
 	}
-	memberID := resp.Member.ID
-	if memberID == 0 {
-		return fmt.Errorf("Add member returned ID 0")
-	}
-	m.MemberID = &memberID
-	m.MemberIDFromCluster = &memberID
+	m.MemberID = member.ID
+	m.MemberIDFromCluster = member.ID
 	return nil
 }
 
@@ -354,7 +323,7 @@ func (v *Status) WritePodManifest(runRestore bool) error {
 			return fmt.Errorf("Error getting snapshot: %v", err)
 		}
 		if !ok {
-			log.Printf("Error getting snapshot. Starting new cluster")
+			log.Printf("Snapshot not found. Starting new cluster")
 			pod = v.PodSpec("new", false, manifestVersion)
 		} else {
 			log.Printf("Successfully got snapshot. Restoring cluster")
@@ -402,17 +371,8 @@ func (v *Status) BackupSnapshot() error {
 func (v *Status) RestoreSnapshot() (bool, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	ok, err := v.s3Client.CheckBucket(ctx, v.S3BackupBucket)
-	if err != nil {
-		return false, err
-	}
-	if !ok {
-		return false, fmt.Errorf("Bucket %v could not be accessed", v.S3BackupBucket)
-	}
-	if err = v.s3Client.Download(ctx, v.S3BackupBucket, v.S3BackupKey, func(ctx context.Context, r io.Reader) error {
+
+	return v.s3Client.Download(ctx, v.S3BackupBucket, v.S3BackupKey, func(ctx context.Context, r io.Reader) error {
 		return util.WriteFile(r, v.EtcdSnapshotFile)
-	}); err != nil {
-		return false, nil
-	}
-	return true, nil
+	})
 }

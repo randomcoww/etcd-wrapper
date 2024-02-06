@@ -24,17 +24,21 @@ func New(endpoint string) (*Client, error) {
 	}, nil
 }
 
-func (v *Client) CheckBucket(ctx context.Context, bucket string) (bool, error) {
-	return v.BucketExists(ctx, bucket)
-}
-
-func (v *Client) Download(ctx context.Context, bucket, key string, handler func(context.Context, io.Reader) error) error {
+func (v *Client) Download(ctx context.Context, bucket, key string, handler func(context.Context, io.Reader) error) (bool, error) {
 	object, err := v.GetObject(ctx, bucket, key, minio.GetObjectOptions{})
 	if err != nil {
-		return err
+		switch minio.ToErrorResponse(err).StatusCode {
+		case 404:
+			return false, nil
+		default:
+			return false, err
+		}
 	}
 	defer object.Close()
-	return handler(ctx, object)
+	if err := handler(ctx, object); err != nil {
+		return true, err
+	}
+	return true, nil
 }
 
 func (v *Client) Upload(ctx context.Context, bucket, key string, r io.Reader) error {
