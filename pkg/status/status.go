@@ -7,8 +7,6 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/randomcoww/etcd-wrapper/pkg/podspec"
 	"github.com/randomcoww/etcd-wrapper/pkg/util"
 	"github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
@@ -30,6 +28,7 @@ type Member struct {
 	Revision            *int64  `yaml:"revision,omitempty"`
 	ClusterID           *uint64 `yaml:"clusterID,omitempty"`
 	LeaderID            *uint64 `yaml:"leaderID,omitempty"`
+	Self                bool    `yaml:"self"`
 	//
 	PeerURL   string `yaml:"-"`
 	ClientURL string `yaml:"-"`
@@ -51,14 +50,16 @@ type Status struct {
 	ClientTLSConfig *tls.Config                        `yaml:"-"`
 	PodSpec         func(string, bool, string) *v1.Pod `yaml:"-"`
 	//
-	S3BackupResource            string        `yaml:"-"`
-	EtcdSnapshotFile            string        `yaml:"-"`
-	EtcdPodManifestFile         string        `yaml:"-"`
-	ListenPeerURLs              []string      `yaml:"-"`
-	HealthCheckInterval         time.Duration `yaml:"-"`
-	BackupInterval              time.Duration `yaml:"-"`
-	HealthCheckFailCountAllowed int           `yaml:"-"`
-	ReadinessFailCountAllowed   int           `yaml:"-"`
+	S3BackupBucket              string         `yaml:"-"`
+	S3BackupKey                 string         `yaml:"-"`
+	EtcdSnapshotFile            string         `yaml:"-"`
+	EtcdPodManifestFile         string         `yaml:"-"`
+	ListenPeerURLs              []string       `yaml:"-"`
+	HealthCheckInterval         time.Duration  `yaml:"-"`
+	BackupInterval              time.Duration  `yaml:"-"`
+	HealthCheckFailCountAllowed int            `yaml:"-"`
+	ReadinessFailCountAllowed   int            `yaml:"-"`
+	s3Client                    *s3util.Client `yaml:"-"`
 }
 
 func New() (*Status, error) {
@@ -91,12 +92,13 @@ func New() (*Status, error) {
 	flag.StringVar(&etcdPodManifestFile, "etcd-pod-manifest-file", "", "Host path to write etcd pod manifest file. This should be where kubelet reads static pod manifests.")
 
 	// etcd wrapper args
-	var clientCertFile, clientKeyFile, initialClusterClients, s3BackupResource string
+	var clientCertFile, clientKeyFile, initialClusterClients, s3BackupEndpoint, s3BackupResource string
 	var healthCheckInterval, backupInterval time.Duration
 	var healthCheckFailCountAllowed, readinessFailCountAllowed int
 	flag.StringVar(&clientCertFile, "client-cert-file", "", "Path to the client server TLS cert file.")
 	flag.StringVar(&clientKeyFile, "client-key-file", "", "Path to the client server TLS key file.")
 	flag.StringVar(&initialClusterClients, "initial-cluster-clients", "", "List of etcd nodes and client URLs in same format as intial-cluster.")
+	flag.StringVar(&s3BackupEndpoint, "s3-backup-endpoint", "s3.amazonaws.com", "S3 endpoint for backup.")
 	flag.StringVar(&s3BackupResource, "s3-backup-resource", "", "S3 resource name for backup.")
 	flag.DurationVar(&healthCheckInterval, "healthcheck-interval", 6*time.Second, "Healthcheck interval.")
 	flag.DurationVar(&backupInterval, "backup-interval", 15*time.Minute, "Backup trigger interval.")
@@ -114,7 +116,6 @@ func New() (*Status, error) {
 		return nil, err
 	}
 
-	status.S3BackupResource = s3BackupResource
 	status.EtcdSnapshotFile = etcdSnapshotFile
 	status.EtcdPodManifestFile = etcdPodManifestFile
 
@@ -128,6 +129,15 @@ func New() (*Status, error) {
 	status.HealthCheckFailCountAllowed = healthCheckFailCountAllowed
 	status.ReadinessFailCountAllowed = readinessFailCountAllowed
 
+	status.S3BackupBucket, status.S3BackupKey, err = s3util.ParseBucketAndKey(s3BackupResource)
+	if err != nil {
+		return nil, err
+	}
+	status.s3Client, err = s3util.New(s3BackupEndpoint)
+	if err != nil {
+		return nil, err
+	}
+
 	for _, n := range strings.Split(initialCluster, ",") {
 		node := strings.Split(n, "=")
 		m := &Member{
@@ -138,7 +148,10 @@ func New() (*Status, error) {
 		status.MemberPeerMap[node[1]] = m
 		status.Members = append(status.Members, m)
 		if node[0] == name {
+			m.Self = true
 			status.MemberSelf = m
+		} else {
+			m.Self = false
 		}
 	}
 
@@ -338,15 +351,14 @@ func (v *Status) WritePodManifest(runRestore bool) error {
 	if runRestore {
 		ok, err := v.RestoreSnapshot()
 		if err != nil {
-			log.Printf("Read S3 snapshot resource failed: %v", err)
-			return err
+			return fmt.Errorf("Error getting snapshot: %v", err)
 		}
-		if ok {
-			log.Printf("Snapshot pull succeeded. Restoring cluster")
-			pod = v.PodSpec("existing", true, manifestVersion)
-		} else {
-			log.Printf("Snapshot not found. Starting new cluster")
+		if !ok {
+			log.Printf("Error getting snapshot. Starting new cluster")
 			pod = v.PodSpec("new", false, manifestVersion)
+		} else {
+			log.Printf("Successfully got snapshot. Restoring cluster")
+			pod = v.PodSpec("existing", true, manifestVersion)
 		}
 	} else {
 		pod = v.PodSpec("existing", false, manifestVersion)
@@ -379,26 +391,28 @@ func (v *Status) BackupSnapshot() error {
 		for _, m := range v.MembersHealthy {
 			clientsHealhty = append(clientsHealhty, m.ClientURL)
 		}
-		cfg, err := config.LoadDefaultConfig(context.TODO())
-		if err != nil {
-			return err
-		}
-		err = etcdutil.BackupSnapshot(clientsHealhty, v.S3BackupResource, s3util.New(s3.NewFromConfig(cfg)), v.ClientTLSConfig)
-		if err != nil {
-			return err
-		}
+
+		return etcdutil.CreateSnapshot(clientsHealhty, v.ClientTLSConfig, func(ctx context.Context, r io.Reader) error {
+			return v.s3Client.Upload(ctx, v.S3BackupBucket, v.S3BackupKey, r)
+		})
 	}
 	return nil
 }
 
 func (v *Status) RestoreSnapshot() (bool, error) {
-	cfg, err := config.LoadDefaultConfig(context.TODO())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ok, err := v.s3Client.CheckBucket(ctx, v.S3BackupBucket)
 	if err != nil {
 		return false, err
 	}
-	ok, err := etcdutil.RestoreSnapshot(v.EtcdSnapshotFile, v.S3BackupResource, s3util.New(s3.NewFromConfig(cfg)))
-	if err != nil {
-		return false, err
+	if !ok {
+		return false, fmt.Errorf("Bucket %v could not be accessed", v.S3BackupBucket)
 	}
-	return ok, nil
+	if err = v.s3Client.Download(ctx, v.S3BackupBucket, v.S3BackupKey, func(ctx context.Context, r io.Reader) error {
+		return util.WriteFile(r, v.EtcdSnapshotFile)
+	}); err != nil {
+		return false, nil
+	}
+	return true, nil
 }

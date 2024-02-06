@@ -2,61 +2,42 @@ package s3util
 
 import (
 	"context"
-	"errors"
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/feature/s3/manager"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/aws/aws-sdk-go-v2/service/s3/types"
-	"github.com/aws/smithy-go"
+	"github.com/minio/minio-go/v7"
+	"github.com/minio/minio-go/v7/pkg/credentials"
 	"io"
 )
 
 type Client struct {
-	*s3.Client
+	*minio.Client
 }
 
-func New(s3 *s3.Client) Client {
-	return Client{s3}
-}
-
-func (v Client) Open(ctx context.Context, path string) (io.ReadCloser, error) {
-	bucket, key, err := parseBucketAndKey(path)
+func New(endpoint string) (*Client, error) {
+	minioClient, err := minio.New(endpoint, &minio.Options{
+		Creds:  credentials.NewEnvAWS(),
+		Secure: true,
+	})
 	if err != nil {
 		return nil, err
 	}
-	resp, err := v.GetObject(ctx, &s3.GetObjectInput{
-		Bucket: aws.String(bucket),
-		Key:    aws.String(key),
-	})
-	if err != nil {
-		var apiError smithy.APIError
-		if errors.As(err, &apiError) {
-			switch apiError.(type) {
-			case *types.NotFound, *types.NoSuchKey, *types.NoSuchBucket:
-				return nil, nil
-			default:
-				return nil, err
-			}
-		}
-	}
-	return resp.Body, nil
+	return &Client{
+		minioClient,
+	}, nil
 }
 
-func (v Client) Write(ctx context.Context, path string, r io.Reader) (int64, error) {
-	bucket, key, err := parseBucketAndKey(path)
+func (v *Client) CheckBucket(ctx context.Context, bucket string) (bool, error) {
+	return v.BucketExists(ctx, bucket)
+}
+
+func (v *Client) Download(ctx context.Context, bucket, key string, handler func(context.Context, io.Reader) error) error {
+	object, err := v.GetObject(ctx, bucket, key, minio.GetObjectOptions{})
 	if err != nil {
-		return 0, err
+		return err
 	}
-	rc := readCounter{Reader: r}
-	_, err = manager.NewUploader(v.Client, func(u *manager.Uploader) {
-		u.PartSize = uploadPartSize
-	}).Upload(ctx, &s3.PutObjectInput{
-		Bucket: aws.String(bucket),
-		Key:    aws.String(key),
-		Body:   rc,
-	})
-	if err != nil {
-		return 0, err
-	}
-	return rc.contentLength, nil
+	defer object.Close()
+	return handler(ctx, object)
+}
+
+func (v *Client) Upload(ctx context.Context, bucket, key string, r io.Reader) error {
+	_, err := v.PutObject(ctx, bucket, key, r, -1, minio.PutObjectOptions{})
+	return err
 }

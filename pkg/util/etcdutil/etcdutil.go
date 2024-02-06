@@ -3,10 +3,9 @@ package etcdutil
 import (
 	"context"
 	"crypto/tls"
-	"github.com/randomcoww/etcd-wrapper/pkg/util"
-	"github.com/randomcoww/etcd-wrapper/pkg/util/s3util"
 	"go.etcd.io/etcd/api/v3/v3rpc/rpctypes"
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"io"
 	"sync"
 	"time"
 )
@@ -136,7 +135,7 @@ func Defragment(endpoint string, tlsConfig *tls.Config) error {
 	return err
 }
 
-func BackupSnapshot(endpoints []string, s3Resource string, s3 s3util.Client, tlsConfig *tls.Config) error {
+func CreateSnapshot(endpoints []string, tlsConfig *tls.Config, handler func(context.Context, io.Reader) error) error {
 	ctx, cancel := context.WithTimeout(context.Background(), snapshotBackupTimeout)
 	defer cancel()
 
@@ -145,33 +144,10 @@ func BackupSnapshot(endpoints []string, s3Resource string, s3 s3util.Client, tls
 		return err
 	}
 	defer client.Close()
-
-	readCloser, err := client.Snapshot(ctx)
+	rc, err := client.Snapshot(ctx)
 	if err != nil {
 		return err
 	}
-	defer readCloser.Close()
-
-	_, err = s3.Write(ctx, s3Resource, readCloser)
-	return err
-}
-
-func RestoreSnapshot(restoreFile string, s3resource string, s3 s3util.Client) (bool, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), snapshotBackupTimeout)
-	defer cancel()
-
-	readCloser, err := s3.Open(ctx, s3resource)
-	if err != nil {
-		return false, err
-	}
-	if readCloser == nil {
-		return false, nil
-	}
-	defer readCloser.Close()
-
-	err = util.WriteFile(readCloser, restoreFile)
-	if err != nil {
-		return false, err
-	}
-	return true, nil
+	defer rc.Close()
+	return handler(ctx, rc)
 }
