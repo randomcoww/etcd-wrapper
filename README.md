@@ -1,7 +1,7 @@
 ### Image build
 
 ```
-TAG=ghcr.io/randomcoww/etcd-wrapper:$(date -u +'%Y%m%d').5
+TAG=ghcr.io/randomcoww/etcd-wrapper:$(date -u +'%Y%m%d').6
 
 mkdir -p build
 TMPDIR=$(pwd)/build podman build \
@@ -44,17 +44,15 @@ tw terraform -chdir=testenv init
 tw terraform -chdir=testenv apply
 ```
 
-Run each node
+Run wrapper instances
 
 ```bash
-podman play kube testenv/output/node0.yaml & \
-podman play kube testenv/output/node1.yaml & \
+podman play kube testenv/output/node0.yaml
+podman play kube testenv/output/node1.yaml
 podman play kube testenv/output/node2.yaml
-
-podman play kube testenv/output/node0.yaml --down & \
-podman play kube testenv/output/node1.yaml --down & \
-podman play kube testenv/output/node2.yaml --down
 ```
+
+Monitor logs
 
 ```bash
 podman logs -f etcd-node0-wrapper-etcd-wrapper
@@ -62,10 +60,14 @@ podman logs -f etcd-node1-wrapper-etcd-wrapper
 podman logs -f etcd-node2-wrapper-etcd-wrapper
 ```
 
+Cleanup
+
 ```bash
-podman logs -f etcd-node0-etcd
-podman logs -f etcd-node1-etcd
-podman logs -f etcd-node2-etcd
+podman play kube testenv/output/node0.yaml --down
+podman play kube testenv/output/node1.yaml --down
+podman play kube testenv/output/node2.yaml --down
+
+tw terraform -chdir=testenv destroy
 ```
 
 Cleanup formatting
