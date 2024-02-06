@@ -21,6 +21,10 @@ locals {
     "https://${ip}:${var.ports.etcd_client}"
   ])
 
+  # keep inputs into module consistent with server deployment
+  initial_cluster         = var.initial_cluster
+  initial_cluster_clients = var.initial_cluster_clients
+
   pki = {
     for key, f in {
       ca-cert = {
@@ -56,7 +60,7 @@ locals {
   static_pod = {
     for key, f in {
       etcd-wrapper = {
-        contents = local.etcd_wrapper_manifest
+        contents = module.etcd-wrapper.manifest
       }
     } :
     key => merge(f, {
@@ -68,99 +72,88 @@ locals {
     for pod in local.static_pod :
     pod.contents
   ]
+}
 
-  etcd_wrapper_manifest = yamlencode({
-    apiVersion = "v1"
-    kind       = "Pod"
-    metadata = {
-      name      = "${var.name}-wrapper"
-      namespace = var.namespace
-      labels = {
-        app = var.name
-      }
-    }
-    spec = {
-      priorityClassName = "system-node-critical"
-      priority          = 2000001000
-      hostNetwork       = true
-      restartPolicy     = "Always"
-      containers = [
-        {
-          name  = "etcd-wrapper"
-          image = var.images.etcd_wrapper
-          args = [
-            # etcd args
-            "--name=${var.host_key}",
-            "--trusted-ca-file=${local.pki.ca-cert.path}",
-            "--peer-trusted-ca-file=${local.pki.peer-ca-cert.path}",
-            "--cert-file=${local.pki.cert.path}",
-            "--key-file=${local.pki.key.path}",
-            "--peer-cert-file=${local.pki.peer-cert.path}",
-            "--peer-key-file=${local.pki.peer-key.path}",
-            "--initial-advertise-peer-urls=${local.initial_advertise_peer_urls}",
-            "--listen-peer-urls=${local.listen_peer_urls}",
-            "--advertise-client-urls=${local.advertise_client_urls}",
-            "--listen-client-urls=${local.listen_client_urls}",
-            "--initial-cluster-token=${var.cluster_token}",
-            "--initial-cluster=${var.initial_cluster}",
-            "--auto-compaction-retention=${tostring(var.auto_compaction_retention)}",
-            # pod manifest args
-            "--etcd-image=${var.images.etcd}",
-            "--etcd-snaphot-file=${local.etcd_snapshot_file}",
-            "--etcd-pod-name=${var.name}",
-            "--etcd-pod-manifest-file=${local.etcd_manifest_file}",
-            # etcd-wrapper args
-            "--client-cert-file=${local.pki.client-cert.path}",
-            "--client-key-file=${local.pki.client-key.path}",
-            "--initial-cluster-clients=${var.initial_cluster_clients}",
-            "--s3-backup-resource=${var.s3_resource}",
-            "--healthcheck-interval=${var.healthcheck_interval}",
-            "--backup-interval=${var.backup_interval}",
-            "--healthcheck-fail-count-allowed=${var.healthcheck_fail_count_allowed}",
-            "--readiness-fail-count-allowed=${var.readiness_fail_count_allowed}",
-          ]
-          env = [
-            {
-              name  = "AWS_ACCESS_KEY_ID"
-              value = var.s3_access_key_id
-            },
-            {
-              name  = "AWS_SECRET_ACCESS_KEY"
-              value = var.s3_secret_access_key
-            },
-            {
-              name  = "AWS_DEFAULT_REGION"
-              value = var.s3_region
-            },
-          ]
-          volumeMounts = [
-            {
-              name      = "config"
-              mountPath = local.config_path
-            },
-            {
-              name      = "static-pod"
-              mountPath = var.static_pod_path
-            },
-          ]
-        },
-      ]
-      volumes = [
-        {
-          name = "config"
-          hostPath = {
-            path = local.config_path
-          }
-        },
-        {
-          name = "static-pod"
-          hostPath = {
-            path = var.static_pod_path
-          }
-        },
-      ]
-    }
-  })
+module "etcd-wrapper" {
+  source = "../static_pod"
+  name   = "${var.name}-wrapper"
+  spec = {
+    containers = [
+      {
+        name  = "etcd-wrapper"
+        image = var.images.etcd_wrapper
+        args = [
+          # etcd args
+          "--name=${var.host_key}",
+          "--trusted-ca-file=${local.pki.ca-cert.path}",
+          "--peer-trusted-ca-file=${local.pki.peer-ca-cert.path}",
+          "--cert-file=${local.pki.cert.path}",
+          "--key-file=${local.pki.key.path}",
+          "--peer-cert-file=${local.pki.peer-cert.path}",
+          "--peer-key-file=${local.pki.peer-key.path}",
+          "--initial-advertise-peer-urls=${local.initial_advertise_peer_urls}",
+          "--listen-peer-urls=${local.listen_peer_urls}",
+          "--advertise-client-urls=${local.advertise_client_urls}",
+          "--listen-client-urls=${local.listen_client_urls}",
+          "--initial-cluster-token=${var.cluster_token}",
+          "--initial-cluster=${local.initial_cluster}",
+          "--auto-compaction-retention=${tostring(var.auto_compaction_retention)}",
+          # pod manifest args
+          "--etcd-image=${var.images.etcd}",
+          "--etcd-snaphot-file=${local.etcd_snapshot_file}",
+          "--etcd-pod-name=${var.name}",
+          "--etcd-pod-manifest-file=${local.etcd_manifest_file}",
+          # etcd-wrapper args
+          "--client-cert-file=${local.pki.client-cert.path}",
+          "--client-key-file=${local.pki.client-key.path}",
+          "--initial-cluster-clients=${local.initial_cluster_clients}",
+          "--s3-backup-resource=${var.s3_resource}",
+          "--healthcheck-interval=${var.healthcheck_interval}",
+          "--backup-interval=${var.backup_interval}",
+          "--healthcheck-fail-count-allowed=${var.healthcheck_fail_count_allowed}",
+          "--readiness-fail-count-allowed=${var.readiness_fail_count_allowed}",
+        ]
+        env = [
+          {
+            name  = "AWS_ACCESS_KEY_ID"
+            value = var.s3_access_key_id
+          },
+          {
+            name  = "AWS_SECRET_ACCESS_KEY"
+            value = var.s3_secret_access_key
+          },
+          {
+            name  = "AWS_DEFAULT_REGION"
+            value = var.s3_region
+          },
+        ]
+        volumeMounts = [
+          {
+            name      = "config"
+            mountPath = local.config_path
+          },
+          {
+            name      = "static-pod"
+            mountPath = var.static_pod_path
+          },
+        ]
+      },
+    ]
+    volumes = [
+      {
+        name = "config"
+        hostPath = {
+          path = local.config_path
+        }
+      },
+      {
+        name = "static-pod"
+        hostPath = {
+          path = var.static_pod_path
+        }
+      },
+    ]
+  }
 }
 
 resource "local_file" "pki" {
