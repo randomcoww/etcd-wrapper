@@ -52,7 +52,7 @@ module "etcd" {
   }
   images = {
     etcd         = "gcr.io/etcd-development/etcd:v3.5.11-amd64"
-    etcd_wrapper = "localhost/etcd-wrapper:20240206.6"
+    etcd_wrapper = "ghcr.io/randomcoww/etcd-wrapper:20240206.10"
   }
   etcd_ips = [
     each.value.ip
@@ -71,7 +71,7 @@ module "etcd" {
   ])
 
   healthcheck_interval           = "6s"
-  backup_interval                = "2m"
+  backup_interval                = "3m"
   healthcheck_fail_count_allowed = 8
   readiness_fail_count_allowed   = 32
 

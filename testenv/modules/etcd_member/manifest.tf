@@ -83,7 +83,6 @@ locals {
       priorityClassName = "system-node-critical"
       priority          = 2000001000
       hostNetwork       = true
-      dnsPolicy         = "ClusterFirstWithHostNet"
       restartPolicy     = "Always"
       containers = [
         {
@@ -132,10 +131,6 @@ locals {
             {
               name  = "AWS_DEFAULT_REGION"
               value = var.s3_region
-            },
-            {
-              name  = "AWS_SDK_LOAD_CONFIG"
-              value = "1"
             },
           ]
           volumeMounts = [

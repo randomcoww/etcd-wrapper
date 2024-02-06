@@ -3,7 +3,7 @@ resource "aws_s3_bucket" "s3" {
 }
 
 resource "aws_s3_bucket_versioning" "s3" {
-  bucket = aws_s3_bucket.s3
+  bucket = aws_s3_bucket.s3.bucket
   versioning_configuration {
     status = "Suspended"
   }
