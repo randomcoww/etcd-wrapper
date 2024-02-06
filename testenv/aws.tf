@@ -2,6 +2,13 @@ resource "aws_s3_bucket" "s3" {
   bucket = "randomcoww-etcd-test"
 }
 
+resource "aws_s3_bucket_versioning" "s3" {
+  bucket = aws_s3_bucket.s3
+  versioning_configuration {
+    status = "Suspended"
+  }
+}
+
 resource "aws_iam_user" "s3" {
   name = "etcd-test"
 }

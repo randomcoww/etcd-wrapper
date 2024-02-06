@@ -172,5 +172,5 @@ resource "local_file" "pki" {
   for_each = local.pki
 
   filename = each.value.path
-  content = each.value.contents
+  content  = each.value.contents
 }

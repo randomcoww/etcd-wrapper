@@ -3,7 +3,7 @@ variable "name" {
 }
 
 variable "namespace" {
-  type = string
+  type    = string
   default = "kube-system"
 }
 
