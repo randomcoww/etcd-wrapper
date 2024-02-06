@@ -1,7 +1,7 @@
 ### Image build
 
 ```
-TAG=ghcr.io/randomcoww/etcd-wrapper:$(date -u +'%Y%m%d').6
+TAG=ghcr.io/randomcoww/etcd-wrapper:$(date -u +'%Y%m%d').9
 
 mkdir -p build
 TMPDIR=$(pwd)/build podman build \
@@ -47,8 +47,8 @@ tw terraform -chdir=testenv apply
 Run wrapper instances
 
 ```bash
-podman play kube testenv/output/node0.yaml
-podman play kube testenv/output/node1.yaml
+podman play kube testenv/output/node0.yaml & \
+podman play kube testenv/output/node1.yaml & \
 podman play kube testenv/output/node2.yaml
 ```
 
@@ -63,8 +63,8 @@ podman logs -f etcd-node2-wrapper-etcd-wrapper
 Cleanup
 
 ```bash
-podman play kube testenv/output/node0.yaml --down
-podman play kube testenv/output/node1.yaml --down
+podman play kube testenv/output/node0.yaml --down & \
+podman play kube testenv/output/node1.yaml --down & \
 podman play kube testenv/output/node2.yaml --down
 
 tw terraform -chdir=testenv destroy
