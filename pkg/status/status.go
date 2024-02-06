@@ -119,10 +119,6 @@ func New() (*Status, error) {
 	status.EtcdSnapshotFile = etcdSnapshotFile
 	status.EtcdPodManifestFile = etcdPodManifestFile
 
-	status.MemberMap = make(map[string]*Member)
-	status.MemberPeerMap = make(map[string]*Member)
-	status.MemberClientMap = make(map[string]*Member)
-
 	status.ListenPeerURLs = strings.Split(listenPeerURLs, ",")
 	status.HealthCheckInterval = healthCheckInterval
 	status.BackupInterval = backupInterval
@@ -137,34 +133,8 @@ func New() (*Status, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	for _, n := range strings.Split(initialCluster, ",") {
-		node := strings.Split(n, "=")
-		m := &Member{
-			Name:    node[0],
-			PeerURL: node[1],
-		}
-		status.MemberMap[node[0]] = m
-		status.MemberPeerMap[node[1]] = m
-		status.Members = append(status.Members, m)
-		if node[0] == name {
-			m.Self = true
-			status.MemberSelf = m
-		}
-	}
-
-	for _, n := range strings.Split(initialClusterClients, ",") {
-		node := strings.Split(n, "=")
-		m, ok := status.MemberMap[node[0]]
-		if !ok {
-			return nil, fmt.Errorf("Mismatch in initial-cluster and initial-cluster-clients members")
-		}
-		m.ClientURL = node[1]
-		status.MemberClientMap[node[1]] = m
-	}
-
-	if len(status.MemberClientMap) != len(status.MemberMap) {
-		return nil, fmt.Errorf("Mismatch in initial-cluster and initial-cluster-clients members")
+	if err = status.populateMembersFromInitialCluster(name, initialCluster, initialClusterClients); err != nil {
+		return nil, err
 	}
 
 	status.PodSpec = func(initialClusterState string, runRestore bool, versionAnnotation string) *v1.Pod {
@@ -181,6 +151,42 @@ func New() (*Status, error) {
 		)
 	}
 	return status, nil
+}
+
+func (v *Status) populateMembersFromInitialCluster(name, initialCluster, initialClusterClients string) error {
+	v.MemberMap = make(map[string]*Member)
+	v.MemberPeerMap = make(map[string]*Member)
+	v.MemberClientMap = make(map[string]*Member)
+
+	for _, n := range strings.Split(initialCluster, ",") {
+		node := strings.Split(n, "=")
+		m := &Member{
+			Name:    node[0],
+			PeerURL: node[1],
+		}
+		v.MemberMap[node[0]] = m
+		v.MemberPeerMap[node[1]] = m
+		v.Members = append(v.Members, m)
+		if node[0] == name {
+			m.Self = true
+			v.MemberSelf = m
+		}
+	}
+
+	for _, n := range strings.Split(initialClusterClients, ",") {
+		node := strings.Split(n, "=")
+		m, ok := v.MemberMap[node[0]]
+		if !ok {
+			return fmt.Errorf("Mismatch in initial-cluster and initial-cluster-clients members")
+		}
+		m.ClientURL = node[1]
+		v.MemberClientMap[node[1]] = m
+	}
+
+	if len(v.MemberClientMap) != len(v.MemberMap) {
+		return fmt.Errorf("Mismatch in initial-cluster and initial-cluster-clients members")
+	}
+	return nil
 }
 
 func (v *Status) clearState() {
