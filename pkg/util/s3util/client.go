@@ -15,11 +15,11 @@ type Client struct {
 	*s3.Client
 }
 
-func New(s3 *s3.Client) *Client {
-	return &Client{s3}
+func New(s3 *s3.Client) Client {
+	return Client{s3}
 }
 
-func (v *Client) Open(ctx context.Context, path string) (io.ReadCloser, error) {
+func (v Client) Open(ctx context.Context, path string) (io.ReadCloser, error) {
 	bucket, key, err := parseBucketAndKey(path)
 	if err != nil {
 		return nil, err
@@ -42,7 +42,7 @@ func (v *Client) Open(ctx context.Context, path string) (io.ReadCloser, error) {
 	return resp.Body, nil
 }
 
-func (v *Client) Write(ctx context.Context, path string, r io.Reader) (int64, error) {
+func (v Client) Write(ctx context.Context, path string, r io.Reader) (int64, error) {
 	bucket, key, err := parseBucketAndKey(path)
 	if err != nil {
 		return 0, err

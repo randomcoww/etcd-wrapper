@@ -136,7 +136,7 @@ func Defragment(endpoint string, tlsConfig *tls.Config) error {
 	return err
 }
 
-func BackupSnapshot(endpoints []string, s3Resource string, s3 *s3util.Client, tlsConfig *tls.Config) error {
+func BackupSnapshot(endpoints []string, s3Resource string, s3 s3util.Client, tlsConfig *tls.Config) error {
 	ctx, cancel := context.WithTimeout(context.Background(), snapshotBackupTimeout)
 	defer cancel()
 
@@ -156,7 +156,7 @@ func BackupSnapshot(endpoints []string, s3Resource string, s3 *s3util.Client, tl
 	return err
 }
 
-func RestoreSnapshot(restoreFile string, s3resource string, s3 *s3util.Client) (bool, error) {
+func RestoreSnapshot(restoreFile string, s3resource string, s3 s3util.Client) (bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), snapshotBackupTimeout)
 	defer cancel()
 
