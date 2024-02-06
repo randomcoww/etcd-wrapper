@@ -84,7 +84,7 @@ L:
 					continue L
 
 				default:
-					log.Printf("Cluster not found. Writing manifest for restore or new cluster")
+					log.Printf("Cluster not found. Writing manifest for restored or new cluster")
 					if err = v.WritePodManifest(true); err != nil {
 						log.Fatalf("Failed to write pod manifest: %v", err)
 						panic(err)
@@ -100,7 +100,7 @@ L:
 					continue L
 
 				case v.Healthy:
-					log.Printf("Member mismatch with %v. Replacing member.", *v.MemberSelf.MemberIDFromCluster)
+					log.Printf("Member ID mismatch. Replacing member")
 					healthcheckFailCount = 0
 					if err = v.ReplaceMember(v.MemberSelf); err != nil {
 						log.Fatalf("Failed to replace member. Writing manifest for restore or new cluster")
