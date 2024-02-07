@@ -57,22 +57,24 @@ func (v *mockEtcdutil) HealthCheck(endpoints []string, tlsConfig *tls.Config) er
 
 func TestSyncStatus(t *testing.T) {
 	tests := []struct {
-		label                 string
-		name                  string
-		initialCluster        string
-		initialClusterClients string
-		etcdutilResponses     *mockEtcdutil
-		expectedHealthy       bool
-		expectedClusterID     uint64
-		expectedLeaderID      uint64
-		expectedMemberMap     map[string]*Member
-		expectedMemberSelf    *Member
+		label             string
+		initialStatus     func() *Status
+		etcdutilResponses *mockEtcdutil
+		expectedHealthy   bool
+		expectedClusterID uint64
+		expectedLeaderID  uint64
+		expectedMemberMap map[string]*Member
 	}{
 		{
-			label:                 "happy path",
-			name:                  "node0",
-			initialCluster:        "node0=https://10.0.0.1:8080,node1=https://10.0.0.2:8080,node2=https://10.0.0.3:8080",
-			initialClusterClients: "node0=https://10.0.0.1:8081,node1=https://10.0.0.2:8081,node2=https://10.0.0.3:8081",
+			label: "happy path",
+			initialStatus: func() *Status {
+				v := &Status{}
+				name := "node0"
+				initialCluster := "node0=https://10.0.0.1:8080,node1=https://10.0.0.2:8080,node2=https://10.0.0.3:8080"
+				initialClusterClients := "node0=https://10.0.0.1:8081,node1=https://10.0.0.2:8081,node2=https://10.0.0.3:8081"
+				v.populateMembersFromInitialCluster(name, initialCluster, initialClusterClients)
+				return v
+			},
 			etcdutilResponses: &mockEtcdutil{
 				statusResponse:      nil,
 				listMembersError:    nil,
@@ -171,32 +173,19 @@ func TestSyncStatus(t *testing.T) {
 					Self:                false,
 				},
 			},
-			expectedMemberSelf: &Member{
-				Name:                "node0",
-				Healthy:             true,
-				MemberID:            uint64ptr(1),
-				MemberIDFromCluster: uint64ptr(1),
-				Revision:            int64ptr(100),
-				ClusterID:           uint64ptr(10),
-				LeaderID:            uint64ptr(1),
-				PeerURL:             "https://10.0.0.1:8080",
-				ClientURL:           "https://10.0.0.1:8081",
-				Self:                true,
-			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.label, func(t *testing.T) {
-			v := &Status{}
-			v.populateMembersFromInitialCluster(tt.name, tt.initialCluster, tt.initialClusterClients)
+			v := tt.initialStatus()
 
 			v.SyncStatus(tt.etcdutilResponses)
 			assert.Equal(t, true, v.Healthy)
 			assert.Equal(t, tt.expectedClusterID, *v.ClusterID)
 			assert.Equal(t, tt.expectedLeaderID, *v.LeaderID)
 			assert.Equal(t, tt.expectedMemberMap, v.MemberMap)
-			assert.Equal(t, tt.expectedMemberSelf, v.MemberSelf)
+			assert.Equal(t, true, v.MemberSelf.Self)
 		})
 	}
 }

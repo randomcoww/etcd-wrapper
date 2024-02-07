@@ -106,19 +106,17 @@ func New() (*Status, error) {
 	flag.IntVar(&readinessFailCountAllowed, "readiness-fail-count-allowed", 64, "Number of readiness check failures to allow before restarting etcd pod.")
 	flag.Parse()
 
-	tlsInfo := transport.TLSInfo{
+	status.ClientTLSConfig, err = transport.TLSInfo{
 		CertFile:      clientCertFile,
 		KeyFile:       clientKeyFile,
 		TrustedCAFile: trustedCAFile,
-	}
-	status.ClientTLSConfig, err = tlsInfo.ClientConfig()
+	}.ClientConfig()
 	if err != nil {
 		return nil, err
 	}
 
 	status.EtcdSnapshotFile = etcdSnapshotFile
 	status.EtcdPodManifestFile = etcdPodManifestFile
-
 	status.ListenPeerURLs = strings.Split(listenPeerURLs, ",")
 	status.HealthCheckInterval = healthCheckInterval
 	status.BackupInterval = backupInterval
@@ -133,22 +131,21 @@ func New() (*Status, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err = status.populateMembersFromInitialCluster(name, initialCluster, initialClusterClients); err != nil {
-		return nil, err
-	}
-
 	status.PodSpec = func(initialClusterState string, runRestore bool, versionAnnotation string) *v1.Pod {
 		var memberID uint64
 		if status.MemberSelf.MemberID != nil {
 			memberID = *status.MemberSelf.MemberID
 		}
-
 		return podspec.Create(
 			name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, peerTrustedCAFile, initialAdvertisePeerURLs,
 			listenPeerURLs, advertiseClientURLs, listenClientURLs, initialClusterToken, initialCluster,
 			etcdImage, etcdPodName, etcdPodNamespace, etcdSnapshotFile, autoCompationRetention,
 			initialClusterState, runRestore, memberID, versionAnnotation,
 		)
+	}
+
+	if err = status.populateMembersFromInitialCluster(name, initialCluster, initialClusterClients); err != nil {
+		return nil, err
 	}
 	return status, nil
 }
