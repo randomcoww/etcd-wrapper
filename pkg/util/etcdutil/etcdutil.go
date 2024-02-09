@@ -32,7 +32,7 @@ type MemberResp struct {
 }
 
 type StatusCheck interface {
-	Status(endpoints []string, handler func(*StatusResp), tlsConfig *tls.Config) error
+	Status(endpoints []string, handler func(*StatusResp, error), tlsConfig *tls.Config) error
 	ListMembers(endpoints []string, tlsConfig *tls.Config) ([]*MemberResp, error)
 	HealthCheck(endpoints []string, tlsConfig *tls.Config) error
 }
@@ -46,7 +46,7 @@ func new(ctx context.Context, endpoints []string, tlsConfig *tls.Config) (*clien
 	})
 }
 
-func Status(endpoints []string, handler func(*StatusResp), tlsConfig *tls.Config) error {
+func Status(endpoints []string, handler func(*StatusResp, error), tlsConfig *tls.Config) error {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
 	defer cancel()
 
@@ -63,30 +63,34 @@ func Status(endpoints []string, handler func(*StatusResp), tlsConfig *tls.Config
 		wg.Add(1)
 		go func(ctx context.Context, endpoint string) {
 			defer wg.Done()
+
+			status := &StatusResp{
+				Endpoint: endpoint,
+			}
 			resp, err := client.Status(ctx, endpoint)
 			if err != nil {
+				handler(status, err)
 				return
 			}
 			clusterID := resp.Header.ClusterId
-			if clusterID == 0 {
-				return
-			}
 			memberID := resp.Header.MemberId
 			leaderID := resp.Leader
 			revision := resp.Header.Revision
 
-			status := &StatusResp{
-				Endpoint:  endpoint,
-				Revision:  &revision,
-				ClusterID: &clusterID,
+			if clusterID == 0 {
+				handler(status, fmt.Errorf("Cluster ID is 0"))
+				return
 			}
+			status.ClusterID = &clusterID
 			if memberID != 0 {
 				status.MemberID = &memberID
 			}
 			if leaderID != 0 {
 				status.LeaderID = &leaderID
 			}
-			handler(status)
+			status.Revision = &revision
+
+			handler(status, nil)
 		}(ctx, endpoint)
 	}
 	return nil

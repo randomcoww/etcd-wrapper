@@ -21,6 +21,7 @@ func int64ptr(i int64) *int64 {
 type mockStatusResponse struct {
 	delay time.Duration
 	resp  *etcdutil.StatusResp
+	err   error
 }
 
 type mockEtcdutil struct {
@@ -31,7 +32,7 @@ type mockEtcdutil struct {
 	healthCheckResponse   error
 }
 
-func (v *mockEtcdutil) Status(endpoints []string, handler func(*etcdutil.StatusResp), tlsConfig *tls.Config) error {
+func (v *mockEtcdutil) Status(endpoints []string, handler func(*etcdutil.StatusResp, error), tlsConfig *tls.Config) error {
 	if v.statusResponse != nil {
 		return v.statusResponse
 	}
@@ -40,7 +41,7 @@ func (v *mockEtcdutil) Status(endpoints []string, handler func(*etcdutil.StatusR
 		wg.Add(1)
 		go func(status *mockStatusResponse) {
 			time.Sleep(status.delay)
-			handler(status.resp)
+			handler(status.resp, status.err)
 			wg.Done()
 		}(status)
 	}
@@ -124,6 +125,111 @@ func TestNewStatus(t *testing.T) {
 							LeaderID:  uint64ptr(1),
 							Revision:  int64ptr(100),
 						},
+						err: nil,
+					},
+					&mockStatusResponse{
+						delay: 300 * time.Millisecond,
+						resp: &etcdutil.StatusResp{
+							Endpoint:  "https://10.0.0.2:8081",
+							ClusterID: uint64ptr(10),
+							MemberID:  uint64ptr(2),
+							LeaderID:  uint64ptr(1),
+							Revision:  int64ptr(100),
+						},
+						err: nil,
+					},
+					&mockStatusResponse{
+						delay: 200 * time.Millisecond,
+						resp: &etcdutil.StatusResp{
+							Endpoint:  "https://10.0.0.3:8081",
+							ClusterID: uint64ptr(10),
+							MemberID:  uint64ptr(3),
+							LeaderID:  uint64ptr(1),
+							Revision:  int64ptr(100),
+						},
+						err: nil,
+					},
+				},
+			},
+			expectedHealthy:   true,
+			expectedClusterID: uint64(10),
+			expectedLeaderID:  uint64(1),
+			expectedMemberMap: map[string]*Member{
+				"node0": &Member{
+					Name:                "node0",
+					Healthy:             true,
+					MemberID:            uint64ptr(1),
+					MemberIDFromCluster: uint64ptr(1),
+					Revision:            int64ptr(100),
+					ClusterID:           uint64ptr(10),
+					LeaderID:            uint64ptr(1),
+					PeerURL:             "https://10.0.0.1:8080",
+					ClientURL:           "https://10.0.0.1:8081",
+					Self:                true,
+				},
+				"node1": &Member{
+					Name:                "node1",
+					Healthy:             true,
+					MemberID:            uint64ptr(2),
+					MemberIDFromCluster: uint64ptr(2),
+					Revision:            int64ptr(100),
+					ClusterID:           uint64ptr(10),
+					LeaderID:            uint64ptr(1),
+					PeerURL:             "https://10.0.0.2:8080",
+					ClientURL:           "https://10.0.0.2:8081",
+					Self:                false,
+				},
+				"node2": &Member{
+					Name:                "node2",
+					Healthy:             true,
+					MemberID:            uint64ptr(3),
+					MemberIDFromCluster: uint64ptr(3),
+					Revision:            int64ptr(100),
+					ClusterID:           uint64ptr(10),
+					LeaderID:            uint64ptr(1),
+					PeerURL:             "https://10.0.0.3:8080",
+					ClientURL:           "https://10.0.0.3:8081",
+					Self:                false,
+				},
+			},
+		},
+		{
+			label: "node0 in another cluster ID",
+			args:  args,
+			etcdutilResponses: &mockEtcdutil{
+				statusResponse:      nil,
+				listMembersError:    nil,
+				healthCheckResponse: nil,
+				listMembersResponse: []*etcdutil.MemberResp{
+					&etcdutil.MemberResp{
+						ID: uint64ptr(1),
+						PeerURLs: []string{
+							"https://10.0.0.1:8080",
+						},
+					},
+					&etcdutil.MemberResp{
+						ID: uint64ptr(2),
+						PeerURLs: []string{
+							"https://10.0.0.2:8080",
+						},
+					},
+					&etcdutil.MemberResp{
+						ID: uint64ptr(3),
+						PeerURLs: []string{
+							"https://10.0.0.3:8080",
+						},
+					},
+				},
+				statusHandlerResponse: []*mockStatusResponse{
+					&mockStatusResponse{
+						delay: 100 * time.Millisecond,
+						resp: &etcdutil.StatusResp{
+							Endpoint:  "https://10.0.0.1:8081",
+							ClusterID: uint64ptr(20),
+							MemberID:  uint64ptr(6),
+							LeaderID:  uint64ptr(8),
+							Revision:  int64ptr(40),
+						},
 					},
 					&mockStatusResponse{
 						delay: 300 * time.Millisecond,
@@ -153,12 +259,12 @@ func TestNewStatus(t *testing.T) {
 			expectedMemberMap: map[string]*Member{
 				"node0": &Member{
 					Name:                "node0",
-					Healthy:             true,
-					MemberID:            uint64ptr(1),
+					Healthy:             false,
+					MemberID:            uint64ptr(6),
 					MemberIDFromCluster: uint64ptr(1),
-					Revision:            int64ptr(100),
-					ClusterID:           uint64ptr(10),
-					LeaderID:            uint64ptr(1),
+					Revision:            int64ptr(40),
+					ClusterID:           uint64ptr(20),
+					LeaderID:            uint64ptr(8),
 					PeerURL:             "https://10.0.0.1:8080",
 					ClientURL:           "https://10.0.0.1:8081",
 					Self:                true,

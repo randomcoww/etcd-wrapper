@@ -80,16 +80,26 @@ func (v *Status) ToYaml() (b []byte, err error) {
 func (v *Status) UpdateFromStatus(args *arg.Args, etcd etcdutil.StatusCheck) error {
 	clusterIDCount := make(map[uint64]int)
 
-	err := etcd.Status(v.clientURLs, func(status *etcdutil.StatusResp) {
+	err := etcd.Status(v.clientURLs, func(status *etcdutil.StatusResp, err error) {
+		// endpoint will be returned even if there is an error
 		m, ok := v.MemberClientURLMap[status.Endpoint]
 		if !ok {
 			return
 		}
+		m.ClientURL = status.Endpoint
+
+		if err != nil {
+			m.ClusterID = nil
+			m.LeaderID = nil
+			m.Revision = nil
+			m.MemberID = nil
+			return
+		}
+
 		m.ClusterID = status.ClusterID
 		m.LeaderID = status.LeaderID
 		m.Revision = status.Revision
 		m.MemberID = status.MemberID
-		m.ClientURL = status.Endpoint
 
 		// set cluster wide IDs by majority found among members
 		// 1. cluster ID nil
