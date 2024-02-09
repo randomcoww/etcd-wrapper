@@ -2,6 +2,7 @@ package podspec
 
 import (
 	"fmt"
+	"github.com/randomcoww/etcd-wrapper/pkg/arg"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"path/filepath"
@@ -9,17 +10,19 @@ import (
 )
 
 const (
-	dbFile               string = "/var/etcd/data"
 	etcdContainerName    string = "etcd"
-	restoreContainerName string = "etcd-snap-restore"
+	restoreContainerName string = "snapshot-restore"
+	dbFile               string = "/var/etcd/data"
 )
 
-func Create(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, peerTrustedCAFile, initialAdvertisePeerURLs,
-	listenPeerURLs, advertiseClientURLs, listenClientURLs, initialClusterToken, initialCluster string,
-	etcdImage, etcdPodName, etcdPodNamespace, etcdSnapshotFile, autoCompationRetention string,
-	initialClusterState string, runRestore bool, memberAnnotation uint64, versionAnnotation string) *v1.Pod {
-
+func Create(args *arg.Args, runRestore bool, versionAnnotation string) *v1.Pod {
 	var priority int32 = 2000001000
+	var memberPeers []string
+	for _, node := range args.InitialCluster {
+		memberPeers = append(memberPeers, fmt.Sprintf("%s=%s", node.Name, node.PeerURL))
+	}
+	initialCluster := strings.Join(memberPeers, ",")
+
 	hostPathFileType := v1.HostPathFile
 	pod := &v1.Pod{
 		TypeMeta: metav1.TypeMeta{
@@ -27,10 +30,9 @@ func Create(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, p
 			Kind:       "Pod",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      etcdPodName,
-			Namespace: etcdPodNamespace,
+			Name:      args.EtcdPodName,
+			Namespace: args.EtcdPodNamespace,
 			Annotations: map[string]string{
-				"etcd-wrapper/member":  fmt.Sprintf("%v", memberAnnotation),
 				"etcd-wrapper/version": versionAnnotation,
 			},
 		},
@@ -46,7 +48,7 @@ func Create(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, p
 					Name: "cert-file",
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
-							Path: certFile,
+							Path: args.CertFile,
 							Type: &hostPathFileType,
 						},
 					},
@@ -55,7 +57,7 @@ func Create(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, p
 					Name: "key-file",
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
-							Path: keyFile,
+							Path: args.KeyFile,
 							Type: &hostPathFileType,
 						},
 					},
@@ -64,7 +66,7 @@ func Create(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, p
 					Name: "trusted-ca-file",
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
-							Path: trustedCAFile,
+							Path: args.TrustedCAFile,
 							Type: &hostPathFileType,
 						},
 					},
@@ -73,7 +75,7 @@ func Create(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, p
 					Name: "peer-cert-file",
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
-							Path: peerCertFile,
+							Path: args.PeerCertFile,
 							Type: &hostPathFileType,
 						},
 					},
@@ -82,7 +84,7 @@ func Create(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, p
 					Name: "peer-key-file",
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
-							Path: peerKeyFile,
+							Path: args.PeerKeyFile,
 							Type: &hostPathFileType,
 						},
 					},
@@ -91,13 +93,13 @@ func Create(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, p
 					Name: "peer-trusted-ca-file",
 					VolumeSource: v1.VolumeSource{
 						HostPath: &v1.HostPathVolumeSource{
-							Path: peerTrustedCAFile,
+							Path: args.PeerTrustedCAFile,
 							Type: &hostPathFileType,
 						},
 					},
 				},
 				{
-					Name: fmt.Sprintf("db-%s", name),
+					Name: fmt.Sprintf("db-%s", args.Name),
 					VolumeSource: v1.VolumeSource{
 						EmptyDir: &v1.EmptyDirVolumeSource{
 							Medium: v1.StorageMediumMemory,
@@ -115,7 +117,7 @@ func Create(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, p
 				Name: "snapshot-restore",
 				VolumeSource: v1.VolumeSource{
 					HostPath: &v1.HostPathVolumeSource{
-						Path: etcdSnapshotFile,
+						Path: args.EtcdSnapshotFile,
 						Type: &hostPathFileType,
 					},
 				},
@@ -125,7 +127,7 @@ func Create(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, p
 		pod.Spec.InitContainers = append(pod.Spec.InitContainers,
 			v1.Container{
 				Name:  restoreContainerName,
-				Image: etcdImage,
+				Image: args.EtcdImage,
 				Env: []v1.EnvVar{
 					{
 						Name:  "ETCDCTL_API",
@@ -138,15 +140,15 @@ func Create(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, p
 					" --initial-cluster-token %[4]s"+
 					" --initial-advertise-peer-urls %[5]s"+
 					" --data-dir %[6]s",
-					etcdSnapshotFile, name, initialCluster, initialClusterToken, initialAdvertisePeerURLs, dbFile), " "),
+					args.EtcdSnapshotFile, args.Name, initialCluster, args.InitialClusterToken, strings.Join(args.InitialAdvertisePeerURLs, ","), dbFile), " "),
 				VolumeMounts: []v1.VolumeMount{
 					{
-						Name:      fmt.Sprintf("db-%s", name),
+						Name:      fmt.Sprintf("db-%s", args.Name),
 						MountPath: filepath.Dir(dbFile),
 					},
 					{
 						Name:      "snapshot-restore",
-						MountPath: etcdSnapshotFile,
+						MountPath: args.EtcdSnapshotFile,
 					},
 				},
 			},
@@ -156,11 +158,11 @@ func Create(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, p
 	pod.Spec.Containers = append(pod.Spec.Containers,
 		v1.Container{
 			Name:  etcdContainerName,
-			Image: etcdImage,
+			Image: args.EtcdImage,
 			Env: []v1.EnvVar{
 				{
 					Name:  "ETCD_NAME",
-					Value: name,
+					Value: args.Name,
 				},
 				{
 					Name:  "ETCD_DATA_DIR",
@@ -172,11 +174,11 @@ func Create(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, p
 				},
 				{
 					Name:  "ETCD_INITIAL_CLUSTER_STATE",
-					Value: initialClusterState,
+					Value: args.InitialClusterState,
 				},
 				{
 					Name:  "ETCD_INITIAL_CLUSTER_TOKEN",
-					Value: initialClusterToken,
+					Value: args.InitialClusterToken,
 				},
 				{
 					Name:  "ETCD_ENABLE_V2",
@@ -188,7 +190,7 @@ func Create(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, p
 				},
 				{
 					Name:  "ETCD_AUTO_COMPACTION_RETENTION",
-					Value: autoCompationRetention,
+					Value: args.AutoCompationRetention,
 				},
 				{
 					Name:  "ETCD_AUTO_COMPACTION_MODE",
@@ -197,19 +199,19 @@ func Create(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, p
 				// Listen
 				{
 					Name:  "ETCD_LISTEN_CLIENT_URLS",
-					Value: listenClientURLs,
+					Value: strings.Join(args.ListenClientURLs, ","),
 				},
 				{
 					Name:  "ETCD_ADVERTISE_CLIENT_URLS",
-					Value: advertiseClientURLs,
+					Value: strings.Join(args.AdvertiseClientURLs, ","),
 				},
 				{
 					Name:  "ETCD_LISTEN_PEER_URLS",
-					Value: listenPeerURLs,
+					Value: strings.Join(args.ListenPeerURLs, ","),
 				},
 				{
 					Name:  "ETCD_INITIAL_ADVERTISE_PEER_URLS",
-					Value: initialAdvertisePeerURLs,
+					Value: strings.Join(args.InitialAdvertisePeerURLs, ","),
 				},
 				// TLS
 				{
@@ -281,7 +283,7 @@ func Create(name, certFile, keyFile, trustedCAFile, peerCertFile, peerKeyFile, p
 					ReadOnly:  true,
 				},
 				{
-					Name:      fmt.Sprintf("db-%s", name),
+					Name:      fmt.Sprintf("db-%s", args.Name),
 					MountPath: filepath.Dir(dbFile),
 				},
 			},

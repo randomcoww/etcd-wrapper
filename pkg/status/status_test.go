@@ -2,6 +2,7 @@ package status
 
 import (
 	"crypto/tls"
+	"github.com/randomcoww/etcd-wrapper/pkg/arg"
 	"github.com/randomcoww/etcd-wrapper/pkg/util/etcdutil"
 	"github.com/stretchr/testify/assert"
 	"sync"
@@ -55,10 +56,31 @@ func (v *mockEtcdutil) HealthCheck(endpoints []string, tlsConfig *tls.Config) er
 	return v.healthCheckResponse
 }
 
-func TestSyncStatus(t *testing.T) {
+func TestNewStatus(t *testing.T) {
+	args := &arg.Args{
+		Name: "node0",
+		InitialCluster: []*arg.Node{
+			&arg.Node{
+				Name:      "node0",
+				PeerURL:   "https://10.0.0.1:8080",
+				ClientURL: "https://10.0.0.1:8081",
+			},
+			&arg.Node{
+				Name:      "node1",
+				PeerURL:   "https://10.0.0.2:8080",
+				ClientURL: "https://10.0.0.2:8081",
+			},
+			&arg.Node{
+				Name:      "node2",
+				PeerURL:   "https://10.0.0.3:8080",
+				ClientURL: "https://10.0.0.3:8081",
+			},
+		},
+	}
+
 	tests := []struct {
 		label             string
-		initialStatus     func() *Status
+		args              *arg.Args
 		etcdutilResponses *mockEtcdutil
 		expectedHealthy   bool
 		expectedClusterID uint64
@@ -67,14 +89,7 @@ func TestSyncStatus(t *testing.T) {
 	}{
 		{
 			label: "happy path",
-			initialStatus: func() *Status {
-				v := &Status{}
-				name := "node0"
-				initialCluster := "node0=https://10.0.0.1:8080,node1=https://10.0.0.2:8080,node2=https://10.0.0.3:8080"
-				initialClusterClients := "node0=https://10.0.0.1:8081,node1=https://10.0.0.2:8081,node2=https://10.0.0.3:8081"
-				v.populateMembersFromInitialCluster(name, initialCluster, initialClusterClients)
-				return v
-			},
+			args:  args,
 			etcdutilResponses: &mockEtcdutil{
 				statusResponse:      nil,
 				listMembersError:    nil,
@@ -178,14 +193,15 @@ func TestSyncStatus(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.label, func(t *testing.T) {
-			v := tt.initialStatus()
+			status, _ := New(tt.args)
+			status.UpdateFromStatus(tt.args, tt.etcdutilResponses)
+			status.SetMembersHealth()
 
-			v.SyncStatus(tt.etcdutilResponses)
-			assert.Equal(t, true, v.Healthy)
-			assert.Equal(t, tt.expectedClusterID, *v.ClusterID)
-			assert.Equal(t, tt.expectedLeaderID, *v.LeaderID)
-			assert.Equal(t, tt.expectedMemberMap, v.MemberMap)
-			assert.Equal(t, true, v.MemberSelf.Self)
+			assert.Equal(t, true, status.Healthy)
+			assert.Equal(t, tt.expectedClusterID, *status.ClusterID)
+			assert.Equal(t, tt.expectedLeaderID, *status.LeaderID)
+			assert.Equal(t, tt.expectedMemberMap, status.MemberMap)
+			assert.Equal(t, true, status.MemberSelf.Self)
 		})
 	}
 }
