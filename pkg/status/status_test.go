@@ -95,26 +95,6 @@ func TestNewStatus(t *testing.T) {
 				statusResponse:      nil,
 				listMembersError:    nil,
 				healthCheckResponse: nil,
-				listMembersResponse: []*etcdutil.MemberResp{
-					&etcdutil.MemberResp{
-						ID: uint64ptr(1),
-						PeerURLs: []string{
-							"https://10.0.0.1:8080",
-						},
-					},
-					&etcdutil.MemberResp{
-						ID: uint64ptr(2),
-						PeerURLs: []string{
-							"https://10.0.0.2:8080",
-						},
-					},
-					&etcdutil.MemberResp{
-						ID: uint64ptr(3),
-						PeerURLs: []string{
-							"https://10.0.0.3:8080",
-						},
-					},
-				},
 				statusHandlerResponse: []*mockStatusResponse{
 					&mockStatusResponse{
 						delay: 100 * time.Millisecond,
@@ -148,6 +128,26 @@ func TestNewStatus(t *testing.T) {
 							Revision:  int64ptr(100),
 						},
 						err: nil,
+					},
+				},
+				listMembersResponse: []*etcdutil.MemberResp{
+					&etcdutil.MemberResp{
+						ID: uint64ptr(1),
+						PeerURLs: []string{
+							"https://10.0.0.1:8080",
+						},
+					},
+					&etcdutil.MemberResp{
+						ID: uint64ptr(2),
+						PeerURLs: []string{
+							"https://10.0.0.2:8080",
+						},
+					},
+					&etcdutil.MemberResp{
+						ID: uint64ptr(3),
+						PeerURLs: []string{
+							"https://10.0.0.3:8080",
+						},
 					},
 				},
 			},
@@ -200,13 +200,42 @@ func TestNewStatus(t *testing.T) {
 				statusResponse:      nil,
 				listMembersError:    nil,
 				healthCheckResponse: nil,
-				listMembersResponse: []*etcdutil.MemberResp{
-					&etcdutil.MemberResp{
-						ID: uint64ptr(1),
-						PeerURLs: []string{
-							"https://10.0.0.1:8080",
+				statusHandlerResponse: []*mockStatusResponse{
+					&mockStatusResponse{
+						delay: 100 * time.Millisecond,
+						resp: &etcdutil.StatusResp{
+							Endpoint:  "https://10.0.0.1:8081",
+							ClusterID: uint64ptr(20),
+							MemberID:  uint64ptr(6),
+							LeaderID:  uint64ptr(8),
+							Revision:  int64ptr(40),
 						},
+						err: nil,
 					},
+					&mockStatusResponse{
+						delay: 300 * time.Millisecond,
+						resp: &etcdutil.StatusResp{
+							Endpoint:  "https://10.0.0.2:8081",
+							ClusterID: uint64ptr(10),
+							MemberID:  uint64ptr(2),
+							LeaderID:  uint64ptr(1),
+							Revision:  int64ptr(100),
+						},
+						err: nil,
+					},
+					&mockStatusResponse{
+						delay: 200 * time.Millisecond,
+						resp: &etcdutil.StatusResp{
+							Endpoint:  "https://10.0.0.3:8081",
+							ClusterID: uint64ptr(10),
+							MemberID:  uint64ptr(3),
+							LeaderID:  uint64ptr(1),
+							Revision:  int64ptr(100),
+						},
+						err: nil,
+					},
+				},
+				listMembersResponse: []*etcdutil.MemberResp{
 					&etcdutil.MemberResp{
 						ID: uint64ptr(2),
 						PeerURLs: []string{
@@ -220,38 +249,6 @@ func TestNewStatus(t *testing.T) {
 						},
 					},
 				},
-				statusHandlerResponse: []*mockStatusResponse{
-					&mockStatusResponse{
-						delay: 100 * time.Millisecond,
-						resp: &etcdutil.StatusResp{
-							Endpoint:  "https://10.0.0.1:8081",
-							ClusterID: uint64ptr(20),
-							MemberID:  uint64ptr(6),
-							LeaderID:  uint64ptr(8),
-							Revision:  int64ptr(40),
-						},
-					},
-					&mockStatusResponse{
-						delay: 300 * time.Millisecond,
-						resp: &etcdutil.StatusResp{
-							Endpoint:  "https://10.0.0.2:8081",
-							ClusterID: uint64ptr(10),
-							MemberID:  uint64ptr(2),
-							LeaderID:  uint64ptr(1),
-							Revision:  int64ptr(100),
-						},
-					},
-					&mockStatusResponse{
-						delay: 200 * time.Millisecond,
-						resp: &etcdutil.StatusResp{
-							Endpoint:  "https://10.0.0.3:8081",
-							ClusterID: uint64ptr(10),
-							MemberID:  uint64ptr(3),
-							LeaderID:  uint64ptr(1),
-							Revision:  int64ptr(100),
-						},
-					},
-				},
 			},
 			expectedHealthy:   true,
 			expectedClusterID: uint64(10),
@@ -261,7 +258,7 @@ func TestNewStatus(t *testing.T) {
 					Name:                "node0",
 					Healthy:             false,
 					MemberID:            uint64ptr(6),
-					MemberIDFromCluster: uint64ptr(1),
+					MemberIDFromCluster: nil,
 					Revision:            int64ptr(40),
 					ClusterID:           uint64ptr(20),
 					LeaderID:            uint64ptr(8),
