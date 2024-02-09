@@ -138,13 +138,13 @@ func ListMembers(endpoints []string, tlsConfig *tls.Config) ([]*MemberResp, erro
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
 	defer cancel()
 
+	var members []*MemberResp
 	client, err := new(ctx, endpoints, tlsConfig)
 	if err != nil {
-		return nil, err
+		return members, err
 	}
 	defer client.Close()
 
-	var members []*MemberResp
 	resp, err := client.MemberList(ctx)
 	if err != nil {
 		return members, err

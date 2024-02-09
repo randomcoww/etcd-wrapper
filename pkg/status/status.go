@@ -44,7 +44,8 @@ type Status struct {
 	Members            []*Member          `yaml:"-"`
 	MembersHealthy     []*Member          `yaml:"-"`
 	//
-	clientURLs []string
+	clientURLs        []string `yaml:"-"`
+	healthyClientURLs []string `yaml:"-"`
 }
 
 func New(args *arg.Args) (*Status, error) {
@@ -67,7 +68,7 @@ func New(args *arg.Args) (*Status, error) {
 			member.Self = true
 			v.MemberSelf = member
 		}
-		v.clientURLs = append(v.clientURLs, member.ClientURL)
+		v.clientURLs = append(v.clientURLs, node.ClientURL)
 	}
 	return v, nil
 }
@@ -80,6 +81,7 @@ func (v *Status) ToYaml() (b []byte, err error) {
 func (v *Status) UpdateFromStatus(args *arg.Args, etcd etcdutil.StatusCheck) error {
 	clusterIDCount := make(map[uint64]int)
 
+	v.healthyClientURLs = []string{}
 	err := etcd.Status(v.clientURLs, func(status *etcdutil.StatusResp, err error) {
 		// endpoint will be returned even if there is an error
 		m, ok := v.MemberClientURLMap[status.Endpoint]
@@ -110,52 +112,59 @@ func (v *Status) UpdateFromStatus(args *arg.Args, etcd etcdutil.StatusCheck) err
 			clusterIDCount[*status.ClusterID] > clusterIDCount[*v.ClusterID] ||
 			(clusterIDCount[*status.ClusterID] == clusterIDCount[*v.ClusterID] && *status.ClusterID < *v.ClusterID) {
 			v.ClusterID = status.ClusterID
-			v.LeaderID = status.LeaderID
-			if v.Revision == nil || *v.Revision < *status.Revision {
-				v.Revision = status.Revision
-			}
 		}
 	}, args.ClientTLSConfig)
 	if err != nil {
 		v.Healthy = false
 		return err
 	}
+	if v.ClusterID == nil {
+		v.Healthy = false
+		return fmt.Errorf("Cluster ID not found on any member")
+	}
 
 	// filter out members in wrong cluster ID
-	v.clientURLs = []string{}
 	for _, m := range v.Members {
-		if *m.ClusterID != *v.ClusterID {
-			v.clientURLs = append(v.clientURLs, m.ClientURL)
+		if m.ClusterID != nil && *m.ClusterID == *v.ClusterID {
+			v.healthyClientURLs = append(v.healthyClientURLs, m.ClientURL)
 		}
 	}
 
-	// check list from members in matching cluster ID
-	members, err := etcd.ListMembers(v.clientURLs, args.ClientTLSConfig)
+	// check cluster health
+	err = etcd.HealthCheck(v.healthyClientURLs, args.ClientTLSConfig)
 	if err != nil {
 		v.Healthy = false
+		v.healthyClientURLs = []string{}
+		return err
+	}
+
+	// check list from members in matching cluster ID
+	members, err := etcd.ListMembers(v.healthyClientURLs, args.ClientTLSConfig)
+	if err != nil {
+		v.Healthy = false
+		v.healthyClientURLs = []string{}
 		return err
 	}
 
 	// update client URLs again from list to include newly joined members
 	// assume memberID reported by self and memberID reported by majority matching means in cluster
-	v.clientURLs = []string{}
+	v.healthyClientURLs = []string{}
 	for _, resp := range members {
 		// find member by one of the peerURLs
 		for _, peerURL := range resp.PeerURLs {
 			if m, ok := v.MemberPeerURLMap[peerURL]; ok {
 				m.MemberIDFromCluster = resp.ID
-				v.clientURLs = append(v.clientURLs, m.ClientURL)
+				v.healthyClientURLs = append(v.healthyClientURLs, m.ClientURL)
+
+				if v.Revision == nil || *v.Revision < *m.Revision {
+					v.Revision = m.Revision
+				}
+				v.LeaderID = m.LeaderID
 				break
 			}
 		}
 	}
 
-	// check cluster health
-	err = etcd.HealthCheck(v.clientURLs, args.ClientTLSConfig)
-	if err != nil {
-		v.Healthy = false
-		return err
-	}
 	v.Healthy = true
 	return nil
 }
@@ -195,13 +204,13 @@ func (v *Status) GetBackupMember() *Member {
 
 func (v *Status) ReplaceMember(args *arg.Args, m *Member) error {
 	if m.MemberIDFromCluster != nil {
-		err := etcdutil.RemoveMember(v.clientURLs, args.ClientTLSConfig, *m.MemberIDFromCluster)
+		err := etcdutil.RemoveMember(v.healthyClientURLs, args.ClientTLSConfig, *m.MemberIDFromCluster)
 		if err != nil {
 			return err
 		}
 		log.Printf("Removed member %v", *m.MemberIDFromCluster)
 	}
-	member, err := etcdutil.AddMember(v.clientURLs, args.ListenPeerURLs, args.ClientTLSConfig)
+	member, err := etcdutil.AddMember(v.healthyClientURLs, args.ListenPeerURLs, args.ClientTLSConfig)
 	if err != nil {
 		return err
 	}
@@ -259,7 +268,7 @@ func (v *Status) Defragment(args *arg.Args) error {
 func (v *Status) BackupSnapshot(args *arg.Args) error {
 	m := v.GetBackupMember()
 	if m == v.MemberSelf {
-		return etcdutil.CreateSnapshot(v.clientURLs, args.ClientTLSConfig, func(ctx context.Context, r io.Reader) error {
+		return etcdutil.CreateSnapshot(v.healthyClientURLs, args.ClientTLSConfig, func(ctx context.Context, r io.Reader) error {
 			return args.S3Client.Upload(ctx, args.S3BackupBucket, args.S3BackupKey, r)
 		})
 	}
