@@ -44,7 +44,6 @@ func (v *Client) Download(ctx context.Context, bucket, key string, handler func(
 				return false, err
 			}
 		}
-		return true, nil
 	}
 	return true, nil
 }
