@@ -36,7 +36,15 @@ func (v *Client) Download(ctx context.Context, bucket, key string, handler func(
 	}
 	defer object.Close()
 	if err := handler(ctx, object); err != nil {
-		return true, err
+		if err != nil {
+			switch minio.ToErrorResponse(err).StatusCode {
+			case 404:
+				return false, nil
+			default:
+				return false, err
+			}
+		}
+		return true, nil
 	}
 	return true, nil
 }
