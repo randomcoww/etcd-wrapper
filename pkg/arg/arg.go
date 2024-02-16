@@ -3,8 +3,7 @@ package arg
 import (
 	"crypto/tls"
 	"flag"
-	"fmt"
-	"github.com/randomcoww/etcd-wrapper/pkg/util/s3util"
+	"github.com/randomcoww/etcd-wrapper/pkg/s3util"
 	"go.etcd.io/etcd/pkg/transport"
 	"regexp"
 	"time"
@@ -36,20 +35,20 @@ type Args struct {
 	EtcdPodManifestFile string
 
 	// etcd wrapper args
-	S3BackupBucket              string
-	S3BackupKey                 string
-	HealthCheckInterval         time.Duration
-	BackupInterval              time.Duration
-	HealthCheckFailCountAllowed int
-	ReadinessFailCountAllowed   int
-	S3Client                    *s3util.Client
-	ClientTLSConfig             *tls.Config
+	S3BackupBucket            string
+	S3BackupKey               string
+	HealthCheckInterval       time.Duration
+	BackupInterval            time.Duration
+	HealthCheckFailedCountMax int
+	ReadyCheckFailedCountMax  int
+	S3Client                  *s3util.Client
+	ClientTLSConfig           *tls.Config
+	ClusterClientURLs         []string
 }
 
 type Node struct {
-	Name      string
-	ClientURL string
-	PeerURL   string
+	Name    string
+	PeerURL string
 }
 
 func New() (*Args, error) {
@@ -81,16 +80,15 @@ func New() (*Args, error) {
 	flag.StringVar(&args.EtcdPodManifestFile, "etcd-pod-manifest-file", "", "Host path to write etcd pod manifest file. This should be where kubelet reads static pod manifests.")
 
 	// etcd wrapper args
-	var clientCertFile, clientKeyFile, initialClusterClients, s3BackupEndpoint, s3BackupResource string
+	var clientCertFile, clientKeyFile, s3BackupEndpoint, s3BackupResource string
 	flag.StringVar(&clientCertFile, "client-cert-file", "", "Path to the client server TLS cert file.")
 	flag.StringVar(&clientKeyFile, "client-key-file", "", "Path to the client server TLS key file.")
-	flag.StringVar(&initialClusterClients, "initial-cluster-clients", "", "List of etcd nodes and client URLs in same format as intial-cluster.")
 	flag.StringVar(&s3BackupEndpoint, "s3-backup-endpoint", "s3.amazonaws.com", "S3 endpoint for backup.")
 	flag.StringVar(&s3BackupResource, "s3-backup-resource", "", "S3 resource name for backup.")
 	flag.DurationVar(&args.HealthCheckInterval, "healthcheck-interval", 6*time.Second, "Healthcheck interval.")
 	flag.DurationVar(&args.BackupInterval, "backup-interval", 15*time.Minute, "Backup trigger interval.")
-	flag.IntVar(&args.HealthCheckFailCountAllowed, "healthcheck-fail-count-allowed", 16, "Number of healthcheck failures to allow before restarting etcd pod.")
-	flag.IntVar(&args.ReadinessFailCountAllowed, "readiness-fail-count-allowed", 64, "Number of readiness check failures to allow before restarting etcd pod.")
+	flag.IntVar(&args.HealthCheckFailedCountMax, "healthcheck-fail-count-allowed", 16, "Number of healthcheck failures to allow before restarting etcd pod.")
+	flag.IntVar(&args.ReadyCheckFailedCountMax, "readiness-fail-count-allowed", 64, "Number of readiness check failures to allow before restarting etcd pod.")
 	flag.Parse()
 
 	args.S3Client, err = s3util.New(s3BackupEndpoint)
@@ -126,30 +124,13 @@ func New() (*Args, error) {
 		args.ListenClientURLs = append(args.ListenClientURLs, i)
 	}
 
-	nodeMap := make(map[string]*Node)
-	peerCount := 0
 	for _, member := range reList.Split(initialCluster, -1) {
-		peerCount++
 		k := reNode.Split(member, 2)
-		nodeMap[k[0]] = &Node{
+		node := &Node{
 			Name:    k[0],
 			PeerURL: k[1],
 		}
+		args.InitialCluster = append(args.InitialCluster, node)
 	}
-	clientCount := 0
-	for _, member := range reList.Split(initialClusterClients, -1) {
-		clientCount++
-		k := reNode.Split(member, 2)
-		if node, ok := nodeMap[k[0]]; ok {
-			node.ClientURL = k[1]
-			args.InitialCluster = append(args.InitialCluster, node)
-		} else {
-			return nil, fmt.Errorf("Mismatch in initial-cluster and initial-cluster-clients nodes")
-		}
-	}
-	if peerCount != clientCount {
-		return nil, fmt.Errorf("Mismatch in initial-cluster and initial-cluster-clients nodes")
-	}
-
 	return args, nil
 }
