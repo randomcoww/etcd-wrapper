@@ -15,13 +15,14 @@ type Member struct {
 }
 
 type Status struct {
-	Healthy   bool               `yaml:"healthy"`
-	ClusterID uint64             `yaml:"clusterID,omitempty"`
-	Endpoints []string           `yaml:"endpoints,omitempty"`
-	MemberMap map[uint64]*Member `yaml:"members"`
-	Self      *Member            `yaml:"-"`
-	Leader    *Member            `yaml:"-"`
-	mu        sync.Mutex
+	Healthy       bool               `yaml:"healthy"`
+	ClusterID     uint64             `yaml:"clusterID,omitempty"`
+	Endpoints     []string           `yaml:"endpoints,omitempty"`
+	MemberMap     map[uint64]*Member `yaml:"members"`
+	Self          *Member            `yaml:"-"`
+	Leader        *Member            `yaml:"-"`
+	mu            sync.Mutex
+	NewEtcdClient func([]string) (etcdutil.Util, error)
 }
 
 func (m *Member) Healthy() bool {
@@ -31,9 +32,13 @@ func (m *Member) Healthy() bool {
 
 // Set initial client URLs
 func New(args *arg.Args) *Status {
-	return &Status{
+	status := &Status{
 		Endpoints: args.AdvertiseClientURLs,
+		NewEtcdClient: func(endpoints []string) (etcdutil.Util, error) {
+			return etcdutil.New(endpoints, args.ClientTLSConfig)
+		},
 	}
+	return status
 }
 
 func (v *Status) ToYaml() (b []byte, err error) {
@@ -46,7 +51,7 @@ func (v *Status) SyncStatus(args *arg.Args) error {
 	v.ClusterID = 0
 	v.MemberMap = make(map[uint64]*Member)
 
-	client, err := etcdutil.New(v.Endpoints, args.ClientTLSConfig)
+	client, err := v.NewEtcdClient(v.Endpoints)
 	if err != nil {
 		return err
 	}
@@ -138,7 +143,7 @@ func (v *Status) UpdateFromList(list etcdutil.List) {
 }
 
 func (v *Status) ReplaceMember(args *arg.Args) error {
-	client, err := etcdutil.New(v.Endpoints, args.ClientTLSConfig)
+	client, err := v.NewEtcdClient(v.Endpoints)
 	if err != nil {
 		return err
 	}
@@ -164,7 +169,7 @@ func (v *Status) ReplaceMember(args *arg.Args) error {
 }
 
 func (v *Status) PromoteMember(args *arg.Args) error {
-	client, err := etcdutil.New(v.Endpoints, args.ClientTLSConfig)
+	client, err := v.NewEtcdClient(v.Endpoints)
 	if err != nil {
 		return err
 	}
@@ -185,7 +190,7 @@ func (v *Status) PromoteMember(args *arg.Args) error {
 }
 
 func (v *Status) Defragment(args *arg.Args) error {
-	client, err := etcdutil.New(v.Endpoints, args.ClientTLSConfig)
+	client, err := v.NewEtcdClient(v.Endpoints)
 	if err != nil {
 		return err
 	}
@@ -195,7 +200,7 @@ func (v *Status) Defragment(args *arg.Args) error {
 }
 
 func (v *Status) SnapshotBackup(args *arg.Args) error {
-	client, err := etcdutil.New(v.Endpoints, args.ClientTLSConfig)
+	client, err := v.NewEtcdClient(v.Endpoints)
 	if err != nil {
 		return err
 	}

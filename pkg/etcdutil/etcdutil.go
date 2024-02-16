@@ -47,7 +47,22 @@ type Member interface {
 	GetIsLearner() bool
 }
 
-func New(endpoints []string, tlsConfig *tls.Config) (*Client, error) {
+type Util interface {
+	Close() error
+	Sync(context.Context) error
+	Endpoints() []string
+	SyncEndpoints() error
+	Status(handler func(Status, error))
+	ListMembers() (List, error)
+	AddMember(peerURLs []string) (List, Member, error)
+	RemoveMember(id uint64) (List, error)
+	PromoteMember(id uint64) (List, error)
+	HealthCheck() error
+	Defragment(endpoint string) error
+	CreateSnapshot(handler func(context.Context, io.Reader) error) error
+}
+
+func New(endpoints []string, tlsConfig *tls.Config) (Util, error) {
 	client, err := clientv3.New(clientv3.Config{
 		Endpoints:   endpoints,
 		DialTimeout: defaultDialTimeout,

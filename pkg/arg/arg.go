@@ -43,7 +43,6 @@ type Args struct {
 	ReadyCheckFailedCountMax  int
 	S3Client                  *s3util.Client
 	ClientTLSConfig           *tls.Config
-	ClusterClientURLs         []string
 }
 
 type Node struct {

@@ -2,15 +2,15 @@ package status
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/randomcoww/etcd-wrapper/pkg/arg"
 	"github.com/randomcoww/etcd-wrapper/pkg/podspec"
 	"github.com/randomcoww/etcd-wrapper/pkg/util"
 	"io"
 	"k8s.io/api/core/v1"
 	"log"
-	"fmt"
-	"context"
 	"time"
 )
 
