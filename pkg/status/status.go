@@ -74,14 +74,14 @@ func (v *Status) SyncStatus(args *arg.Args) error {
 	if err != nil {
 		return nil
 	}
-	v.UpdateFromList(list)
+	v.UpdateFromList(list, args)
 
 	// collect all members found by list and status
 	client.Status(func(status etcdutil.Status, err error) {
 		if err != nil {
 			return
 		}
-		member := v.UpdateFromStatus(status)
+		member := v.UpdateFromStatus(status, args)
 		if member == nil {
 			return
 		}
@@ -95,21 +95,11 @@ func (v *Status) SyncStatus(args *arg.Args) error {
 			}
 		}
 
-		// check if member clientURLs match one of my clientURLs and assign self
-	L:
-		for _, sent := range args.AdvertiseClientURLs {
-			for _, recv := range member.Member.GetClientURLs() {
-				if sent == recv {
-					v.Self = member
-					break L
-				}
-			}
-		}
 	})
 	return nil
 }
 
-func (v *Status) UpdateFromStatus(status etcdutil.Status) *Member {
+func (v *Status) UpdateFromStatus(status etcdutil.Status, args *arg.Args) *Member {
 	memberID := status.GetHeader().GetMemberId()
 	if memberID == 0 {
 		return nil
@@ -124,7 +114,7 @@ func (v *Status) UpdateFromStatus(status etcdutil.Status) *Member {
 	return member
 }
 
-func (v *Status) UpdateFromList(list etcdutil.List) {
+func (v *Status) UpdateFromList(list etcdutil.List, args *arg.Args) {
 	clusterID := list.GetHeader().GetClusterId()
 
 	v.ClusterID = clusterID
@@ -140,6 +130,10 @@ func (v *Status) UpdateFromList(list etcdutil.List) {
 			v.MemberMap[memberID] = member
 		}
 		member.Member = m
+
+		if member.Member.GetName() == args.Name {
+			v.Self = member
+		}
 	}
 }
 
@@ -165,7 +159,7 @@ func (v *Status) ReplaceMember(args *arg.Args) error {
 
 	v.Endpoints = client.Endpoints()
 
-	v.UpdateFromList(list)
+	v.UpdateFromList(list, args)
 	return nil
 }
 
@@ -186,7 +180,7 @@ func (v *Status) PromoteMember(args *arg.Args) error {
 	}
 	v.Endpoints = client.Endpoints()
 
-	v.UpdateFromList(list)
+	v.UpdateFromList(list, args)
 	return nil
 }
 

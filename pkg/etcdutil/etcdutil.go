@@ -42,6 +42,7 @@ type Header interface {
 
 type Member interface {
 	GetID() uint64
+	GetName() string
 	GetClientURLs() []string
 	GetPeerURLs() []string
 	GetIsLearner() bool
