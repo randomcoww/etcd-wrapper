@@ -4,14 +4,15 @@ import (
 	"context"
 	"github.com/randomcoww/etcd-wrapper/pkg/arg"
 	"github.com/randomcoww/etcd-wrapper/pkg/etcdutil"
+	etcdserverpb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"gopkg.in/yaml.v3"
 	"io"
 	"sync"
 )
 
 type Member struct {
-	Status etcdutil.Status
-	Member etcdutil.Member
+	Status *etcdserverpb.StatusResponse
+	Member *etcdserverpb.Member
 }
 
 type Status struct {
@@ -119,7 +120,7 @@ func (v *Status) UpdateFromStatus(status etcdutil.Status) *Member {
 		member = &Member{}
 		v.MemberMap[memberID] = member
 	}
-	member.Status = status
+	member.Status = status.(*etcdserverpb.StatusResponse)
 	return member
 }
 

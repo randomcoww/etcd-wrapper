@@ -4,17 +4,19 @@ import (
 	"github.com/randomcoww/etcd-wrapper/pkg/arg"
 	"github.com/randomcoww/etcd-wrapper/pkg/etcdutil"
 	"github.com/stretchr/testify/assert"
+	etcdserverpb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"testing"
 )
 
 func TestNewStatus(t *testing.T) {
 	tests := []struct {
-		label      string
-		args       *arg.Args
-		mockClient *etcdutil.MockClient
+		label             string
+		args              *arg.Args
+		mockClient        *etcdutil.MockClient
+		expectedMemberMap map[uint64]*Member
 	}{
 		{
-			label: "default",
+			label: "happy path",
 			args: &arg.Args{
 				AdvertiseClientURLs: []string{
 					"https://10.0.0.1:8081",
@@ -27,9 +29,56 @@ func TestNewStatus(t *testing.T) {
 					"https://127.0.0.1:8081",
 				},
 				SyncEndpointsErr: nil,
-				StatusResponses: []*etcdutil.MockStatus{
-					&etcdutil.MockStatus{
-						Header: &etcdutil.MockHeader{
+				StatusResponses: []struct {
+					*etcdserverpb.StatusResponse
+					Err error
+				}{
+					struct {
+						*etcdserverpb.StatusResponse
+						Err error
+					}{
+						StatusResponse: &etcdserverpb.StatusResponse{
+							Header: &etcdserverpb.ResponseHeader{
+								ClusterId: 3001,
+								MemberId:  1001,
+								Revision:  5000,
+							},
+							Leader:    1001,
+							RaftIndex: 2001,
+							IsLearner: false,
+						},
+						Err: nil,
+					},
+				},
+				MemberListResponse: struct {
+					*etcdserverpb.MemberListResponse
+					Err error
+				}{
+					MemberListResponse: &etcdserverpb.MemberListResponse{
+						Header: &etcdserverpb.ResponseHeader{
+							ClusterId: 3001,
+							MemberId:  1001,
+							Revision:  5000,
+						},
+						Members: []*etcdserverpb.Member{
+							&etcdserverpb.Member{
+								ID: 1001,
+								PeerURLs: []string{
+									"https//10.0.0.1:8001",
+									"https//10.0.0.2:8001",
+									"https//10.0.0.3:8001",
+								},
+								IsLearner: false,
+							},
+						},
+					},
+					Err: nil,
+				},
+			},
+			expectedMemberMap: map[uint64]*Member{
+				1001: &Member{
+					Status: &etcdserverpb.StatusResponse{
+						Header: &etcdserverpb.ResponseHeader{
 							ClusterId: 3001,
 							MemberId:  1001,
 							Revision:  5000,
@@ -37,24 +86,13 @@ func TestNewStatus(t *testing.T) {
 						Leader:    1001,
 						RaftIndex: 2001,
 						IsLearner: false,
-						Err:       nil,
 					},
-				},
-				ListMembersReponse: &etcdutil.MockList{
-					Header: &etcdutil.MockHeader{
-						ClusterId: 3001,
-						MemberId:  1001,
-						Revision:  5000,
-					},
-					Members: []*etcdutil.MockMember{
-						&etcdutil.MockMember{
-							ID: 1001,
-							PeerURLs: []string{
-								"https//10.0.0.1:8001",
-								"https//10.0.0.2:8001",
-								"https//10.0.0.3:8001",
-							},
-							IsLearner: false,
+					Member: &etcdserverpb.Member{
+						ID: 1001,
+						PeerURLs: []string{
+							"https//10.0.0.1:8001",
+							"https//10.0.0.2:8001",
+							"https//10.0.0.3:8001",
 						},
 					},
 				},
@@ -72,6 +110,7 @@ func TestNewStatus(t *testing.T) {
 			}
 			err := status.SyncStatus(tt.args)
 			assert.Equal(t, nil, err)
+			assert.Equal(t, tt.expectedMemberMap, status.MemberMap)
 		})
 	}
 }
