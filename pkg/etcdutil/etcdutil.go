@@ -113,7 +113,8 @@ func (client *Client) AddMember(peerURLs []string) (List, Member, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
 	defer cancel()
 
-	resp, err := client.Cluster.MemberAddAsLearner(ctx, peerURLs)
+	// resp, err := client.Cluster.MemberAddAsLearner(ctx, peerURLs)
+	resp, err := client.Cluster.MemberAdd(ctx, peerURLs)
 	if err != nil {
 		return nil, nil, err
 	}

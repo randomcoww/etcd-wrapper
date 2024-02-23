@@ -52,7 +52,7 @@ module "etcd" {
   }
   images = {
     etcd         = "gcr.io/etcd-development/etcd:v3.5.11-amd64"
-    etcd_wrapper = "ghcr.io/randomcoww/etcd-wrapper:20240206.10"
+    etcd_wrapper = "ghcr.io/randomcoww/etcd-wrapper:20240221.9"
   }
   etcd_ips = [
     each.value.ip
@@ -70,9 +70,9 @@ module "etcd" {
     "${host_key}=https://${host.ip}:${host.ports.etcd_client}"
   ])
 
-  healthcheck_interval           = "6s"
+  healthcheck_interval           = "2s"
   backup_interval                = "3m"
-  healthcheck_fail_count_allowed = 8
+  healthcheck_fail_count_allowed = 16
   readiness_fail_count_allowed   = 32
 
   s3_access_key_id     = aws_iam_access_key.s3.id

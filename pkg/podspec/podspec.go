@@ -5,14 +5,13 @@ import (
 	"github.com/randomcoww/etcd-wrapper/pkg/arg"
 	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"path/filepath"
 	"strings"
 )
 
 const (
 	etcdContainerName    string = "etcd"
 	restoreContainerName string = "snapshot-restore"
-	dbFile               string = "/var/etcd/data"
+	dataDir              string = "/var/etcd/data"
 )
 
 func Create(args *arg.Args, runRestore bool, versionAnnotation string) *v1.Pod {
@@ -140,11 +139,11 @@ func Create(args *arg.Args, runRestore bool, versionAnnotation string) *v1.Pod {
 					" --initial-cluster-token %[4]s"+
 					" --initial-advertise-peer-urls %[5]s"+
 					" --data-dir %[6]s",
-					args.EtcdSnapshotFile, args.Name, initialCluster, args.InitialClusterToken, strings.Join(args.InitialAdvertisePeerURLs, ","), dbFile), " "),
+					args.EtcdSnapshotFile, args.Name, initialCluster, args.InitialClusterToken, strings.Join(args.InitialAdvertisePeerURLs, ","), dataDir), " "),
 				VolumeMounts: []v1.VolumeMount{
 					{
 						Name:      fmt.Sprintf("db-%s", args.Name),
-						MountPath: filepath.Dir(dbFile),
+						MountPath: dataDir,
 					},
 					{
 						Name:      "snapshot-restore",
@@ -166,7 +165,7 @@ func Create(args *arg.Args, runRestore bool, versionAnnotation string) *v1.Pod {
 				},
 				{
 					Name:  "ETCD_DATA_DIR",
-					Value: dbFile,
+					Value: dataDir,
 				},
 				{
 					Name:  "ETCD_INITIAL_CLUSTER",
@@ -284,7 +283,7 @@ func Create(args *arg.Args, runRestore bool, versionAnnotation string) *v1.Pod {
 				},
 				{
 					Name:      fmt.Sprintf("db-%s", args.Name),
-					MountPath: filepath.Dir(dbFile),
+					MountPath: dataDir,
 				},
 			},
 		},

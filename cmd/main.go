@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/randomcoww/etcd-wrapper/pkg/arg"
 	"github.com/randomcoww/etcd-wrapper/pkg/status"
+	"log"
 )
 
 func main() {
@@ -13,6 +14,7 @@ func main() {
 
 	status := status.New(args)
 	if err = status.Run(args); err != nil {
+		log.Printf("main exit: %v", err)
 		panic(err)
 	}
 }

@@ -16,19 +16,25 @@ type Member struct {
 }
 
 type Status struct {
-	Healthy       bool               `yaml:"healthy"`
-	ClusterID     uint64             `yaml:"clusterID,omitempty"`
-	Endpoints     []string           `yaml:"endpoints,omitempty"`
-	MemberMap     map[uint64]*Member `yaml:"members"`
-	Self          *Member            `yaml:"-"`
-	Leader        *Member            `yaml:"-"`
-	mu            sync.Mutex
-	NewEtcdClient func([]string) (etcdutil.Util, error)
+	Healthy       bool                                  `yaml:"healthy"`
+	ClusterID     uint64                                `yaml:"clusterID,omitempty"`
+	Endpoints     []string                              `yaml:"endpoints,omitempty"`
+	MemberMap     map[uint64]*Member                    `yaml:"members"`
+	Self          *Member                               `yaml:"-"`
+	Leader        *Member                               `yaml:"-"`
+	mu            sync.Mutex                            `yaml:"-"`
+	NewEtcdClient func([]string) (etcdutil.Util, error) `yaml:"-"`
 }
 
-func (m *Member) Healthy() bool {
+// healthy if memberID from status matches ID returned from member list
+func (m *Member) IsHealthy() bool {
 	return m.Status != nil && m.Member != nil &&
 		m.Status.GetHeader().GetMemberId() == m.Member.GetID()
+}
+
+// check if this is a newly added member
+func (m *Member) IsNew() bool {
+	return m.Member != nil && (len(m.Member.GetName()) == 0 || len(m.Member.GetClientURLs()) == 0)
 }
 
 // Set initial client URLs
@@ -50,6 +56,8 @@ func (v *Status) ToYaml() (b []byte, err error) {
 func (v *Status) SyncStatus(args *arg.Args) error {
 	v.Healthy = false
 	v.ClusterID = 0
+	v.Leader = nil
+	v.Self = nil
 	v.MemberMap = make(map[uint64]*Member)
 
 	client, err := v.NewEtcdClient(v.Endpoints)
@@ -85,17 +93,20 @@ func (v *Status) SyncStatus(args *arg.Args) error {
 		if member == nil {
 			return
 		}
-		if !member.Healthy() {
+		if !member.IsHealthy() {
 			return
 		}
-
-		if status.GetLeader() != 0 {
-			if leader, ok := v.MemberMap[status.GetLeader()]; ok {
-				v.Leader = leader
+		if v.Leader == nil {
+			if member, ok := v.MemberMap[status.GetLeader()]; ok {
+				v.Leader = member
 			}
 		}
-
 	})
+
+	err = v.SetSelf(args)
+	if err != nil {
+		return nil
+	}
 	return nil
 }
 
@@ -130,47 +141,49 @@ func (v *Status) UpdateFromList(list etcdutil.List, args *arg.Args) {
 			v.MemberMap[memberID] = member
 		}
 		member.Member = m
-
-		if member.Member.GetName() == args.Name {
-			v.Self = member
-		}
 	}
 }
 
-func (v *Status) ReplaceMember(args *arg.Args) error {
-	client, err := v.NewEtcdClient(v.Endpoints)
+// Find my node by sending a status check to advertiseClientURLs
+func (v *Status) SetSelf(args *arg.Args) error {
+	client, err := v.NewEtcdClient(args.AdvertiseClientURLs[:1])
 	if err != nil {
 		return err
 	}
 	defer client.Close()
 
-	_, err = client.RemoveMember(v.Self.Member.GetID())
-	if err != nil {
-		return err
-	}
-	list, _, err := client.AddMember(args.ListenPeerURLs)
-	if err != nil {
-		return err
-	}
-	err = client.SyncEndpoints()
-	if err != nil {
-		return nil
-	}
-
-	v.Endpoints = client.Endpoints()
-
-	v.UpdateFromList(list, args)
+	client.Status(func(status etcdutil.Status, err error) {
+		if err != nil {
+			return
+		}
+		v.Self = v.UpdateFromStatus(status, args)
+	})
 	return nil
 }
 
-func (v *Status) PromoteMember(args *arg.Args) error {
+// Find member from list that doesn't respond to status
+// checkl if member has no status
+func (v *Status) GetMemberToReplace() etcdutil.Member {
+	for _, m := range v.MemberMap {
+		if m.Member != nil && m.Status == nil && !m.IsNew() {
+			return m.Member
+		}
+	}
+	return nil
+}
+
+func (v *Status) ReplaceMember(m etcdutil.Member, args *arg.Args) error {
 	client, err := v.NewEtcdClient(v.Endpoints)
 	if err != nil {
 		return err
 	}
 	defer client.Close()
 
-	list, err := client.PromoteMember(v.Self.Member.GetID())
+	_, err = client.RemoveMember(m.GetID())
+	if err != nil {
+		return err
+	}
+	list, _, err := client.AddMember(m.GetPeerURLs())
 	if err != nil {
 		return err
 	}
