@@ -12,18 +12,18 @@ type StatusResponseWithErr struct {
 }
 
 type MemberListResponseWithErr struct {
-	Header *etcdserverpb.ResponseHeader
-	Err    error
+	*etcdserverpb.ResponseHeader
+	Err error
 }
 
 type MemberAddResponseWithErr struct {
-	Header *etcdserverpb.ResponseHeader
-	Member *etcdserverpb.Member
-	Err    error
+	*etcdserverpb.ResponseHeader
+	*etcdserverpb.Member
+	Err error
 }
 
 type MockNode struct {
-	MemberResponse        Member
+	Member                Member
 	StatusResponseWithErr *StatusResponseWithErr
 }
 
@@ -34,19 +34,14 @@ type MockClient struct {
 	MemberAddResponseWithErr     *MemberAddResponseWithErr
 	MemberListResponseWithErr    *MemberListResponseWithErr
 	MemberRemoveResponseWithErr  *MemberListResponseWithErr
-	MemberPromotResponseWitheErr *MemberListResponseWithErr
+	MemberPromoteResponseWithErr *MemberListResponseWithErr
 	HealthCheckErr               error
 	DefragmentErr                error
 	CreateSnapshotErr            error
-	endpoints                    []string
+	EndpointsInternal            []string
 }
 
 func (m *MockClient) Close() error {
-	return nil
-}
-
-func (m *MockClient) Sync(ctx context.Context) error {
-	m.EndpointsResponse = m.endpoints
 	return nil
 }
 
@@ -58,7 +53,7 @@ func (m *MockClient) SyncEndpoints() error {
 	if m.SyncEndpointsErr != nil {
 		return m.SyncEndpointsErr
 	}
-	m.Sync(context.Background())
+	m.EndpointsResponse = m.EndpointsInternal
 	return nil
 }
 
@@ -73,11 +68,11 @@ func (m *MockClient) ListMembers() (List, error) {
 	var membersResp []*etcdserverpb.Member
 	nodeResps := m.getUniqueNodes(m.Endpoints())
 	for _, resp := range nodeResps {
-		membersResp = append(membersResp, resp.Member)
-		m.endpoints = append(m.endpoints, resp.GetClientURLs()...)
+		membersResp = append(membersResp, resp.Member.(*etcdserverpb.Member))
+		m.EndpointsInternal = append(m.EndpointsInternal, resp.Member.GetClientURLs()...)
 	}
 	return &etcdserverpb.MemberListResponse{
-		Header:  MemberListResponseWithErr.Header,
+		Header:  m.MemberListResponseWithErr.ResponseHeader,
 		Members: membersResp,
 	}, m.MemberListResponseWithErr.Err
 }
@@ -86,42 +81,42 @@ func (m *MockClient) AddMember(peerURLs []string) (List, Member, error) {
 	var membersResp []*etcdserverpb.Member
 	nodeResps := m.getUniqueNodes(m.Endpoints())
 	for _, resp := range nodeResps {
-		membersResp = append(membersResp, resp.Member)
-		m.endpoints = append(m.endpoints, resp.GetClientURLs()...)
+		membersResp = append(membersResp, resp.Member.(*etcdserverpb.Member))
+		m.EndpointsInternal = append(m.EndpointsInternal, resp.Member.GetClientURLs()...)
 	}
 	return &etcdserverpb.MemberAddResponse{
-		Header:  MemberAddResponseWithErr.Header,
+		Header:  m.MemberAddResponseWithErr.ResponseHeader,
 		Members: membersResp,
 	}, m.MemberAddResponseWithErr.Member, m.MemberAddResponseWithErr.Err
 }
 
 func (m *MockClient) RemoveMember(id uint64) (List, error) {
-	var membersResp []Member
+	var membersResp []*etcdserverpb.Member
 	nodeResps := m.getUniqueNodes(m.Endpoints())
 	for _, resp := range nodeResps {
 		if resp.Member.GetID() == id {
 			continue
 		}
-		membersResp = append(membersResp, resp.Member)
-		m.endpoints = append(m.endpoints, resp.GetClientURLs()...)
+		membersResp = append(membersResp, resp.Member.(*etcdserverpb.Member))
+		m.EndpointsInternal = append(m.EndpointsInternal, resp.Member.GetClientURLs()...)
 	}
 	return &etcdserverpb.MemberRemoveResponse{
-		Header:  MemberRemoveResponseWithErr.Header,
+		Header:  m.MemberRemoveResponseWithErr.ResponseHeader,
 		Members: membersResp,
-	}, MemberRemoveResponseWithErr.Err
+	}, m.MemberRemoveResponseWithErr.Err
 }
 
 func (m *MockClient) PromoteMember(id uint64) (List, error) {
 	var membersResp []*etcdserverpb.Member
 	nodeResps := m.getUniqueNodes(m.Endpoints())
 	for _, resp := range nodeResps {
-		membersResp = append(membersResp, resp.Member)
-		m.endpoints = append(m.endpoints, resp.GetClientURLs()...)
+		membersResp = append(membersResp, resp.Member.(*etcdserverpb.Member))
+		m.EndpointsInternal = append(m.EndpointsInternal, resp.Member.GetClientURLs()...)
 	}
 	return &etcdserverpb.MemberPromoteResponse{
-		Header:  MemberPromoteResponseWithErr.Header,
+		Header:  m.MemberPromoteResponseWithErr.ResponseHeader,
 		Members: membersResp,
-	}, MemberPromoteResponseWithErr.Err
+	}, m.MemberPromoteResponseWithErr.Err
 }
 
 func (m *MockClient) HealthCheck() error {
@@ -136,12 +131,12 @@ func (m *MockClient) CreateSnapshot(handler func(context.Context, io.Reader) err
 	return m.CreateSnapshotErr
 }
 
-func (m *MockClient) getUniqueNodes(endpoints []string) []*Node {
-	var nodes []*Node
-	uniqueNodes := make(map[*Node]struct{})
+func (m *MockClient) getUniqueNodes(endpoints []string) []*MockNode {
+	var nodes []*MockNode
+	uniqueNodes := make(map[*MockNode]struct{})
 	for _, endpoint := range endpoints {
 		nodeResp := m.NodeEndpointMap[endpoint]
-		if _, ok := uniqueNodes[*Node]; nodeResp != nil && !ok {
+		if _, ok := uniqueNodes[nodeResp]; nodeResp != nil && !ok {
 			uniqueNodes[nodeResp] = struct{}{}
 			nodes = append(nodes, nodeResp)
 		}

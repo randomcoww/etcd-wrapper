@@ -50,7 +50,6 @@ type Member interface {
 
 type Util interface {
 	Close() error
-	Sync(context.Context) error
 	Endpoints() []string
 	SyncEndpoints() error
 	Status(handler func(Status, error))

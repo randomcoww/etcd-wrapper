@@ -9,8 +9,8 @@ import (
 )
 
 func TestNewStatus(t *testing.T) {
-	happyNode0 := &etcdutil.Node{
-		MemberResponse: &etcdserverpb.Member{
+	happyNode0 := &etcdutil.MockNode{
+		Member: &etcdserverpb.Member{
 			ID:   1001,
 			Name: "node0",
 			PeerURLs: []string{
@@ -38,8 +38,8 @@ func TestNewStatus(t *testing.T) {
 		},
 	}
 
-	happyNode1 := &etcdutil.Node{
-		MemberResponse: &etcdserverpb.Member{
+	happyNode1 := &etcdutil.MockNode{
+		Member: &etcdserverpb.Member{
 			ID:   1002,
 			Name: "node1",
 			PeerURLs: []string{
@@ -67,8 +67,8 @@ func TestNewStatus(t *testing.T) {
 		},
 	}
 
-	happyNode2 := &etcdutil.Node{
-		MemberResponse: &etcdserverpb.Member{
+	happyNode2 := &etcdutil.MockNode{
+		Member: &etcdserverpb.Member{
 			ID:   1003,
 			Name: "node1",
 			PeerURLs: []string{
@@ -108,19 +108,18 @@ func TestNewStatus(t *testing.T) {
 	}
 
 	tests := []struct {
-		label        string
-		args         *arg.Args
-		mockClient   *etcdutil.MockClient
-		expectedSelf *Member
-		// expectedLeader    *Member
-		// expectedMemberMap map[uint64]*Member
+		label             string
+		args              *arg.Args
+		mockClient        *etcdutil.MockClient
+		expectedSelf      *Member
+		expectedLeader    *Member
+		expectedMemberMap map[uint64]*Member
 	}{
 		{
 			label: "happy path",
 			args: &arg.Args{
 				Name: "node0",
 				AdvertiseClientURLs: []string{
-					"https://127.0.0.1:8081",
 					"https://10.0.0.1:8081",
 				},
 				InitialCluster: []*arg.Node{
@@ -144,15 +143,14 @@ func TestNewStatus(t *testing.T) {
 					"https://10.0.0.2:8081": happyNode1,
 					"https://10.0.0.3:8081": happyNode2,
 				},
-				EndpointsResponse: []string{
+				EndpointsInternal: []string{
 					"https://10.0.0.1:8081",
 					"https://10.0.0.2:8081",
 					"https://10.0.0.3:8081",
 				},
 				SyncEndpointsErr: nil,
-				MemberListErr:    nil,
 				MemberAddResponseWithErr: &etcdutil.MemberAddResponseWithErr{
-					Header: &etcdserverpb.ResponseHeader{
+					ResponseHeader: &etcdserverpb.ResponseHeader{
 						ClusterId: 10,
 						MemberId:  1,
 						Revision:  20,
@@ -161,8 +159,17 @@ func TestNewStatus(t *testing.T) {
 					Member: newMember3,
 					Err:    nil,
 				},
+				MemberListResponseWithErr: &etcdutil.MemberListResponseWithErr{
+					ResponseHeader: &etcdserverpb.ResponseHeader{
+						ClusterId: 10,
+						MemberId:  1,
+						Revision:  20,
+						RaftTerm:  30,
+					},
+					Err: nil,
+				},
 				MemberRemoveResponseWithErr: &etcdutil.MemberListResponseWithErr{
-					Header: &etcdserverpb.ResponseHeader{
+					ResponseHeader: &etcdserverpb.ResponseHeader{
 						ClusterId: 10,
 						MemberId:  1,
 						Revision:  20,
@@ -171,7 +178,7 @@ func TestNewStatus(t *testing.T) {
 					Err: nil,
 				},
 				MemberPromoteResponseWithErr: &etcdutil.MemberListResponseWithErr{
-					Header: &etcdserverpb.ResponseHeader{
+					ResponseHeader: &etcdserverpb.ResponseHeader{
 						ClusterId: 10,
 						MemberId:  1,
 						Revision:  20,
@@ -184,8 +191,26 @@ func TestNewStatus(t *testing.T) {
 				CreateSnapshotErr: nil,
 			},
 			expectedSelf: &Member{
-				Status: happyNode0.MemberResponse,
-				Member: happyNode0.StatusResponseWithErr.StatusResponse,
+				Member: happyNode0.Member.(*etcdserverpb.Member),
+				Status: happyNode0.StatusResponseWithErr.StatusResponse,
+			},
+			expectedLeader: &Member{
+				Member: happyNode0.Member.(*etcdserverpb.Member),
+				Status: happyNode0.StatusResponseWithErr.StatusResponse,
+			},
+			expectedMemberMap: map[uint64]*Member{
+				1001: &Member{
+					Member: happyNode0.Member.(*etcdserverpb.Member),
+					Status: happyNode0.StatusResponseWithErr.StatusResponse,
+				},
+				1002: &Member{
+					Member: happyNode1.Member.(*etcdserverpb.Member),
+					Status: happyNode1.StatusResponseWithErr.StatusResponse,
+				},
+				1003: &Member{
+					Member: happyNode2.Member.(*etcdserverpb.Member),
+					Status: happyNode2.StatusResponseWithErr.StatusResponse,
+				},
 			},
 		},
 	}
@@ -195,14 +220,15 @@ func TestNewStatus(t *testing.T) {
 			status := &Status{
 				Endpoints: tt.mockClient.EndpointsResponse,
 				NewEtcdClient: func(endpoints []string) (etcdutil.Util, error) {
+					tt.mockClient.EndpointsResponse = endpoints
 					return tt.mockClient, nil
 				},
 			}
 			err := status.SyncStatus(tt.args)
 			assert.Equal(t, nil, err)
 			assert.Equal(t, tt.expectedSelf, status.Self)
-			// assert.Equal(t, tt.expectedLeader, status.Leader)
-			// assert.Equal(t, tt.expectedMemberMap, status.MemberMap)
+			assert.Equal(t, tt.expectedLeader, status.Leader)
+			assert.Equal(t, tt.expectedMemberMap, status.MemberMap)
 		})
 	}
 }
