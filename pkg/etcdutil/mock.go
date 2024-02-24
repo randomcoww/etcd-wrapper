@@ -144,6 +144,8 @@ func (r *MockClientResponses) InitialEndpoints() []string {
 func (r *MockClientResponses) Next(endpoints []string) *MockClient {
 	client := r.Resp[r.Index]
 	client.EndpointsResponse = endpoints
-	r.Index++
+	if r.Index < len(r.Resp)-1 {
+		r.Index++
+	}
 	return client
 }

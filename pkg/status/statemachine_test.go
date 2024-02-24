@@ -40,6 +40,12 @@ func TestStateMachineRun(t *testing.T) {
 		S3Client:                  &s3util.MockClient{},
 	}
 
+	missingNode := &etcdutil.MockNode{
+		Member:         nil,
+		StatusResponse: nil,
+		StatusErr:      errors.New("missing"),
+	}
+
 	happyNode0 := &etcdutil.MockNode{
 		Member: &etcdserverpb.Member{
 			ID:   1001,
@@ -268,11 +274,53 @@ func TestStateMachineRun(t *testing.T) {
 		},
 	}
 
+	respClusterDown := &etcdutil.MockClient{
+		NodeEndpointMap: map[string]*etcdutil.MockNode{
+			"https://10.0.0.1:8081":  missingNode,
+			"https://127.0.0.1:8081": missingNode,
+			"https://10.0.0.2:8081":  missingNode,
+			"https://10.0.0.3:8081":  missingNode,
+		},
+		HealthCheckErr: errors.New("health check down"),
+		MemberListResponseWithErr: &etcdutil.MemberListResponseWithErr{
+			ResponseHeader: &etcdserverpb.ResponseHeader{
+				ClusterId: 10,
+				MemberId:  1,
+				Revision:  20,
+				RaftTerm:  30,
+			},
+			Err: nil,
+		},
+		MemberRemoveResponseWithErr: &etcdutil.MemberListResponseWithErr{
+			ResponseHeader: &etcdserverpb.ResponseHeader{
+				ClusterId: 10,
+				MemberId:  1,
+				Revision:  20,
+				RaftTerm:  30,
+			},
+			Err: nil,
+		},
+		MemberAddResponseWithErr: &etcdutil.MemberAddResponseWithErr{
+			ResponseHeader: &etcdserverpb.ResponseHeader{
+				ClusterId: 10,
+				MemberId:  1,
+				Revision:  20,
+				RaftTerm:  30,
+			},
+			Member: &etcdserverpb.Member{},
+			Err:    nil,
+		},
+	}
+
 	tests := []struct {
 		label                      string
 		args                       *arg.Args
 		mockClientResponses        *etcdutil.MockClientResponses
 		mockEtcdPod                *manifest.MockEtcdPod
+		ticks                      int
+		initialMemberState         MemberState
+		expectedClusterHealthy     bool
+		expectedErr                error
 		expectedMemberState        MemberState
 		expectedMemberMap          map[uint64]*Member
 		expectedInitalClusterState string
@@ -284,16 +332,14 @@ func TestStateMachineRun(t *testing.T) {
 				Resp: []*etcdutil.MockClient{
 					respInit,
 					respHealthy,
-					respHealthy,
-					respHealthy,
-					respHealthy,
-					respHealthy,
-					respHealthy,
-					respHealthy,
 				},
 			},
-			mockEtcdPod:         &manifest.MockEtcdPod{},
-			expectedMemberState: MemberStateHealthy,
+			mockEtcdPod:            &manifest.MockEtcdPod{},
+			ticks:                  4,
+			initialMemberState:     MemberStateInit,
+			expectedClusterHealthy: true,
+			expectedErr:            nil,
+			expectedMemberState:    MemberStateHealthy,
 			expectedMemberMap: map[uint64]*Member{
 				1001: &Member{
 					Member:         happyNode0.Member,
@@ -317,17 +363,14 @@ func TestStateMachineRun(t *testing.T) {
 				Resp: []*etcdutil.MockClient{
 					respInit,
 					respNode0Down,
-					respNode0Down,
-					respNode0Down,
-					respNode0Down,
-					respNode0Down,
-					respNode0Down,
-					respNode0Down,
-					respNode0Down,
 				},
 			},
-			mockEtcdPod:         &manifest.MockEtcdPod{},
-			expectedMemberState: MemberStateFailed,
+			mockEtcdPod:            &manifest.MockEtcdPod{},
+			ticks:                  4,
+			initialMemberState:     MemberStateInit,
+			expectedClusterHealthy: true,
+			expectedErr:            nil,
+			expectedMemberState:    MemberStateFailed,
 			expectedMemberMap: map[uint64]*Member{
 				1001: &Member{
 					Member:         happyNode0.Member,
@@ -344,6 +387,23 @@ func TestStateMachineRun(t *testing.T) {
 			},
 			expectedInitalClusterState: "existing",
 		},
+		{
+			label: "healthy to cluster down",
+			args:  commonArgs,
+			mockClientResponses: &etcdutil.MockClientResponses{
+				Resp: []*etcdutil.MockClient{
+					respClusterDown,
+				},
+			},
+			mockEtcdPod:                &manifest.MockEtcdPod{},
+			ticks:                      4,
+			initialMemberState:         MemberStateHealthy,
+			expectedClusterHealthy:     false,
+			expectedErr:                errors.New("Failed ready check"),
+			expectedMemberState:        MemberStateWait,
+			expectedMemberMap:          map[uint64]*Member{},
+			expectedInitalClusterState: "new",
+		},
 	}
 
 	for _, tt := range tests {
@@ -353,12 +413,13 @@ func TestStateMachineRun(t *testing.T) {
 				NewEtcdClient: func(endpoints []string) (etcdutil.Client, error) {
 					return tt.mockClientResponses.Next(endpoints), nil
 				},
-				MemberState: MemberStateInit,
+				MemberState: tt.initialMemberState,
 				EtcdPod:     tt.mockEtcdPod,
 				quit:        make(chan struct{}, 1),
 			}
-			err := status.Run(tt.args, 4)
-			assert.Equal(t, nil, err)
+			err := status.Run(tt.args, tt.ticks)
+			assert.Equal(t, tt.expectedErr, err)
+			assert.Equal(t, tt.expectedClusterHealthy, status.Healthy)
 			assert.Equal(t, tt.expectedMemberState, status.MemberState)
 			assert.Equal(t, tt.expectedMemberMap, status.MemberMap)
 			assert.Equal(t, tt.expectedInitalClusterState, tt.args.InitialClusterState)
