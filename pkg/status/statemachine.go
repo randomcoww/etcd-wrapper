@@ -72,7 +72,7 @@ func (v *Status) Run(args *arg.Args) error {
 
 				case v.Healthy:
 					if memberToReplace := v.GetMemberToReplace(); memberToReplace != nil {
-						if err := v.ReplaceMember(memberToReplace, args); err != nil {
+						if err := v.ReplaceMember(memberToReplace); err != nil {
 							log.Printf("Replace member failed")
 						} else {
 							log.Printf("Replaced member: %v", memberToReplace.GetID())
@@ -130,7 +130,7 @@ func (v *Status) Run(args *arg.Args) error {
 					log.Printf("Unresponsive member check %v of %v", memberCheckFailedCount, args.HealthCheckFailedCountMax)
 					if memberCheckFailedCount >= args.HealthCheckFailedCountMax {
 						memberCheckFailedCount = 0
-						if err := v.ReplaceMember(memberToReplace, args); err != nil {
+						if err := v.ReplaceMember(memberToReplace); err != nil {
 							log.Printf("Replace member failed")
 						}
 						log.Printf("Replaced member: %v", memberToReplace.GetID())
@@ -149,7 +149,7 @@ func (v *Status) Run(args *arg.Args) error {
 
 				case v.Healthy:
 					if memberToReplace := v.GetMemberToReplace(); memberToReplace != nil {
-						if err := v.ReplaceMember(memberToReplace, args); err != nil {
+						if err := v.ReplaceMember(memberToReplace); err != nil {
 							log.Printf("Replace member failed")
 						} else {
 							log.Printf("Replaced member: %v", memberToReplace.GetID())

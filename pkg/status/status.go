@@ -81,14 +81,14 @@ func (v *Status) SyncStatus(args *arg.Args) error {
 		return nil
 	}
 	v.Healthy = true
-	v.UpdateFromList(list, args)
+	v.UpdateFromList(list)
 
 	// collect all members found by list and status
 	client.Status(func(status etcdutil.Status, err error) {
 		if err != nil {
 			return
 		}
-		member := v.UpdateFromStatus(status, args)
+		member := v.UpdateFromStatus(status)
 		if !member.IsHealthy() {
 			return
 		}
@@ -106,7 +106,7 @@ func (v *Status) SyncStatus(args *arg.Args) error {
 	return nil
 }
 
-func (v *Status) UpdateFromStatus(status etcdutil.Status, args *arg.Args) *Member {
+func (v *Status) UpdateFromStatus(status etcdutil.Status) *Member {
 	memberID := status.GetHeader().GetMemberId()
 	if memberID == 0 {
 		return nil
@@ -121,7 +121,7 @@ func (v *Status) UpdateFromStatus(status etcdutil.Status, args *arg.Args) *Membe
 	return member
 }
 
-func (v *Status) UpdateFromList(list etcdutil.List, args *arg.Args) {
+func (v *Status) UpdateFromList(list etcdutil.List) {
 	clusterID := list.GetHeader().GetClusterId()
 
 	v.ClusterID = clusterID
@@ -152,7 +152,7 @@ func (v *Status) SetSelf(args *arg.Args) error {
 		if err != nil {
 			return
 		}
-		v.Self = v.UpdateFromStatus(status, args)
+		v.Self = v.UpdateFromStatus(status)
 	})
 	return nil
 }
@@ -168,7 +168,7 @@ func (v *Status) GetMemberToReplace() etcdutil.Member {
 	return nil
 }
 
-func (v *Status) ReplaceMember(m etcdutil.Member, args *arg.Args) error {
+func (v *Status) ReplaceMember(m etcdutil.Member) error {
 	client, err := v.NewEtcdClient(v.Endpoints)
 	if err != nil {
 		return err
@@ -189,7 +189,7 @@ func (v *Status) ReplaceMember(m etcdutil.Member, args *arg.Args) error {
 	}
 	v.Endpoints = client.Endpoints()
 
-	v.UpdateFromList(list, args)
+	v.UpdateFromList(list)
 	return nil
 }
 
