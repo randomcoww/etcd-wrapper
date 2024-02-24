@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestNewStatus(t *testing.T) {
+func TestSyncStatus(t *testing.T) {
 	commonArgs := &arg.Args{
 		Name: "node0",
 		AdvertiseClientURLs: []string{
@@ -37,12 +37,10 @@ func TestNewStatus(t *testing.T) {
 			ID:   1001,
 			Name: "node0",
 			PeerURLs: []string{
-				"https//10.0.0.1:8001",
-				"https//127.0.0.1:8001",
+				"https://10.0.0.1:8001",
 			},
 			ClientURLs: []string{
-				"https//10.0.0.1:8081",
-				"https//127.0.0.1:8081",
+				"https://10.0.0.1:8081",
 			},
 			IsLearner: false,
 		},
@@ -64,12 +62,10 @@ func TestNewStatus(t *testing.T) {
 			ID:   1001,
 			Name: "node0",
 			PeerURLs: []string{
-				"https//10.0.0.1:8001",
-				"https//127.0.0.1:8001",
+				"https://10.0.0.1:8001",
 			},
 			ClientURLs: []string{
-				"https//10.0.0.1:8081",
-				"https//127.0.0.1:8081",
+				"https://10.0.0.1:8081",
 			},
 			IsLearner: false,
 		},
@@ -82,12 +78,10 @@ func TestNewStatus(t *testing.T) {
 			ID:   1002,
 			Name: "node1",
 			PeerURLs: []string{
-				"https//10.0.0.2:8001",
-				"https//127.0.0.1:8001",
+				"https://10.0.0.2:8001",
 			},
 			ClientURLs: []string{
-				"https//10.0.0.2:8081",
-				"https//127.0.0.1:8081",
+				"https://10.0.0.2:8081",
 			},
 			IsLearner: false,
 		},
@@ -109,12 +103,10 @@ func TestNewStatus(t *testing.T) {
 			ID:   1003,
 			Name: "node2",
 			PeerURLs: []string{
-				"https//10.0.0.3:8001",
-				"https//127.0.0.1:8001",
+				"https://10.0.0.3:8001",
 			},
 			ClientURLs: []string{
-				"https//10.0.0.3:8081",
-				"https//127.0.0.1:8081",
+				"https://10.0.0.3:8081",
 			},
 			IsLearner: false,
 		},
@@ -154,6 +146,7 @@ func TestNewStatus(t *testing.T) {
 				},
 				EndpointsResponse: []string{
 					"https://10.0.0.1:8081",
+					"https://127.0.0.1:8081",
 					"https://10.0.0.2:8081",
 					"https://10.0.0.3:8081",
 				},
@@ -193,6 +186,62 @@ func TestNewStatus(t *testing.T) {
 			},
 			expectedEndpoints: []string{
 				"https://10.0.0.1:8081",
+				"https://127.0.0.1:8081",
+				"https://10.0.0.2:8081",
+				"https://10.0.0.3:8081",
+			},
+		},
+		{
+			label: "endpoint update",
+			args:  commonArgs,
+			mockClient: &etcdutil.MockClient{
+				NodeEndpointMap: map[string]*etcdutil.MockNode{
+					"https://10.0.0.1:8081":  happyNode0,
+					"https://127.0.0.1:8081": happyNode0,
+					"https://10.0.0.2:8081":  happyNode1,
+					"https://10.0.0.3:8081":  happyNode2,
+				},
+				EndpointsResponse: []string{
+					"https://127.0.0.1:8081",
+					"https://10.0.0.1:8081",
+				},
+				MemberListResponseWithErr: &etcdutil.MemberListResponseWithErr{
+					ResponseHeader: &etcdserverpb.ResponseHeader{
+						ClusterId: 10,
+						MemberId:  1,
+						Revision:  20,
+						RaftTerm:  30,
+					},
+					Err: nil,
+				},
+			},
+			expectedClusterHealthy: true,
+			expectedSelf: &Member{
+				Member:         happyNode0.Member,
+				StatusResponse: happyNode0.StatusResponse,
+			},
+			expectedSelfHealthy: true,
+			expectedLeader: &Member{
+				Member:         happyNode0.Member,
+				StatusResponse: happyNode0.StatusResponse,
+			},
+			expectedMemberMap: map[uint64]*Member{
+				1001: &Member{
+					Member:         happyNode0.Member,
+					StatusResponse: happyNode0.StatusResponse,
+				},
+				1002: &Member{
+					Member:         happyNode1.Member,
+					StatusResponse: happyNode1.StatusResponse,
+				},
+				1003: &Member{
+					Member:         happyNode2.Member,
+					StatusResponse: happyNode2.StatusResponse,
+				},
+			},
+			expectedEndpoints: []string{
+				"https://10.0.0.1:8081",
+				"https://127.0.0.1:8081",
 				"https://10.0.0.2:8081",
 				"https://10.0.0.3:8081",
 			},
@@ -202,10 +251,9 @@ func TestNewStatus(t *testing.T) {
 			args:  commonArgs,
 			mockClient: &etcdutil.MockClient{
 				NodeEndpointMap: map[string]*etcdutil.MockNode{
-					"https://10.0.0.1:8081":  unhealthyNode0,
-					"https://127.0.0.1:8081": unhealthyNode0,
-					"https://10.0.0.2:8081":  happyNode1,
-					"https://10.0.0.3:8081":  happyNode2,
+					"https://10.0.0.1:8081": unhealthyNode0,
+					"https://10.0.0.2:8081": happyNode1,
+					"https://10.0.0.3:8081": happyNode2,
 				},
 				EndpointsResponse: []string{
 					"https://10.0.0.1:8081",
@@ -254,10 +302,9 @@ func TestNewStatus(t *testing.T) {
 			args:  commonArgs,
 			mockClient: &etcdutil.MockClient{
 				NodeEndpointMap: map[string]*etcdutil.MockNode{
-					"https://10.0.0.1:8081":  unhealthyNode0,
-					"https://127.0.0.1:8081": unhealthyNode0,
-					"https://10.0.0.2:8081":  happyNode1,
-					"https://10.0.0.3:8081":  happyNode2,
+					"https://10.0.0.1:8081": unhealthyNode0,
+					"https://10.0.0.2:8081": happyNode1,
+					"https://10.0.0.3:8081": happyNode2,
 				},
 				EndpointsResponse: []string{
 					"https://10.0.0.1:8081",
@@ -298,7 +345,7 @@ func TestNewStatus(t *testing.T) {
 			assert.Equal(t, tt.expectedSelfHealthy, status.Self.IsHealthy())
 			assert.Equal(t, tt.expectedLeader, status.Leader)
 			assert.Equal(t, tt.expectedMemberMap, status.MemberMap)
-			assert.Equal(t, tt.expectedEndpoints, status.Endpoints)
+			assert.ElementsMatch(t, tt.expectedEndpoints, status.Endpoints)
 		})
 	}
 }

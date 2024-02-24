@@ -24,16 +24,15 @@ type MockNode struct {
 }
 
 type MockClient struct {
-	NodeEndpointMap              map[string]*MockNode
-	EndpointsResponse            []string
-	SyncEndpointsErr             error
-	HealthCheckErr               error
-	DefragmentErr                error
-	CreateSnapshotErr            error
-	MemberAddResponseWithErr     *MemberAddResponseWithErr
-	MemberListResponseWithErr    *MemberListResponseWithErr
-	MemberRemoveResponseWithErr  *MemberListResponseWithErr
-	MemberPromoteResponseWithErr *MemberListResponseWithErr
+	NodeEndpointMap             map[string]*MockNode
+	EndpointsResponse           []string
+	SyncEndpointsErr            error
+	HealthCheckErr              error
+	DefragmentErr               error
+	CreateSnapshotErr           error
+	MemberAddResponseWithErr    *MemberAddResponseWithErr
+	MemberListResponseWithErr   *MemberListResponseWithErr
+	MemberRemoveResponseWithErr *MemberListResponseWithErr
 }
 
 func (m *MockClient) Close() error {
@@ -49,58 +48,43 @@ func (m *MockClient) SyncEndpoints() error {
 }
 
 func (m *MockClient) Status(handler func(Status, error)) {
-	for _, resp := range m.getUniqueNodes(m.EndpointsResponse) {
-		handler(resp.StatusResponse, resp.StatusErr)
+	nodeSet := make(map[*MockNode]struct{})
+	for _, endpoint := range m.EndpointsResponse {
+		if node, ok := m.NodeEndpointMap[endpoint]; ok {
+			if _, ok = nodeSet[node]; !ok {
+				nodeSet[node] = struct{}{}
+				handler(node.StatusResponse, node.StatusErr)
+			}
+		}
 	}
 }
 
 func (m *MockClient) ListMembers() (List, error) {
 	res := &etcdserverpb.MemberListResponse{
-		Header: m.MemberListResponseWithErr.ResponseHeader,
-	}
-	for _, resp := range m.getUniqueNodes(m.EndpointsResponse) {
-		res.Members = append(res.Members, resp.Member)
-		m.EndpointsResponse = append(m.EndpointsResponse, resp.Member.GetClientURLs()...)
+		Header:  m.MemberListResponseWithErr.ResponseHeader,
+		Members: m.memberListResponse(),
 	}
 	return res, m.MemberListResponseWithErr.Err
 }
 
 func (m *MockClient) AddMember(peerURLs []string) (List, Member, error) {
 	res := &etcdserverpb.MemberAddResponse{
-		Header: m.MemberAddResponseWithErr.ResponseHeader,
-	}
-	for _, resp := range m.getUniqueNodes(m.EndpointsResponse) {
-		res.Members = append(res.Members, resp.Member)
-		m.EndpointsResponse = append(m.EndpointsResponse, resp.Member.GetClientURLs()...)
+		Header:  m.MemberAddResponseWithErr.ResponseHeader,
+		Members: m.memberListResponse(),
 	}
 	return res, m.MemberAddResponseWithErr.Member, m.MemberAddResponseWithErr.Err
 }
 
 func (m *MockClient) RemoveMember(id uint64) (List, error) {
 	res := &etcdserverpb.MemberRemoveResponse{
-		Header: m.MemberRemoveResponseWithErr.ResponseHeader,
-	}
-	for _, resp := range m.getUniqueNodes(m.EndpointsResponse) {
-		if resp.Member.GetID() != id {
-			res.Members = append(res.Members, resp.Member)
-			m.EndpointsResponse = append(m.EndpointsResponse, resp.Member.GetClientURLs()...)
-		}
+		Header:  m.MemberRemoveResponseWithErr.ResponseHeader,
+		Members: m.memberListResponse(),
 	}
 	return res, m.MemberRemoveResponseWithErr.Err
 }
 
-func (m *MockClient) PromoteMember(id uint64) (List, error) {
-	res := &etcdserverpb.MemberPromoteResponse{
-		Header: m.MemberPromoteResponseWithErr.ResponseHeader,
-	}
-	for _, resp := range m.getUniqueNodes(m.EndpointsResponse) {
-		res.Members = append(res.Members, resp.Member)
-		m.EndpointsResponse = append(m.EndpointsResponse, resp.Member.GetClientURLs()...)
-	}
-	return res, m.MemberPromoteResponseWithErr.Err
-}
-
 func (m *MockClient) HealthCheck() error {
+	m.memberListResponse()
 	return m.HealthCheckErr
 }
 
@@ -112,15 +96,38 @@ func (m *MockClient) CreateSnapshot(handler func(context.Context, io.Reader) err
 	return m.CreateSnapshotErr
 }
 
-func (m *MockClient) getUniqueNodes(endpoints []string) []*MockNode {
-	var nodes []*MockNode
-	uniqueNodes := make(map[*MockNode]struct{})
-	for _, endpoint := range endpoints {
-		nodeResp := m.NodeEndpointMap[endpoint]
-		if _, ok := uniqueNodes[nodeResp]; nodeResp != nil && !ok {
-			uniqueNodes[nodeResp] = struct{}{}
-			nodes = append(nodes, nodeResp)
+func (m *MockClient) memberListResponse() []*etcdserverpb.Member {
+	var members []*etcdserverpb.Member
+	var newEndpoints []string
+	nodeSet := make(map[*MockNode]struct{})
+	var foundEndpoint bool
+
+	for endpoint, node := range m.NodeEndpointMap {
+		if node.Member == nil {
+			continue
+		}
+		newEndpoints = append(newEndpoints, endpoint)
+		if _, ok := nodeSet[node]; !ok {
+			nodeSet[node] = struct{}{}
+			members = append(members, node.Member)
+		}
+		if !foundEndpoint && m.hasEndpoint(endpoint) {
+			foundEndpoint = true
 		}
 	}
-	return nodes
+
+	if foundEndpoint {
+		m.EndpointsResponse = newEndpoints
+		return members
+	}
+	return []*etcdserverpb.Member{}
+}
+
+func (m *MockClient) hasEndpoint(checkEndpoint string) bool {
+	for _, endpoint := range m.EndpointsResponse {
+		if endpoint == checkEndpoint {
+			return true
+		}
+	}
+	return false
 }

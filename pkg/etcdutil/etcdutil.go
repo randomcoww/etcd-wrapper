@@ -56,7 +56,6 @@ type Client interface {
 	ListMembers() (List, error)
 	AddMember(peerURLs []string) (List, Member, error)
 	RemoveMember(id uint64) (List, error)
-	PromoteMember(id uint64) (List, error)
 	HealthCheck() error
 	Defragment(endpoint string) error
 	CreateSnapshot(handler func(context.Context, io.Reader) error) error
@@ -126,13 +125,6 @@ func (client *client) RemoveMember(id uint64) (List, error) {
 	defer cancel()
 	resp, err := client.Cluster.MemberRemove(ctx, id)
 	return (*etcdserverpb.MemberRemoveResponse)(resp), err
-}
-
-func (client *client) PromoteMember(id uint64) (List, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
-	defer cancel()
-	resp, err := client.Cluster.MemberPromote(ctx, id)
-	return (*etcdserverpb.MemberPromoteResponse)(resp), err
 }
 
 func (client *client) HealthCheck() error {
