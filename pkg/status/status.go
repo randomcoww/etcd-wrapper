@@ -11,8 +11,8 @@ import (
 )
 
 type Member struct {
-	Status *etcdserverpb.StatusResponse
-	Member *etcdserverpb.Member
+	*etcdserverpb.StatusResponse
+	*etcdserverpb.Member
 }
 
 type Status struct {
@@ -28,8 +28,8 @@ type Status struct {
 
 // healthy if memberID from status matches ID returned from member list
 func (m *Member) IsHealthy() bool {
-	return m.Status != nil && m.Member != nil &&
-		m.Status.GetHeader().GetMemberId() == m.Member.GetID()
+	return m.StatusResponse != nil && m.Member != nil &&
+		m.StatusResponse.GetHeader().GetMemberId() == m.Member.GetID()
 }
 
 // check if this is a newly added member
@@ -121,7 +121,7 @@ func (v *Status) UpdateFromStatus(status etcdutil.Status, args *arg.Args) *Membe
 		member = &Member{}
 		v.MemberMap[memberID] = member
 	}
-	member.Status = status.(*etcdserverpb.StatusResponse)
+	member.StatusResponse = status.(*etcdserverpb.StatusResponse)
 	return member
 }
 
@@ -165,7 +165,7 @@ func (v *Status) SetSelf(args *arg.Args) error {
 // checkl if member has no status
 func (v *Status) GetMemberToReplace() etcdutil.Member {
 	for _, m := range v.MemberMap {
-		if m.Member != nil && m.Status == nil && !m.IsNew() {
+		if m.Member != nil && m.StatusResponse == nil && !m.IsNew() {
 			return m.Member
 		}
 	}

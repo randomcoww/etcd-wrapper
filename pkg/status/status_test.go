@@ -23,7 +23,7 @@ func TestNewStatus(t *testing.T) {
 			},
 			IsLearner: false,
 		},
-		Status: &etcdserverpb.StatusResponse{
+		StatusResponse: &etcdserverpb.StatusResponse{
 			Header: &etcdserverpb.ResponseHeader{
 				ClusterId: 3001,
 				MemberId:  1001,
@@ -50,7 +50,7 @@ func TestNewStatus(t *testing.T) {
 			},
 			IsLearner: false,
 		},
-		Status: &etcdserverpb.StatusResponse{
+		StatusResponse: &etcdserverpb.StatusResponse{
 			Header: &etcdserverpb.ResponseHeader{
 				ClusterId: 3001,
 				MemberId:  1002,
@@ -77,7 +77,7 @@ func TestNewStatus(t *testing.T) {
 			},
 			IsLearner: false,
 		},
-		Status: &etcdserverpb.StatusResponse{
+		StatusResponse: &etcdserverpb.StatusResponse{
 			Header: &etcdserverpb.ResponseHeader{
 				ClusterId: 3001,
 				MemberId:  1003,
@@ -187,25 +187,25 @@ func TestNewStatus(t *testing.T) {
 				CreateSnapshotErr: nil,
 			},
 			expectedSelf: &Member{
-				Member: happyNode0.Member,
-				Status: happyNode0.Status,
+				Member:         happyNode0.Member,
+				StatusResponse: happyNode0.StatusResponse,
 			},
 			expectedLeader: &Member{
-				Member: happyNode0.Member,
-				Status: happyNode0.Status,
+				Member:         happyNode0.Member,
+				StatusResponse: happyNode0.StatusResponse,
 			},
 			expectedMemberMap: map[uint64]*Member{
 				1001: &Member{
-					Member: happyNode0.Member,
-					Status: happyNode0.Status,
+					Member:         happyNode0.Member,
+					StatusResponse: happyNode0.StatusResponse,
 				},
 				1002: &Member{
-					Member: happyNode1.Member,
-					Status: happyNode1.Status,
+					Member:         happyNode1.Member,
+					StatusResponse: happyNode1.StatusResponse,
 				},
 				1003: &Member{
-					Member: happyNode2.Member,
-					Status: happyNode2.Status,
+					Member:         happyNode2.Member,
+					StatusResponse: happyNode2.StatusResponse,
 				},
 			},
 		},

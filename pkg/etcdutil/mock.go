@@ -18,9 +18,9 @@ type MemberAddResponseWithErr struct {
 }
 
 type MockNode struct {
-	Status    *etcdserverpb.StatusResponse
+	*etcdserverpb.StatusResponse
+	*etcdserverpb.Member
 	StatusErr error
-	Member    *etcdserverpb.Member
 }
 
 type MockClient struct {
@@ -50,7 +50,7 @@ func (m *MockClient) SyncEndpoints() error {
 
 func (m *MockClient) Status(handler func(Status, error)) {
 	for _, resp := range m.getUniqueNodes(m.EndpointsResponse) {
-		handler(resp.Status, resp.StatusErr)
+		handler(resp.StatusResponse, resp.StatusErr)
 	}
 }
 
