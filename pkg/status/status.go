@@ -16,16 +16,16 @@ type Member struct {
 }
 
 type Status struct {
-	Healthy       bool                                  `yaml:"healthy"`
-	ClusterID     uint64                                `yaml:"clusterID,omitempty"`
-	MemberState   MemberState                           `yaml:"memberState,omitempty"`
-	Endpoints     []string                              `yaml:"endpoints,omitempty"`
-	MemberMap     map[uint64]*Member                    `yaml:"members"`
-	Self          *Member                               `yaml:"-"`
-	Leader        *Member                               `yaml:"-"`
-	mu            sync.Mutex                            `yaml:"-"`
-	NewEtcdClient func([]string) (etcdutil.Util, error) `yaml:"-"`
-	quit          chan struct{}                         `yaml:"-"`
+	Healthy       bool                                    `yaml:"healthy"`
+	ClusterID     uint64                                  `yaml:"clusterID,omitempty"`
+	MemberState   MemberState                             `yaml:"memberState,omitempty"`
+	Endpoints     []string                                `yaml:"endpoints,omitempty"`
+	MemberMap     map[uint64]*Member                      `yaml:"members"`
+	Self          *Member                                 `yaml:"-"`
+	Leader        *Member                                 `yaml:"-"`
+	mu            sync.Mutex                              `yaml:"-"`
+	NewEtcdClient func([]string) (etcdutil.Client, error) `yaml:"-"`
+	quit          chan struct{}                           `yaml:"-"`
 }
 
 // healthy if memberID from status matches ID returned from member list
@@ -44,7 +44,7 @@ func New(args *arg.Args) *Status {
 	status := &Status{
 		Endpoints:   args.AdvertiseClientURLs,
 		MemberState: MemberStateInit,
-		NewEtcdClient: func(endpoints []string) (etcdutil.Util, error) {
+		NewEtcdClient: func(endpoints []string) (etcdutil.Client, error) {
 			return etcdutil.New(endpoints, args.ClientTLSConfig)
 		},
 		quit: make(chan struct{}, 1),

@@ -286,7 +286,7 @@ func TestNewStatus(t *testing.T) {
 		t.Run(tt.label, func(t *testing.T) {
 			status := &Status{
 				Endpoints: tt.mockClient.EndpointsResponse,
-				NewEtcdClient: func(endpoints []string) (etcdutil.Util, error) {
+				NewEtcdClient: func(endpoints []string) (etcdutil.Client, error) {
 					tt.mockClient.EndpointsResponse = endpoints
 					return tt.mockClient, nil
 				},

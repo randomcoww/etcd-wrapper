@@ -18,7 +18,7 @@ const (
 	defragmentTimeout     time.Duration = 1 * time.Minute
 )
 
-type Client struct {
+type client struct {
 	*clientv3.Client
 }
 
@@ -48,7 +48,7 @@ type Member interface {
 	GetIsLearner() bool
 }
 
-type Util interface {
+type Client interface {
 	Close() error
 	Endpoints() []string
 	SyncEndpoints() error
@@ -62,8 +62,8 @@ type Util interface {
 	CreateSnapshot(handler func(context.Context, io.Reader) error) error
 }
 
-func New(endpoints []string, tlsConfig *tls.Config) (Util, error) {
-	client, err := clientv3.New(clientv3.Config{
+func New(endpoints []string, tlsConfig *tls.Config) (Client, error) {
+	c, err := clientv3.New(clientv3.Config{
 		Endpoints:   endpoints,
 		DialTimeout: defaultDialTimeout,
 		TLS:         tlsConfig,
@@ -72,18 +72,18 @@ func New(endpoints []string, tlsConfig *tls.Config) (Util, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Client{
-		Client: client,
+	return &client{
+		Client: c,
 	}, nil
 }
 
-func (client *Client) SyncEndpoints() error {
+func (client *client) SyncEndpoints() error {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
 	defer cancel()
 	return client.Sync(ctx)
 }
 
-func (client *Client) Status(handler func(Status, error)) {
+func (client *client) Status(handler func(Status, error)) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
@@ -101,14 +101,14 @@ func (client *Client) Status(handler func(Status, error)) {
 	}
 }
 
-func (client *Client) ListMembers() (List, error) {
+func (client *client) ListMembers() (List, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
 	defer cancel()
 	resp, err := client.Cluster.MemberList(ctx)
 	return (*etcdserverpb.MemberListResponse)(resp), err
 }
 
-func (client *Client) AddMember(peerURLs []string) (List, Member, error) {
+func (client *client) AddMember(peerURLs []string) (List, Member, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
 	defer cancel()
 
@@ -121,21 +121,21 @@ func (client *Client) AddMember(peerURLs []string) (List, Member, error) {
 	return addResp, addResp.GetMember(), nil
 }
 
-func (client *Client) RemoveMember(id uint64) (List, error) {
+func (client *client) RemoveMember(id uint64) (List, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
 	defer cancel()
 	resp, err := client.Cluster.MemberRemove(ctx, id)
 	return (*etcdserverpb.MemberRemoveResponse)(resp), err
 }
 
-func (client *Client) PromoteMember(id uint64) (List, error) {
+func (client *client) PromoteMember(id uint64) (List, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
 	defer cancel()
 	resp, err := client.Cluster.MemberPromote(ctx, id)
 	return (*etcdserverpb.MemberPromoteResponse)(resp), err
 }
 
-func (client *Client) HealthCheck() error {
+func (client *client) HealthCheck() error {
 	ctx, cancel := context.WithTimeout(context.Background(), defaultRequestTimeout)
 	defer cancel()
 	_, err := client.Get(ctx, "health")
@@ -147,14 +147,14 @@ func (client *Client) HealthCheck() error {
 	}
 }
 
-func (client *Client) Defragment(endpoint string) error {
+func (client *client) Defragment(endpoint string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), defragmentTimeout)
 	defer cancel()
 	_, err := client.Maintenance.Defragment(ctx, endpoint)
 	return err
 }
 
-func (client *Client) CreateSnapshot(handler func(context.Context, io.Reader) error) error {
+func (client *client) CreateSnapshot(handler func(context.Context, io.Reader) error) error {
 	ctx, cancel := context.WithTimeout(context.Background(), snapshotBackupTimeout)
 	defer cancel()
 	rc, err := client.Maintenance.Snapshot(ctx)
