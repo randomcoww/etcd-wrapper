@@ -18,12 +18,14 @@ type Member struct {
 type Status struct {
 	Healthy       bool                                  `yaml:"healthy"`
 	ClusterID     uint64                                `yaml:"clusterID,omitempty"`
+	MemberState   MemberState                           `yaml:"memberState,omitempty"`
 	Endpoints     []string                              `yaml:"endpoints,omitempty"`
 	MemberMap     map[uint64]*Member                    `yaml:"members"`
 	Self          *Member                               `yaml:"-"`
 	Leader        *Member                               `yaml:"-"`
 	mu            sync.Mutex                            `yaml:"-"`
 	NewEtcdClient func([]string) (etcdutil.Util, error) `yaml:"-"`
+	quit          chan struct{}                         `yaml:"-"`
 }
 
 // healthy if memberID from status matches ID returned from member list
@@ -40,10 +42,12 @@ func (m *Member) IsNew() bool {
 // Set initial client URLs
 func New(args *arg.Args) *Status {
 	status := &Status{
-		Endpoints: args.AdvertiseClientURLs,
+		Endpoints:   args.AdvertiseClientURLs,
+		MemberState: MemberStateInit,
 		NewEtcdClient: func(endpoints []string) (etcdutil.Util, error) {
 			return etcdutil.New(endpoints, args.ClientTLSConfig)
 		},
+		quit: make(chan struct{}, 1),
 	}
 	return status
 }

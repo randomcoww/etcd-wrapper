@@ -7,11 +7,16 @@ import (
 	"io"
 )
 
-type Client struct {
+type client struct {
 	*minio.Client
 }
 
-func New(endpoint string) (*Client, error) {
+type Client interface {
+	Download(ctx context.Context, bucket, key string, handler func(context.Context, io.Reader) error) (bool, error)
+	Upload(ctx context.Context, bucket, key string, r io.Reader) error
+}
+
+func New(endpoint string) (*client, error) {
 	minioClient, err := minio.New(endpoint, &minio.Options{
 		Creds:  credentials.NewEnvAWS(),
 		Secure: true,
@@ -19,12 +24,12 @@ func New(endpoint string) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Client{
+	return &client{
 		minioClient,
 	}, nil
 }
 
-func (v *Client) Download(ctx context.Context, bucket, key string, handler func(context.Context, io.Reader) error) (bool, error) {
+func (v *client) Download(ctx context.Context, bucket, key string, handler func(context.Context, io.Reader) error) (bool, error) {
 	object, err := v.GetObject(ctx, bucket, key, minio.GetObjectOptions{})
 	if err != nil {
 		switch minio.ToErrorResponse(err).StatusCode {
@@ -48,7 +53,7 @@ func (v *Client) Download(ctx context.Context, bucket, key string, handler func(
 	return true, nil
 }
 
-func (v *Client) Upload(ctx context.Context, bucket, key string, r io.Reader) error {
+func (v *client) Upload(ctx context.Context, bucket, key string, r io.Reader) error {
 	_, err := v.PutObject(ctx, bucket, key, r, -1, minio.PutObjectOptions{})
 	return err
 }

@@ -13,7 +13,7 @@ func main() {
 	}
 
 	status := status.New(args)
-	if err = status.Run(args); err != nil {
+	if err = status.Run(args, 0); err != nil {
 		log.Printf("main exit: %v", err)
 		panic(err)
 	}

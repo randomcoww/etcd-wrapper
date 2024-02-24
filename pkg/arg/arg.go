@@ -41,7 +41,7 @@ type Args struct {
 	BackupInterval            time.Duration
 	HealthCheckFailedCountMax int
 	ReadyCheckFailedCountMax  int
-	S3Client                  *s3util.Client
+	S3Client                  s3util.Client
 	ClientTLSConfig           *tls.Config
 }
 

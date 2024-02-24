@@ -2,20 +2,8 @@ package s3util
 
 import (
 	"fmt"
-	"io"
 	"strings"
 )
-
-type readCounter struct {
-	io.Reader
-	contentLength int64
-}
-
-func (v readCounter) Read(p []byte) (n int, err error) {
-	n, err = v.Reader.Read(p)
-	v.contentLength += int64(n)
-	return
-}
 
 func ParseBucketAndKey(path string) (string, string, error) {
 	toks := strings.SplitN(path, "/", 2)

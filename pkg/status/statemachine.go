@@ -23,18 +23,18 @@ const (
 	MemberStateFailed  MemberState = 3
 )
 
-func (v *Status) Run(args *arg.Args) error {
+func (v *Status) Run(args *arg.Args, tickCountMax int) error {
 	defer deletePodManifest(args)
 
-	var state MemberState = MemberStateInit
-	var healthCheckFailedCount, readyCheckFailedCount, memberCheckFailedCount int
+	var healthCheckFailedCount, readyCheckFailedCount, memberCheckFailedCount, tickCount int
 	intervalTick := time.NewTicker(args.HealthCheckInterval)
 	backupIntervalTick := time.NewTicker(args.BackupInterval)
 
 	for {
-		log.Printf("State: %v", state)
-
 		select {
+		case <-v.quit:
+			return nil
+
 		case <-backupIntervalTick.C:
 			if err := v.SyncStatus(args); err != nil {
 				return err
@@ -62,12 +62,17 @@ func (v *Status) Run(args *arg.Args) error {
 			if err := v.SyncStatus(args); err != nil {
 				return err
 			}
+			tickCount++
+			if tickCountMax > 0 && tickCount >= tickCountMax {
+				tickCount = 0
+				v.quit <- struct{}{}
+			}
 
-			switch state {
+			switch v.MemberState {
 			case MemberStateInit:
 				switch {
 				case v.Self.IsHealthy():
-					state = MemberStateHealthy
+					v.MemberState = MemberStateHealthy
 					log.Printf("State transitioned to healhty")
 
 				case v.Healthy:
@@ -89,7 +94,7 @@ func (v *Status) Run(args *arg.Args) error {
 						log.Printf("Failed to write pod manifest for new node, %v", err)
 						return err
 					}
-					state = MemberStateHealthy
+					v.MemberState = MemberStateHealthy
 					log.Printf("State transitioned to wait healthy")
 				}
 
@@ -98,7 +103,7 @@ func (v *Status) Run(args *arg.Args) error {
 				case v.Self.IsHealthy():
 					readyCheckFailedCount = 0
 
-					state = MemberStateHealthy
+					v.MemberState = MemberStateHealthy
 					log.Printf("State transitioned to healhty")
 
 				default:
@@ -121,7 +126,7 @@ func (v *Status) Run(args *arg.Args) error {
 					log.Printf("Health check %v of %v", healthCheckFailedCount, args.HealthCheckFailedCountMax)
 					if healthCheckFailedCount >= args.HealthCheckFailedCountMax {
 						memberCheckFailedCount = 0
-						state = MemberStateFailed
+						v.MemberState = MemberStateFailed
 						log.Printf("State transitioned to failed")
 					}
 
@@ -144,7 +149,7 @@ func (v *Status) Run(args *arg.Args) error {
 			case MemberStateFailed:
 				switch {
 				case v.Self.IsHealthy():
-					state = MemberStateHealthy
+					v.MemberState = MemberStateHealthy
 					log.Printf("State transitioned to healhty")
 
 				case v.Healthy:
@@ -164,7 +169,7 @@ func (v *Status) Run(args *arg.Args) error {
 						log.Printf("Failed to write pod manifest for new node, %v", err)
 						return err
 					}
-					state = MemberStateHealthy
+					v.MemberState = MemberStateHealthy
 					log.Printf("State transitioned to healthy")
 
 				default:
@@ -174,7 +179,7 @@ func (v *Status) Run(args *arg.Args) error {
 						log.Printf("Failed to write pod manifest for new node, %v", err)
 						return err
 					}
-					state = MemberStateWait
+					v.MemberState = MemberStateWait
 					log.Printf("State transitioned to wait")
 				}
 			}
