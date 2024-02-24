@@ -10,26 +10,28 @@ import (
 )
 
 func TestSyncStatus(t *testing.T) {
-	commonArgs := &arg.Args{
-		Name: "node0",
-		AdvertiseClientURLs: []string{
-			"https://127.0.0.1:8081",
-			"https://10.0.0.1:8081",
-		},
-		InitialCluster: []*arg.Node{
-			&arg.Node{
-				Name:    "node0",
-				PeerURL: "https://10.0.0.1:8001",
+	newCommonArgs := func() *arg.Args {
+		return &arg.Args{
+			Name: "node0",
+			AdvertiseClientURLs: []string{
+				"https://127.0.0.1:8081",
+				"https://10.0.0.1:8081",
 			},
-			&arg.Node{
-				Name:    "node1",
-				PeerURL: "https://10.0.0.2:8001",
+			InitialCluster: []*arg.Node{
+				&arg.Node{
+					Name:    "node0",
+					PeerURL: "https://10.0.0.1:8001",
+				},
+				&arg.Node{
+					Name:    "node1",
+					PeerURL: "https://10.0.0.2:8001",
+				},
+				&arg.Node{
+					Name:    "node2",
+					PeerURL: "https://10.0.0.3:8001",
+				},
 			},
-			&arg.Node{
-				Name:    "node2",
-				PeerURL: "https://10.0.0.3:8001",
-			},
-		},
+		}
 	}
 
 	happyNode0 := &etcdutil.MockNode{
@@ -136,7 +138,7 @@ func TestSyncStatus(t *testing.T) {
 	}{
 		{
 			label: "happy path",
-			args:  commonArgs,
+			args:  newCommonArgs(),
 			mockClient: &etcdutil.MockClient{
 				NodeEndpointMap: map[string]*etcdutil.MockNode{
 					"https://10.0.0.1:8081":  happyNode0,
@@ -193,7 +195,7 @@ func TestSyncStatus(t *testing.T) {
 		},
 		{
 			label: "endpoint update",
-			args:  commonArgs,
+			args:  newCommonArgs(),
 			mockClient: &etcdutil.MockClient{
 				NodeEndpointMap: map[string]*etcdutil.MockNode{
 					"https://10.0.0.1:8081":  happyNode0,
@@ -248,7 +250,7 @@ func TestSyncStatus(t *testing.T) {
 		},
 		{
 			label: "node0 status error",
-			args:  commonArgs,
+			args:  newCommonArgs(),
 			mockClient: &etcdutil.MockClient{
 				NodeEndpointMap: map[string]*etcdutil.MockNode{
 					"https://10.0.0.1:8081": unhealthyNode0,
@@ -299,7 +301,7 @@ func TestSyncStatus(t *testing.T) {
 		},
 		{
 			label: "members list error",
-			args:  commonArgs,
+			args:  newCommonArgs(),
 			mockClient: &etcdutil.MockClient{
 				NodeEndpointMap: map[string]*etcdutil.MockNode{
 					"https://10.0.0.1:8081": unhealthyNode0,

@@ -13,31 +13,33 @@ import (
 )
 
 func TestStateMachineRun(t *testing.T) {
-	commonArgs := &arg.Args{
-		Name: "node0",
-		AdvertiseClientURLs: []string{
-			"https://127.0.0.1:8081",
-			"https://10.0.0.1:8081",
-		},
-		InitialCluster: []*arg.Node{
-			&arg.Node{
-				Name:    "node0",
-				PeerURL: "https://10.0.0.1:8001",
+	newCommonArgs := func() *arg.Args {
+		return &arg.Args{
+			Name: "node0",
+			AdvertiseClientURLs: []string{
+				"https://127.0.0.1:8081",
+				"https://10.0.0.1:8081",
 			},
-			&arg.Node{
-				Name:    "node1",
-				PeerURL: "https://10.0.0.2:8001",
+			InitialCluster: []*arg.Node{
+				&arg.Node{
+					Name:    "node0",
+					PeerURL: "https://10.0.0.1:8001",
+				},
+				&arg.Node{
+					Name:    "node1",
+					PeerURL: "https://10.0.0.2:8001",
+				},
+				&arg.Node{
+					Name:    "node2",
+					PeerURL: "https://10.0.0.3:8001",
+				},
 			},
-			&arg.Node{
-				Name:    "node2",
-				PeerURL: "https://10.0.0.3:8001",
-			},
-		},
-		HealthCheckInterval:       1 * time.Millisecond,
-		BackupInterval:            10 * time.Millisecond,
-		HealthCheckFailedCountMax: 1,
-		ReadyCheckFailedCountMax:  1,
-		S3Client:                  &s3util.MockClient{},
+			HealthCheckInterval:       1 * time.Millisecond,
+			BackupInterval:            10 * time.Millisecond,
+			HealthCheckFailedCountMax: 1,
+			ReadyCheckFailedCountMax:  1,
+			S3Client:                  &s3util.MockClient{},
+		}
 	}
 
 	missingNode := &etcdutil.MockNode{
@@ -327,7 +329,7 @@ func TestStateMachineRun(t *testing.T) {
 	}{
 		{
 			label: "init healthy",
-			args:  commonArgs,
+			args:  newCommonArgs(),
 			mockClientResponses: &etcdutil.MockClientResponses{
 				Resp: []*etcdutil.MockClient{
 					respInit,
@@ -357,8 +359,8 @@ func TestStateMachineRun(t *testing.T) {
 			expectedInitalClusterState: "",
 		},
 		{
-			label: "init node0 down",
-			args:  commonArgs,
+			label: "init node0 not found",
+			args:  newCommonArgs(),
 			mockClientResponses: &etcdutil.MockClientResponses{
 				Resp: []*etcdutil.MockClient{
 					respInit,
@@ -388,15 +390,32 @@ func TestStateMachineRun(t *testing.T) {
 			expectedInitalClusterState: "existing",
 		},
 		{
-			label: "healthy to cluster down",
-			args:  commonArgs,
+			label: "init cluster not found",
+			args:  newCommonArgs(),
 			mockClientResponses: &etcdutil.MockClientResponses{
 				Resp: []*etcdutil.MockClient{
 					respClusterDown,
 				},
 			},
 			mockEtcdPod:                &manifest.MockEtcdPod{},
-			ticks:                      4,
+			ticks:                      2,
+			initialMemberState:         MemberStateInit,
+			expectedClusterHealthy:     false,
+			expectedErr:                nil,
+			expectedMemberState:        MemberStateFailed,
+			expectedMemberMap:          map[uint64]*Member{},
+			expectedInitalClusterState: "existing",
+		},
+		{
+			label: "healthy to cluster down",
+			args:  newCommonArgs(),
+			mockClientResponses: &etcdutil.MockClientResponses{
+				Resp: []*etcdutil.MockClient{
+					respClusterDown,
+				},
+			},
+			mockEtcdPod:                &manifest.MockEtcdPod{},
+			ticks:                      6,
 			initialMemberState:         MemberStateHealthy,
 			expectedClusterHealthy:     false,
 			expectedErr:                errors.New("Failed ready check"),
