@@ -1,15 +1,8 @@
 package status
 
 import (
-	"bytes"
-	"context"
-	"encoding/json"
 	"fmt"
 	"github.com/randomcoww/etcd-wrapper/pkg/arg"
-	"github.com/randomcoww/etcd-wrapper/pkg/podspec"
-	"github.com/randomcoww/etcd-wrapper/pkg/util"
-	"io"
-	"k8s.io/api/core/v1"
 	"log"
 	"time"
 )
@@ -24,7 +17,7 @@ const (
 )
 
 func (v *Status) Run(args *arg.Args, tickCountMax int) error {
-	defer deletePodManifest(args)
+	defer v.EtcdPod.DeleteFile(args)
 
 	var healthCheckFailedCount, readyCheckFailedCount, memberCheckFailedCount, tickCount int
 	intervalTick := time.NewTicker(args.HealthCheckInterval)
@@ -90,7 +83,7 @@ func (v *Status) Run(args *arg.Args, tickCountMax int) error {
 				default:
 					log.Printf("Attempt to join existing cluster")
 					args.InitialClusterState = "existing"
-					if err := writePodManifest(args); err != nil {
+					if err := v.EtcdPod.WriteFile(args); err != nil {
 						log.Printf("Failed to write pod manifest for new node, %v", err)
 						return err
 					}
@@ -165,7 +158,7 @@ func (v *Status) Run(args *arg.Args, tickCountMax int) error {
 
 					log.Printf("Attempt to join existing cluster")
 					args.InitialClusterState = "existing"
-					if err := writePodManifest(args); err != nil {
+					if err := v.EtcdPod.WriteFile(args); err != nil {
 						log.Printf("Failed to write pod manifest for new node, %v", err)
 						return err
 					}
@@ -175,7 +168,7 @@ func (v *Status) Run(args *arg.Args, tickCountMax int) error {
 				default:
 					log.Printf("Creating new node")
 					args.InitialClusterState = "new"
-					if err := writePodManifest(args); err != nil {
+					if err := v.EtcdPod.WriteFile(args); err != nil {
 						log.Printf("Failed to write pod manifest for new node, %v", err)
 						return err
 					}
@@ -191,46 +184,4 @@ func (v *Status) Run(args *arg.Args, tickCountMax int) error {
 			log.Printf("Cluster status:\n%s", statusYaml)
 		}
 	}
-}
-
-func writePodManifest(args *arg.Args) error {
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	var pod *v1.Pod
-	manifestVersion := fmt.Sprintf("%v", time.Now().Unix())
-
-	switch args.InitialClusterState {
-	case "new":
-		ok, err := args.S3Client.Download(ctx, args.S3BackupBucket, args.S3BackupKey, func(ctx context.Context, r io.Reader) error {
-			return util.WriteFile(r, args.EtcdSnapshotFile)
-		})
-		if err != nil {
-			return fmt.Errorf("Error getting snapshot: %v", err)
-		}
-		if !ok {
-			log.Printf("Snapshot not found. Joining existing cluster")
-			pod = podspec.Create(args, false, manifestVersion)
-
-		} else {
-			log.Printf("Successfully got snapshot. Restoring existing cluster")
-			pod = podspec.Create(args, true, manifestVersion)
-		}
-
-	case "existing":
-		pod = podspec.Create(args, false, manifestVersion)
-
-	default:
-		return fmt.Errorf("InitialClusterState not defined")
-	}
-
-	manifest, err := json.MarshalIndent(pod, "", "  ")
-	if err != nil {
-		return err
-	}
-	return util.WriteFile(io.NopCloser(bytes.NewReader(manifest)), args.EtcdPodManifestFile)
-}
-
-func deletePodManifest(args *arg.Args) {
-	util.DeleteFile(args.EtcdPodManifestFile)
 }

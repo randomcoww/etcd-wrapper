@@ -131,3 +131,19 @@ func (m *MockClient) hasEndpoint(checkEndpoint string) bool {
 	}
 	return false
 }
+
+type MockClientResponses struct {
+	Resp  []*MockClient
+	Index int
+}
+
+func (r *MockClientResponses) InitialEndpoints() []string {
+	return r.Resp[0].EndpointsResponse
+}
+
+func (r *MockClientResponses) Next(endpoints []string) *MockClient {
+	client := r.Resp[r.Index]
+	client.EndpointsResponse = endpoints
+	r.Index++
+	return client
+}

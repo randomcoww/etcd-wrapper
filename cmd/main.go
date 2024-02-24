@@ -2,6 +2,7 @@ package main
 
 import (
 	"github.com/randomcoww/etcd-wrapper/pkg/arg"
+	"github.com/randomcoww/etcd-wrapper/pkg/manifest"
 	"github.com/randomcoww/etcd-wrapper/pkg/status"
 	"log"
 )
@@ -12,7 +13,7 @@ func main() {
 		panic(err)
 	}
 
-	status := status.New(args)
+	status := status.New(args, &manifest.EtcdPod{})
 	if err = status.Run(args, 0); err != nil {
 		log.Printf("main exit: %v", err)
 		panic(err)

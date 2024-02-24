@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/randomcoww/etcd-wrapper/pkg/arg"
 	"github.com/randomcoww/etcd-wrapper/pkg/etcdutil"
+	"github.com/randomcoww/etcd-wrapper/pkg/manifest"
 	etcdserverpb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"gopkg.in/yaml.v3"
 	"io"
@@ -25,7 +26,8 @@ type Status struct {
 	Leader        *Member                                 `yaml:"-"`
 	mu            sync.Mutex                              `yaml:"-"`
 	NewEtcdClient func([]string) (etcdutil.Client, error) `yaml:"-"`
-	quit          chan struct{}                           `yaml:"-"`
+	EtcdPod       manifest.Manifest
+	quit          chan struct{} `yaml:"-"`
 }
 
 // healthy if memberID from status matches ID returned from member list
@@ -40,14 +42,15 @@ func (m *Member) IsNew() bool {
 }
 
 // Set initial client URLs
-func New(args *arg.Args) *Status {
+func New(args *arg.Args, etcdPod manifest.Manifest) *Status {
 	status := &Status{
 		Endpoints:   args.AdvertiseClientURLs,
 		MemberState: MemberStateInit,
 		NewEtcdClient: func(endpoints []string) (etcdutil.Client, error) {
 			return etcdutil.New(endpoints, args.ClientTLSConfig)
 		},
-		quit: make(chan struct{}, 1),
+		EtcdPod: etcdPod,
+		quit:    make(chan struct{}, 1),
 	}
 	return status
 }
