@@ -23,19 +23,17 @@ func TestNewStatus(t *testing.T) {
 			},
 			IsLearner: false,
 		},
-		StatusResponseWithErr: &etcdutil.StatusResponseWithErr{
-			StatusResponse: &etcdserverpb.StatusResponse{
-				Header: &etcdserverpb.ResponseHeader{
-					ClusterId: 3001,
-					MemberId:  1001,
-					Revision:  5000,
-				},
-				Leader:    1001,
-				RaftIndex: 2001,
-				IsLearner: false,
+		Status: &etcdserverpb.StatusResponse{
+			Header: &etcdserverpb.ResponseHeader{
+				ClusterId: 3001,
+				MemberId:  1001,
+				Revision:  5000,
 			},
-			Err: nil,
+			Leader:    1001,
+			RaftIndex: 2001,
+			IsLearner: false,
 		},
+		StatusErr: nil,
 	}
 
 	happyNode1 := &etcdutil.MockNode{
@@ -52,19 +50,17 @@ func TestNewStatus(t *testing.T) {
 			},
 			IsLearner: false,
 		},
-		StatusResponseWithErr: &etcdutil.StatusResponseWithErr{
-			StatusResponse: &etcdserverpb.StatusResponse{
-				Header: &etcdserverpb.ResponseHeader{
-					ClusterId: 3001,
-					MemberId:  1002,
-					Revision:  5000,
-				},
-				Leader:    1001,
-				RaftIndex: 2001,
-				IsLearner: false,
+		Status: &etcdserverpb.StatusResponse{
+			Header: &etcdserverpb.ResponseHeader{
+				ClusterId: 3001,
+				MemberId:  1002,
+				Revision:  5000,
 			},
-			Err: nil,
+			Leader:    1001,
+			RaftIndex: 2001,
+			IsLearner: false,
 		},
+		StatusErr: nil,
 	}
 
 	happyNode2 := &etcdutil.MockNode{
@@ -81,19 +77,17 @@ func TestNewStatus(t *testing.T) {
 			},
 			IsLearner: false,
 		},
-		StatusResponseWithErr: &etcdutil.StatusResponseWithErr{
-			StatusResponse: &etcdserverpb.StatusResponse{
-				Header: &etcdserverpb.ResponseHeader{
-					ClusterId: 3001,
-					MemberId:  1003,
-					Revision:  5000,
-				},
-				Leader:    1001,
-				RaftIndex: 2001,
-				IsLearner: false,
+		Status: &etcdserverpb.StatusResponse{
+			Header: &etcdserverpb.ResponseHeader{
+				ClusterId: 3001,
+				MemberId:  1003,
+				Revision:  5000,
 			},
-			Err: nil,
+			Leader:    1001,
+			RaftIndex: 2001,
+			IsLearner: false,
 		},
+		StatusErr: nil,
 	}
 
 	newMember3 := &etcdserverpb.Member{
@@ -120,6 +114,7 @@ func TestNewStatus(t *testing.T) {
 			args: &arg.Args{
 				Name: "node0",
 				AdvertiseClientURLs: []string{
+					"https://127.0.0.1:8081",
 					"https://10.0.0.1:8081",
 				},
 				InitialCluster: []*arg.Node{
@@ -139,9 +134,10 @@ func TestNewStatus(t *testing.T) {
 			},
 			mockClient: &etcdutil.MockClient{
 				NodeEndpointMap: map[string]*etcdutil.MockNode{
-					"https://10.0.0.1:8081": happyNode0,
-					"https://10.0.0.2:8081": happyNode1,
-					"https://10.0.0.3:8081": happyNode2,
+					"https://10.0.0.1:8081":  happyNode0,
+					"https://127.0.0.1:8081": happyNode0,
+					"https://10.0.0.2:8081":  happyNode1,
+					"https://10.0.0.3:8081":  happyNode2,
 				},
 				EndpointsResponse: []string{
 					"https://10.0.0.1:8081",
@@ -191,25 +187,25 @@ func TestNewStatus(t *testing.T) {
 				CreateSnapshotErr: nil,
 			},
 			expectedSelf: &Member{
-				Member: happyNode0.Member.(*etcdserverpb.Member),
-				Status: happyNode0.StatusResponseWithErr.StatusResponse,
+				Member: happyNode0.Member,
+				Status: happyNode0.Status,
 			},
 			expectedLeader: &Member{
-				Member: happyNode0.Member.(*etcdserverpb.Member),
-				Status: happyNode0.StatusResponseWithErr.StatusResponse,
+				Member: happyNode0.Member,
+				Status: happyNode0.Status,
 			},
 			expectedMemberMap: map[uint64]*Member{
 				1001: &Member{
-					Member: happyNode0.Member.(*etcdserverpb.Member),
-					Status: happyNode0.StatusResponseWithErr.StatusResponse,
+					Member: happyNode0.Member,
+					Status: happyNode0.Status,
 				},
 				1002: &Member{
-					Member: happyNode1.Member.(*etcdserverpb.Member),
-					Status: happyNode1.StatusResponseWithErr.StatusResponse,
+					Member: happyNode1.Member,
+					Status: happyNode1.Status,
 				},
 				1003: &Member{
-					Member: happyNode2.Member.(*etcdserverpb.Member),
-					Status: happyNode2.StatusResponseWithErr.StatusResponse,
+					Member: happyNode2.Member,
+					Status: happyNode2.Status,
 				},
 			},
 		},

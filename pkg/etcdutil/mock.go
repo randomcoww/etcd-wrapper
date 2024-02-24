@@ -6,11 +6,6 @@ import (
 	"io"
 )
 
-type StatusResponseWithErr struct {
-	*etcdserverpb.StatusResponse
-	Err error
-}
-
 type MemberListResponseWithErr struct {
 	*etcdserverpb.ResponseHeader
 	Err error
@@ -23,21 +18,22 @@ type MemberAddResponseWithErr struct {
 }
 
 type MockNode struct {
-	Member                Member
-	StatusResponseWithErr *StatusResponseWithErr
+	Status    *etcdserverpb.StatusResponse
+	StatusErr error
+	Member    *etcdserverpb.Member
 }
 
 type MockClient struct {
 	NodeEndpointMap              map[string]*MockNode
 	EndpointsResponse            []string
 	SyncEndpointsErr             error
+	HealthCheckErr               error
+	DefragmentErr                error
+	CreateSnapshotErr            error
 	MemberAddResponseWithErr     *MemberAddResponseWithErr
 	MemberListResponseWithErr    *MemberListResponseWithErr
 	MemberRemoveResponseWithErr  *MemberListResponseWithErr
 	MemberPromoteResponseWithErr *MemberListResponseWithErr
-	HealthCheckErr               error
-	DefragmentErr                error
-	CreateSnapshotErr            error
 }
 
 func (m *MockClient) Close() error {
@@ -49,15 +45,12 @@ func (m *MockClient) Endpoints() []string {
 }
 
 func (m *MockClient) SyncEndpoints() error {
-	if m.SyncEndpointsErr != nil {
-		return m.SyncEndpointsErr
-	}
-	return nil
+	return m.SyncEndpointsErr
 }
 
 func (m *MockClient) Status(handler func(Status, error)) {
 	for _, resp := range m.getUniqueNodes(m.EndpointsResponse) {
-		handler(resp.StatusResponseWithErr.StatusResponse, resp.StatusResponseWithErr.Err)
+		handler(resp.Status, resp.StatusErr)
 	}
 }
 
@@ -66,7 +59,7 @@ func (m *MockClient) ListMembers() (List, error) {
 		Header: m.MemberListResponseWithErr.ResponseHeader,
 	}
 	for _, resp := range m.getUniqueNodes(m.EndpointsResponse) {
-		res.Members = append(res.Members, resp.Member.(*etcdserverpb.Member))
+		res.Members = append(res.Members, resp.Member)
 		m.EndpointsResponse = append(m.EndpointsResponse, resp.Member.GetClientURLs()...)
 	}
 	return res, m.MemberListResponseWithErr.Err
@@ -77,7 +70,7 @@ func (m *MockClient) AddMember(peerURLs []string) (List, Member, error) {
 		Header: m.MemberAddResponseWithErr.ResponseHeader,
 	}
 	for _, resp := range m.getUniqueNodes(m.EndpointsResponse) {
-		res.Members = append(res.Members, resp.Member.(*etcdserverpb.Member))
+		res.Members = append(res.Members, resp.Member)
 		m.EndpointsResponse = append(m.EndpointsResponse, resp.Member.GetClientURLs()...)
 	}
 	return res, m.MemberAddResponseWithErr.Member, m.MemberAddResponseWithErr.Err
@@ -89,7 +82,7 @@ func (m *MockClient) RemoveMember(id uint64) (List, error) {
 	}
 	for _, resp := range m.getUniqueNodes(m.EndpointsResponse) {
 		if resp.Member.GetID() != id {
-			res.Members = append(res.Members, resp.Member.(*etcdserverpb.Member))
+			res.Members = append(res.Members, resp.Member)
 			m.EndpointsResponse = append(m.EndpointsResponse, resp.Member.GetClientURLs()...)
 		}
 	}
@@ -101,7 +94,7 @@ func (m *MockClient) PromoteMember(id uint64) (List, error) {
 		Header: m.MemberPromoteResponseWithErr.ResponseHeader,
 	}
 	for _, resp := range m.getUniqueNodes(m.EndpointsResponse) {
-		res.Members = append(res.Members, resp.Member.(*etcdserverpb.Member))
+		res.Members = append(res.Members, resp.Member)
 		m.EndpointsResponse = append(m.EndpointsResponse, resp.Member.GetClientURLs()...)
 	}
 	return res, m.MemberPromoteResponseWithErr.Err
