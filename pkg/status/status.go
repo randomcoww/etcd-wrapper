@@ -28,7 +28,7 @@ type Status struct {
 
 // healthy if memberID from status matches ID returned from member list
 func (m *Member) IsHealthy() bool {
-	return m.StatusResponse != nil && m.Member != nil &&
+	return m != nil && m.StatusResponse != nil && m.Member != nil &&
 		m.StatusResponse.GetHeader().GetMemberId() == m.Member.GetID()
 }
 
@@ -74,14 +74,13 @@ func (v *Status) SyncStatus(args *arg.Args) error {
 	if err != nil {
 		return nil
 	}
-
 	v.Endpoints = client.Endpoints()
-	v.Healthy = true
 
 	list, err := client.ListMembers()
 	if err != nil {
 		return nil
 	}
+	v.Healthy = true
 	v.UpdateFromList(list, args)
 
 	// collect all members found by list and status
@@ -90,9 +89,6 @@ func (v *Status) SyncStatus(args *arg.Args) error {
 			return
 		}
 		member := v.UpdateFromStatus(status, args)
-		if member == nil {
-			return
-		}
 		if !member.IsHealthy() {
 			return
 		}

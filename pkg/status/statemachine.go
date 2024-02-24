@@ -39,7 +39,7 @@ func (v *Status) Run(args *arg.Args) error {
 			if err := v.SyncStatus(args); err != nil {
 				return err
 			}
-			if v.Self == nil || !v.Self.IsHealthy() {
+			if !v.Self.IsHealthy() {
 				continue
 			}
 			if err := v.Defragment(args); err != nil {
@@ -66,7 +66,7 @@ func (v *Status) Run(args *arg.Args) error {
 			switch state {
 			case MemberStateInit:
 				switch {
-				case v.Self != nil && v.Self.IsHealthy():
+				case v.Self.IsHealthy():
 					state = MemberStateHealthy
 					log.Printf("State transitioned to healhty")
 
@@ -95,7 +95,7 @@ func (v *Status) Run(args *arg.Args) error {
 
 			case MemberStateWait:
 				switch {
-				case v.Self != nil && v.Self.IsHealthy():
+				case v.Self.IsHealthy():
 					readyCheckFailedCount = 0
 
 					state = MemberStateHealthy
@@ -114,7 +114,7 @@ func (v *Status) Run(args *arg.Args) error {
 				memberToReplace := v.GetMemberToReplace()
 
 				switch {
-				case v.Self == nil, !v.Self.IsHealthy():
+				case !v.Self.IsHealthy():
 					memberCheckFailedCount = 0
 
 					healthCheckFailedCount++
@@ -143,7 +143,7 @@ func (v *Status) Run(args *arg.Args) error {
 
 			case MemberStateFailed:
 				switch {
-				case v.Self != nil && v.Self.IsHealthy():
+				case v.Self.IsHealthy():
 					state = MemberStateHealthy
 					log.Printf("State transitioned to healhty")
 
