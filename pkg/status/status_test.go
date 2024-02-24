@@ -143,7 +143,7 @@ func TestNewStatus(t *testing.T) {
 					"https://10.0.0.2:8081": happyNode1,
 					"https://10.0.0.3:8081": happyNode2,
 				},
-				EndpointsInternal: []string{
+				EndpointsResponse: []string{
 					"https://10.0.0.1:8081",
 					"https://10.0.0.2:8081",
 					"https://10.0.0.3:8081",
