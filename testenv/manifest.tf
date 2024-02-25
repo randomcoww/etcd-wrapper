@@ -52,7 +52,7 @@ module "etcd" {
   }
   images = {
     etcd         = "gcr.io/etcd-development/etcd:v3.5.11-amd64"
-    etcd_wrapper = "ghcr.io/randomcoww/etcd-wrapper:20240224.0"
+    etcd_wrapper = "ghcr.io/randomcoww/etcd-wrapper:20240225.0"
   }
   etcd_ips = [
     each.value.ip

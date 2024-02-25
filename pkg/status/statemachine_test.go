@@ -35,7 +35,7 @@ func TestStateMachineRun(t *testing.T) {
 				},
 			},
 			HealthCheckInterval:       1 * time.Millisecond,
-			BackupInterval:            10 * time.Millisecond,
+			BackupInterval:            20 * time.Millisecond,
 			HealthCheckFailedCountMax: 1,
 			ReadyCheckFailedCountMax:  1,
 			S3Client:                  &s3util.MockClient{},
