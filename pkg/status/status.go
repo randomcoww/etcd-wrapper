@@ -26,8 +26,8 @@ type Status struct {
 	Leader        *Member                                 `yaml:"-"`
 	mu            sync.Mutex                              `yaml:"-"`
 	NewEtcdClient func([]string) (etcdutil.Client, error) `yaml:"-"`
-	EtcdPod       manifest.Manifest
-	quit          chan struct{} `yaml:"-"`
+	EtcdPod       manifest.Manifest                       `yaml:"-"`
+	quit          chan struct{}                           `yaml:"-"`
 }
 
 // healthy if memberID from status matches ID returned from member list
