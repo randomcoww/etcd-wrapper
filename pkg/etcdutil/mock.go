@@ -2,6 +2,7 @@ package etcdutil
 
 import (
 	"context"
+	"errors"
 	etcdserverpb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"io"
 )
@@ -59,6 +60,8 @@ func (m *MockClient) Status(handler func(Status, error)) {
 	for _, endpoint := range m.Endpoints() {
 		if resp, ok := m.StatusResponseWithErr[endpoint]; ok {
 			handler(resp.StatusResponse, resp.Err)
+		} else {
+			handler(nil, errors.New("missing status"))
 		}
 	}
 }
@@ -95,21 +98,3 @@ func (m *MockClient) Defragment(endpoint string) error {
 func (m *MockClient) CreateSnapshot(handler func(context.Context, io.Reader) error) error {
 	return m.CreateSnapshotErr
 }
-
-// type MockClientResponses struct {
-// 	Resp  []*MockClient
-// 	Index int
-// }
-
-// func (r *MockClientResponses) InitialEndpoints() []string {
-// 	return r.Resp[0].EndpointsResponse
-// }
-
-// func (r *MockClientResponses) Next(endpoints []string) *MockClient {
-// 	client := r.Resp[r.Index]
-// 	client.EndpointsResponse = endpoints
-// 	if r.Index < len(r.Resp)-1 {
-// 		r.Index++
-// 	}
-// 	return client
-// }
