@@ -1,7 +1,6 @@
 package status
 
 import (
-	"errors"
 	"github.com/randomcoww/etcd-wrapper/pkg/arg"
 	"github.com/randomcoww/etcd-wrapper/pkg/etcdutil"
 	"github.com/stretchr/testify/assert"
@@ -34,95 +33,55 @@ func TestSyncStatus(t *testing.T) {
 		}
 	}
 
-	happyNode0 := &etcdutil.MockNode{
-		Member: &etcdserverpb.Member{
-			ID:   1001,
-			Name: "node0",
-			PeerURLs: []string{
-				"https://10.0.0.1:8001",
-			},
-			ClientURLs: []string{
-				"https://10.0.0.1:8081",
-			},
-			IsLearner: false,
+	happyNode0Member := &etcdserverpb.Member{
+		ID:   1001,
+		Name: "node0",
+		PeerURLs: []string{
+			"https://10.0.0.1:8001",
 		},
-		StatusResponse: &etcdserverpb.StatusResponse{
-			Header: &etcdserverpb.ResponseHeader{
-				ClusterId: 3001,
-				MemberId:  1001,
-				Revision:  5000,
-			},
-			Leader:    1001,
-			RaftIndex: 2001,
-			IsLearner: false,
+		ClientURLs: []string{
+			"https://10.0.0.1:8081",
 		},
-		StatusErr: nil,
+	}
+	happyNode0StatusResponse := &etcdserverpb.StatusResponse{
+		Header: &etcdserverpb.ResponseHeader{
+			MemberId: happyNode0Member.ID,
+		},
+		Leader: happyNode0Member.ID,
 	}
 
-	unhealthyNode0 := &etcdutil.MockNode{
-		Member: &etcdserverpb.Member{
-			ID:   1001,
-			Name: "node0",
-			PeerURLs: []string{
-				"https://10.0.0.1:8001",
-			},
-			ClientURLs: []string{
-				"https://10.0.0.1:8081",
-			},
-			IsLearner: false,
+	happyNode1Member := &etcdserverpb.Member{
+		ID:   1002,
+		Name: "node1",
+		PeerURLs: []string{
+			"https://10.0.0.2:8001",
 		},
-		StatusResponse: nil,
-		StatusErr:      errors.New("bad status"),
+		ClientURLs: []string{
+			"https://10.0.0.2:8081",
+		},
+	}
+	happyNode1StatusResponse := &etcdserverpb.StatusResponse{
+		Header: &etcdserverpb.ResponseHeader{
+			MemberId: happyNode1Member.ID,
+		},
+		Leader: happyNode0Member.ID,
 	}
 
-	happyNode1 := &etcdutil.MockNode{
-		Member: &etcdserverpb.Member{
-			ID:   1002,
-			Name: "node1",
-			PeerURLs: []string{
-				"https://10.0.0.2:8001",
-			},
-			ClientURLs: []string{
-				"https://10.0.0.2:8081",
-			},
-			IsLearner: false,
+	happyNode2Member := &etcdserverpb.Member{
+		ID:   1003,
+		Name: "node2",
+		PeerURLs: []string{
+			"https://10.0.0.3:8001",
 		},
-		StatusResponse: &etcdserverpb.StatusResponse{
-			Header: &etcdserverpb.ResponseHeader{
-				ClusterId: 3001,
-				MemberId:  1002,
-				Revision:  5000,
-			},
-			Leader:    1001,
-			RaftIndex: 2001,
-			IsLearner: false,
+		ClientURLs: []string{
+			"https://10.0.0.3:8081",
 		},
-		StatusErr: nil,
 	}
-
-	happyNode2 := &etcdutil.MockNode{
-		Member: &etcdserverpb.Member{
-			ID:   1003,
-			Name: "node2",
-			PeerURLs: []string{
-				"https://10.0.0.3:8001",
-			},
-			ClientURLs: []string{
-				"https://10.0.0.3:8081",
-			},
-			IsLearner: false,
+	happyNode2StatusResponse := &etcdserverpb.StatusResponse{
+		Header: &etcdserverpb.ResponseHeader{
+			MemberId: happyNode2Member.ID,
 		},
-		StatusResponse: &etcdserverpb.StatusResponse{
-			Header: &etcdserverpb.ResponseHeader{
-				ClusterId: 3001,
-				MemberId:  1003,
-				Revision:  5000,
-			},
-			Leader:    1001,
-			RaftIndex: 2001,
-			IsLearner: false,
-		},
-		StatusErr: nil,
+		Leader: happyNode0Member.ID,
 	}
 
 	tests := []struct {
@@ -140,189 +99,66 @@ func TestSyncStatus(t *testing.T) {
 			label: "happy path",
 			args:  newCommonArgs(),
 			mockClient: &etcdutil.MockClient{
-				NodeEndpointMap: map[string]*etcdutil.MockNode{
-					"https://10.0.0.1:8081":  happyNode0,
-					"https://127.0.0.1:8081": happyNode0,
-					"https://10.0.0.2:8081":  happyNode1,
-					"https://10.0.0.3:8081":  happyNode2,
-				},
 				EndpointsResponse: []string{
-					"https://10.0.0.1:8081",
 					"https://127.0.0.1:8081",
+					"https://10.0.0.1:8081",
 					"https://10.0.0.2:8081",
 					"https://10.0.0.3:8081",
 				},
 				MemberListResponseWithErr: &etcdutil.MemberListResponseWithErr{
+					Members: []*etcdserverpb.Member{
+						happyNode0Member,
+						happyNode1Member,
+						happyNode2Member,
+					},
 					ResponseHeader: &etcdserverpb.ResponseHeader{
-						ClusterId: 10,
-						MemberId:  1,
-						Revision:  20,
-						RaftTerm:  30,
+						MemberId: happyNode0Member.ID,
 					},
 					Err: nil,
+				},
+				StatusResponseWithErr: map[string]*etcdutil.StatusResponseWithErr{
+					"https://127.0.0.1:8081": &etcdutil.StatusResponseWithErr{
+						StatusResponse: happyNode0StatusResponse,
+						Err:            nil,
+					},
+					"https://10.0.0.1:8081": &etcdutil.StatusResponseWithErr{
+						StatusResponse: happyNode0StatusResponse,
+						Err:            nil,
+					},
+					"https://10.0.0.2:8081": &etcdutil.StatusResponseWithErr{
+						StatusResponse: happyNode1StatusResponse,
+						Err:            nil,
+					},
+					"https://10.0.0.3:8081": &etcdutil.StatusResponseWithErr{
+						StatusResponse: happyNode2StatusResponse,
+						Err:            nil,
+					},
 				},
 			},
 			expectedClusterHealthy: true,
 			expectedSelf: &Member{
-				Member:         happyNode0.Member,
-				StatusResponse: happyNode0.StatusResponse,
+				Member:         happyNode0Member,
+				StatusResponse: happyNode0StatusResponse,
 			},
 			expectedSelfHealthy: true,
 			expectedLeader: &Member{
-				Member:         happyNode0.Member,
-				StatusResponse: happyNode0.StatusResponse,
+				Member:         happyNode0Member,
+				StatusResponse: happyNode0StatusResponse,
 			},
 			expectedMemberMap: map[uint64]*Member{
 				1001: &Member{
-					Member:         happyNode0.Member,
-					StatusResponse: happyNode0.StatusResponse,
+					Member:         happyNode0Member,
+					StatusResponse: happyNode0StatusResponse,
 				},
 				1002: &Member{
-					Member:         happyNode1.Member,
-					StatusResponse: happyNode1.StatusResponse,
+					Member:         happyNode1Member,
+					StatusResponse: happyNode1StatusResponse,
 				},
 				1003: &Member{
-					Member:         happyNode2.Member,
-					StatusResponse: happyNode2.StatusResponse,
+					Member:         happyNode2Member,
+					StatusResponse: happyNode2StatusResponse,
 				},
 			},
-			expectedEndpoints: []string{
-				"https://10.0.0.1:8081",
-				"https://127.0.0.1:8081",
-				"https://10.0.0.2:8081",
-				"https://10.0.0.3:8081",
-			},
-		},
-		{
-			label: "endpoint update",
-			args:  newCommonArgs(),
-			mockClient: &etcdutil.MockClient{
-				NodeEndpointMap: map[string]*etcdutil.MockNode{
-					"https://10.0.0.1:8081":  happyNode0,
-					"https://127.0.0.1:8081": happyNode0,
-					"https://10.0.0.2:8081":  happyNode1,
-					"https://10.0.0.3:8081":  happyNode2,
-				},
-				EndpointsResponse: []string{
-					"https://127.0.0.1:8081",
-					"https://10.0.0.1:8081",
-				},
-				MemberListResponseWithErr: &etcdutil.MemberListResponseWithErr{
-					ResponseHeader: &etcdserverpb.ResponseHeader{
-						ClusterId: 10,
-						MemberId:  1,
-						Revision:  20,
-						RaftTerm:  30,
-					},
-					Err: nil,
-				},
-			},
-			expectedClusterHealthy: true,
-			expectedSelf: &Member{
-				Member:         happyNode0.Member,
-				StatusResponse: happyNode0.StatusResponse,
-			},
-			expectedSelfHealthy: true,
-			expectedLeader: &Member{
-				Member:         happyNode0.Member,
-				StatusResponse: happyNode0.StatusResponse,
-			},
-			expectedMemberMap: map[uint64]*Member{
-				1001: &Member{
-					Member:         happyNode0.Member,
-					StatusResponse: happyNode0.StatusResponse,
-				},
-				1002: &Member{
-					Member:         happyNode1.Member,
-					StatusResponse: happyNode1.StatusResponse,
-				},
-				1003: &Member{
-					Member:         happyNode2.Member,
-					StatusResponse: happyNode2.StatusResponse,
-				},
-			},
-			expectedEndpoints: []string{
-				"https://10.0.0.1:8081",
-				"https://127.0.0.1:8081",
-				"https://10.0.0.2:8081",
-				"https://10.0.0.3:8081",
-			},
-		},
-		{
-			label: "node0 status error",
-			args:  newCommonArgs(),
-			mockClient: &etcdutil.MockClient{
-				NodeEndpointMap: map[string]*etcdutil.MockNode{
-					"https://10.0.0.1:8081": unhealthyNode0,
-					"https://10.0.0.2:8081": happyNode1,
-					"https://10.0.0.3:8081": happyNode2,
-				},
-				EndpointsResponse: []string{
-					"https://10.0.0.1:8081",
-					"https://10.0.0.2:8081",
-					"https://10.0.0.3:8081",
-				},
-				MemberListResponseWithErr: &etcdutil.MemberListResponseWithErr{
-					ResponseHeader: &etcdserverpb.ResponseHeader{
-						ClusterId: 10,
-						MemberId:  1,
-						Revision:  20,
-						RaftTerm:  30,
-					},
-					Err: nil,
-				},
-			},
-			expectedClusterHealthy: true,
-			expectedSelf:           nil,
-			expectedSelfHealthy:    false,
-			expectedLeader: &Member{
-				Member:         happyNode0.Member,
-				StatusResponse: nil,
-			},
-			expectedMemberMap: map[uint64]*Member{
-				1001: &Member{
-					Member:         unhealthyNode0.Member,
-					StatusResponse: nil,
-				},
-				1002: &Member{
-					Member:         happyNode1.Member,
-					StatusResponse: happyNode1.StatusResponse,
-				},
-				1003: &Member{
-					Member:         happyNode2.Member,
-					StatusResponse: happyNode2.StatusResponse,
-				},
-			},
-			expectedEndpoints: []string{
-				"https://10.0.0.1:8081",
-				"https://10.0.0.2:8081",
-				"https://10.0.0.3:8081",
-			},
-		},
-		{
-			label: "members list error",
-			args:  newCommonArgs(),
-			mockClient: &etcdutil.MockClient{
-				NodeEndpointMap: map[string]*etcdutil.MockNode{
-					"https://10.0.0.1:8081": unhealthyNode0,
-					"https://10.0.0.2:8081": happyNode1,
-					"https://10.0.0.3:8081": happyNode2,
-				},
-				EndpointsResponse: []string{
-					"https://10.0.0.1:8081",
-					"https://10.0.0.2:8081",
-					"https://10.0.0.3:8081",
-				},
-				MemberListResponseWithErr: &etcdutil.MemberListResponseWithErr{
-					ResponseHeader: nil,
-					Err:            errors.New("members list error"),
-				},
-			},
-			expectedClusterHealthy: false,
-			expectedSelf:           nil,
-			expectedSelfHealthy:    false,
-			expectedLeader:         nil,
-			expectedMemberMap:      map[uint64]*Member{},
 			expectedEndpoints: []string{
 				"https://10.0.0.1:8081",
 				"https://10.0.0.2:8081",
