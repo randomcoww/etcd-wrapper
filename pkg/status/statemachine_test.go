@@ -13,12 +13,13 @@ import (
 )
 
 type mockStep struct {
-	mockClient                 *etcdutil.MockClient
-	expectedMemberState        MemberState
-	expectedCreateClusterState string
-	expectedMemberAddedID      uint64
-	expectedMemberRemovedID    uint64
-	expectedEndpoints          []string
+	mockClient                      *etcdutil.MockClient
+	expectedMemberState             MemberState
+	expectedCreateClusterState      string
+	expectedNodeReplacementPeerURLs []string
+	expectedMemberAddedID           uint64
+	expectedMemberRemovedID         uint64
+	expectedEndpoints               []string
 }
 
 func TestStateMachineRun(t *testing.T) {
@@ -41,11 +42,23 @@ func TestStateMachineRun(t *testing.T) {
 		Leader: happyNode0Member.ID,
 	}
 
+	node0MemberWithAdditionalPeer := &etcdserverpb.Member{
+		ID:   1001,
+		Name: "node0",
+		PeerURLs: []string{
+			"https://10.0.0.1:8001",
+			"https://10.0.1.1:8001",
+		},
+		ClientURLs: []string{
+			"https://10.0.0.1:8081",
+		},
+	}
 	newNode0Member := &etcdserverpb.Member{
 		ID:   1004,
 		Name: "",
 		PeerURLs: []string{
 			"https://10.0.0.1:8001",
+			"https://10.0.1.1:8001",
 		},
 		ClientURLs: []string{},
 	}
@@ -54,6 +67,7 @@ func TestStateMachineRun(t *testing.T) {
 		Name: "node0",
 		PeerURLs: []string{
 			"https://10.0.0.1:8001",
+			"https://10.0.1.1:8001",
 		},
 		ClientURLs: []string{
 			"https://10.0.0.4:8081",
@@ -159,7 +173,7 @@ func TestStateMachineRun(t *testing.T) {
 	clientResponseNode0Down := &etcdutil.MockClient{
 		MemberListResponseWithErr: &etcdutil.MemberListResponseWithErr{
 			Members: []*etcdserverpb.Member{
-				happyNode0Member,
+				node0MemberWithAdditionalPeer,
 				happyNode1Member,
 				happyNode2Member,
 			},
@@ -413,11 +427,12 @@ func TestStateMachineRun(t *testing.T) {
 					expectedMemberState: MemberStateFailed,
 				},
 				&mockStep{
-					mockClient:                 clientResponseNode0Down,
-					expectedMemberState:        MemberStateHealthy,
-					expectedMemberRemovedID:    happyNode0Member.ID,
-					expectedMemberAddedID:      newNode0Member.ID,
-					expectedCreateClusterState: "existing",
+					mockClient:                      clientResponseNode0Down,
+					expectedMemberState:             MemberStateHealthy,
+					expectedMemberRemovedID:         happyNode0Member.ID,
+					expectedMemberAddedID:           newNode0Member.ID,
+					expectedCreateClusterState:      "existing",
+					expectedNodeReplacementPeerURLs: node0MemberWithAdditionalPeer.PeerURLs,
 				},
 				&mockStep{
 					mockClient:          clientResponseNode0Replaced,
@@ -568,6 +583,10 @@ func TestStateMachineRun(t *testing.T) {
 				assert.Equal(t, step.expectedMemberState, status.MemberState)
 				if len(step.expectedCreateClusterState) > 0 {
 					assert.Equal(t, step.expectedCreateClusterState, args.InitialClusterState)
+				}
+				if len(step.expectedNodeReplacementPeerURLs) > 0 {
+					assert.ElementsMatch(t, step.expectedNodeReplacementPeerURLs, args.ListenPeerURLs)
+					assert.ElementsMatch(t, step.expectedNodeReplacementPeerURLs, args.InitialAdvertisePeerURLs)
 				}
 				assert.Equal(t, step.expectedMemberAddedID, step.mockClient.MemberAddedID)
 				assert.Equal(t, step.expectedMemberRemovedID, step.mockClient.MemberRemovedID)

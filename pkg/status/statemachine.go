@@ -3,6 +3,7 @@ package status
 import (
 	"fmt"
 	"github.com/randomcoww/etcd-wrapper/pkg/arg"
+	"github.com/randomcoww/etcd-wrapper/pkg/etcdutil"
 	"log"
 )
 
@@ -18,6 +19,48 @@ const (
 func (v *Status) Run(args *arg.Args) error {
 	defer v.EtcdPod.DeleteFile(args)
 	var healthCheckFailedCount, readyCheckFailedCount, memberCheckFailedCount int
+
+	replaceMember := func(m etcdutil.Member) error {
+		if err := v.ReplaceMember(m); err != nil {
+			log.Printf("Failed to replace member: %v", err)
+			return err
+		}
+		log.Printf("Replaced member %v", m.GetID())
+		return nil
+	}
+
+	replaceMemberSelf := func(m etcdutil.Member) error {
+		if err := replaceMember(m); err != nil {
+			return err
+		}
+		args.ListenPeerURLs = m.GetPeerURLs()
+		args.InitialAdvertisePeerURLs = m.GetPeerURLs()
+		return nil
+	}
+
+	createPodForNewCluster := func() error {
+		log.Printf("Creating new node")
+		args.InitialClusterState = "new"
+		err := v.EtcdPod.WriteFile(args)
+		if err != nil {
+			log.Printf("Failed to write pod manifest file: %v", err)
+			return err
+		}
+		return nil
+	}
+
+	createPodForExistingCluster := func() error {
+		log.Printf("Attempt to join existing cluster")
+		args.InitialClusterState = "existing"
+		err := v.EtcdPod.WriteFile(args)
+		if err != nil {
+			log.Printf("Failed to write pod manifest file: %v", err)
+			return err
+		}
+		return nil
+	}
+
+	// main
 
 	go func() {
 		for {
@@ -72,21 +115,12 @@ func (v *Status) Run(args *arg.Args) error {
 
 				case v.Healthy:
 					if memberToReplace := v.GetMemberToReplace(); memberToReplace != nil {
-						if err := v.ReplaceMember(memberToReplace); err != nil {
-							log.Printf("Replace member failed")
-						} else {
-							log.Printf("Replaced member: %v", memberToReplace.GetID())
-							args.ListenPeerURLs = memberToReplace.GetPeerURLs()
-							args.InitialAdvertisePeerURLs = memberToReplace.GetPeerURLs()
-						}
+						replaceMemberSelf(memberToReplace)
 					}
 					fallthrough
 
 				default:
-					log.Printf("Attempt to join existing cluster")
-					args.InitialClusterState = "existing"
-					if err := v.EtcdPod.WriteFile(args); err != nil {
-						log.Printf("Failed to write pod manifest for new node, %v", err)
+					if err := createPodForExistingCluster(); err != nil {
 						return err
 					}
 					v.MemberState = MemberStateHealthy
@@ -132,10 +166,7 @@ func (v *Status) Run(args *arg.Args) error {
 					log.Printf("Unresponsive member check %v of %v", memberCheckFailedCount, args.HealthCheckFailedCountMax)
 					if memberCheckFailedCount >= args.HealthCheckFailedCountMax {
 						memberCheckFailedCount = 0
-						if err := v.ReplaceMember(memberToReplace); err != nil {
-							log.Printf("Replace member failed")
-						}
-						log.Printf("Replaced member: %v", memberToReplace.GetID())
+						replaceMember(memberToReplace)
 					}
 
 				default:
@@ -151,29 +182,16 @@ func (v *Status) Run(args *arg.Args) error {
 
 				case v.Healthy:
 					if memberToReplace := v.GetMemberToReplace(); memberToReplace != nil {
-						if err := v.ReplaceMember(memberToReplace); err != nil {
-							log.Printf("Replace member failed")
-						} else {
-							log.Printf("Replaced member: %v", memberToReplace.GetID())
-							args.ListenPeerURLs = memberToReplace.GetPeerURLs()
-							args.InitialAdvertisePeerURLs = memberToReplace.GetPeerURLs()
-						}
+						replaceMemberSelf(memberToReplace)
 					}
-
-					log.Printf("Attempt to join existing cluster")
-					args.InitialClusterState = "existing"
-					if err := v.EtcdPod.WriteFile(args); err != nil {
-						log.Printf("Failed to write pod manifest for new node, %v", err)
+					if err := createPodForExistingCluster(); err != nil {
 						return err
 					}
 					v.MemberState = MemberStateHealthy
 					log.Printf("State transitioned to healthy")
 
 				default:
-					log.Printf("Creating new node")
-					args.InitialClusterState = "new"
-					if err := v.EtcdPod.WriteFile(args); err != nil {
-						log.Printf("Failed to write pod manifest for new node, %v", err)
+					if err := createPodForNewCluster(); err != nil {
 						return err
 					}
 					v.MemberState = MemberStateWait
