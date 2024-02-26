@@ -13,7 +13,7 @@ func main() {
 	}
 
 	status := status.New(args, &manifest.EtcdPod{})
-	if err = status.Run(args, 0); err != nil {
+	if err = status.Run(args); err != nil {
 		panic(err)
 	}
 }

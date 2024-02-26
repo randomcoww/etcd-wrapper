@@ -9,6 +9,7 @@ import (
 	"gopkg.in/yaml.v3"
 	"io"
 	"sync"
+	"time"
 )
 
 type Member struct {
@@ -17,17 +18,21 @@ type Member struct {
 }
 
 type Status struct {
-	Healthy       bool                                    `yaml:"healthy"`
-	ClusterID     uint64                                  `yaml:"clusterID,omitempty"`
-	MemberState   MemberState                             `yaml:"memberState,omitempty"`
-	Endpoints     []string                                `yaml:"endpoints,omitempty"`
-	MemberMap     map[uint64]*Member                      `yaml:"members"`
-	Self          *Member                                 `yaml:"-"`
-	Leader        *Member                                 `yaml:"-"`
-	mu            sync.Mutex                              `yaml:"-"`
-	NewEtcdClient func([]string) (etcdutil.Client, error) `yaml:"-"`
-	EtcdPod       manifest.Manifest                       `yaml:"-"`
-	quit          chan struct{}                           `yaml:"-"`
+	Healthy         bool                                    `yaml:"healthy"`
+	ClusterID       uint64                                  `yaml:"clusterID,omitempty"`
+	MemberState     MemberState                             `yaml:"memberState,omitempty"`
+	Endpoints       []string                                `yaml:"endpoints,omitempty"`
+	MemberMap       map[uint64]*Member                      `yaml:"members"`
+	Self            *Member                                 `yaml:"-"`
+	Leader          *Member                                 `yaml:"-"`
+	mu              sync.Mutex                              `yaml:"-"`
+	NewEtcdClient   func([]string) (etcdutil.Client, error) `yaml:"-"`
+	EtcdPod         manifest.Manifest                       `yaml:"-"`
+	HealthCheckChan chan time.Time                          `yaml:"-"`
+	HealthCheckTick <-chan time.Time                        `yaml:"-"`
+	BackupChan      chan time.Time                          `yaml:"-"`
+	BackupTick      <-chan time.Time                        `yaml:"-"`
+	Quit            chan struct{}                           `yaml:"-"`
 }
 
 // healthy if memberID from status matches ID returned from member list
@@ -49,8 +54,12 @@ func New(args *arg.Args, etcdPod manifest.Manifest) *Status {
 		NewEtcdClient: func(endpoints []string) (etcdutil.Client, error) {
 			return etcdutil.New(endpoints, args.ClientTLSConfig)
 		},
-		EtcdPod: etcdPod,
-		quit:    make(chan struct{}, 1),
+		EtcdPod:         etcdPod,
+		HealthCheckChan: make(chan time.Time),
+		HealthCheckTick: time.NewTicker(args.HealthCheckInterval).C,
+		BackupChan:      make(chan time.Time),
+		BackupTick:      time.NewTicker(args.BackupInterval).C,
+		Quit:            make(chan struct{}, 1),
 	}
 	return status
 }

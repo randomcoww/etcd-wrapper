@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/randomcoww/etcd-wrapper/pkg/arg"
 	"log"
-	"time"
 )
 
 type MemberState int
@@ -16,19 +15,18 @@ const (
 	MemberStateFailed  MemberState = 3
 )
 
-func (v *Status) Run(args *arg.Args, tickCountMax int) error {
+func (v *Status) Run(args *arg.Args) error {
 	defer v.EtcdPod.DeleteFile(args)
-
-	var healthCheckFailedCount, readyCheckFailedCount, memberCheckFailedCount, tickCount int
-	intervalTick := time.NewTicker(args.HealthCheckInterval)
-	backupIntervalTick := time.NewTicker(args.BackupInterval)
+	var healthCheckFailedCount, readyCheckFailedCount, memberCheckFailedCount int
 
 	for {
 		select {
-		case <-v.quit:
+		case <-v.Quit:
 			return nil
 
-		case <-backupIntervalTick.C:
+		case t := <-v.BackupTick:
+			v.BackupChan <- t
+		case <-v.BackupChan:
 			if err := v.SyncStatus(args); err != nil {
 				return err
 			}
@@ -51,16 +49,12 @@ func (v *Status) Run(args *arg.Args, tickCountMax int) error {
 				log.Printf("Snapshot backup success.")
 			}
 
-		case <-intervalTick.C:
+		case t := <-v.HealthCheckTick:
+			v.HealthCheckChan <- t
+		case <-v.HealthCheckChan:
 			if err := v.SyncStatus(args); err != nil {
 				return err
 			}
-			tickCount++
-			if tickCountMax > 0 && tickCount >= tickCountMax {
-				tickCount = 0
-				v.quit <- struct{}{}
-			}
-
 			switch v.MemberState {
 			case MemberStateInit:
 				switch {
@@ -116,9 +110,9 @@ func (v *Status) Run(args *arg.Args, tickCountMax int) error {
 					memberCheckFailedCount = 0
 
 					healthCheckFailedCount++
-					log.Printf("Health check %v of %v", healthCheckFailedCount, args.HealthCheckFailedCountMax)
+					log.Printf("Health check failed %v of %v", healthCheckFailedCount, args.HealthCheckFailedCountMax)
 					if healthCheckFailedCount >= args.HealthCheckFailedCountMax {
-						memberCheckFailedCount = 0
+						healthCheckFailedCount = 0
 						v.MemberState = MemberStateFailed
 						log.Printf("State transitioned to failed")
 					}
