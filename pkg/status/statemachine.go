@@ -19,13 +19,23 @@ func (v *Status) Run(args *arg.Args) error {
 	defer v.EtcdPod.DeleteFile(args)
 	var healthCheckFailedCount, readyCheckFailedCount, memberCheckFailedCount int
 
+	go func() {
+		for {
+			select {
+			case t := <-v.HealthCheckTick:
+				v.HealthCheckChan <- t
+
+			case t := <-v.BackupTick:
+				v.BackupChan <- t
+			}
+		}
+	}()
+
 	for {
 		select {
 		case <-v.Quit:
 			return nil
 
-		case t := <-v.BackupTick:
-			v.BackupChan <- t
 		case <-v.BackupChan:
 			if err := v.SyncStatus(args); err != nil {
 				return err
@@ -49,8 +59,6 @@ func (v *Status) Run(args *arg.Args) error {
 				log.Printf("Snapshot backup success.")
 			}
 
-		case t := <-v.HealthCheckTick:
-			v.HealthCheckChan <- t
 		case <-v.HealthCheckChan:
 			if err := v.SyncStatus(args); err != nil {
 				return err
