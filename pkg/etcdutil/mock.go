@@ -35,6 +35,8 @@ type MockClient struct {
 	MemberAddResponseWithErr    *MemberAddResponseWithErr
 	MemberListResponseWithErr   *MemberListResponseWithErr
 	MemberRemoveResponseWithErr *MemberListResponseWithErr
+	MemberAddedID               uint64
+	MemberRemovedID             uint64
 }
 
 func (m *MockClient) Close() error {
@@ -74,6 +76,7 @@ func (m *MockClient) ListMembers() (List, error) {
 }
 
 func (m *MockClient) AddMember(peerURLs []string) (List, Member, error) {
+	m.MemberAddedID = m.MemberAddResponseWithErr.Member.GetID()
 	return &etcdserverpb.MemberAddResponse{
 		Header:  m.MemberAddResponseWithErr.ResponseHeader,
 		Members: m.MemberAddResponseWithErr.Members,
@@ -81,6 +84,7 @@ func (m *MockClient) AddMember(peerURLs []string) (List, Member, error) {
 }
 
 func (m *MockClient) RemoveMember(id uint64) (List, error) {
+	m.MemberRemovedID = id
 	return &etcdserverpb.MemberRemoveResponse{
 		Header:  m.MemberRemoveResponseWithErr.ResponseHeader,
 		Members: m.MemberRemoveResponseWithErr.Members,

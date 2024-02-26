@@ -118,6 +118,8 @@ func (v *Status) Run(args *arg.Args) error {
 					}
 
 				case memberToReplace != nil:
+					healthCheckFailedCount = 0
+
 					memberCheckFailedCount++
 					log.Printf("Unresponsive member check %v of %v", memberCheckFailedCount, args.HealthCheckFailedCountMax)
 					if memberCheckFailedCount >= args.HealthCheckFailedCountMax {
