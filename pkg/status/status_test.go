@@ -10,30 +10,6 @@ import (
 )
 
 func TestSyncStatus(t *testing.T) {
-	newCommonArgs := func() *arg.Args {
-		return &arg.Args{
-			Name: "node0",
-			AdvertiseClientURLs: []string{
-				"https://127.0.0.1:8081",
-				"https://10.0.0.1:8081",
-			},
-			InitialCluster: []*arg.Node{
-				&arg.Node{
-					Name:    "node0",
-					PeerURL: "https://10.0.0.1:8001",
-				},
-				&arg.Node{
-					Name:    "node1",
-					PeerURL: "https://10.0.0.2:8001",
-				},
-				&arg.Node{
-					Name:    "node2",
-					PeerURL: "https://10.0.0.3:8001",
-				},
-			},
-		}
-	}
-
 	happyNode0Member := &etcdserverpb.Member{
 		ID:   1001,
 		Name: "node0",
@@ -96,7 +72,6 @@ func TestSyncStatus(t *testing.T) {
 
 	tests := []struct {
 		label                   string
-		args                    *arg.Args
 		mockClient              *etcdutil.MockClient
 		expectedClusterHealthy  bool
 		expectedSelf            *Member
@@ -108,7 +83,6 @@ func TestSyncStatus(t *testing.T) {
 	}{
 		{
 			label: "happy path",
-			args:  newCommonArgs(),
 			mockClient: &etcdutil.MockClient{
 				EndpointsResponse: []string{
 					"https://127.0.0.1:8081",
@@ -171,7 +145,6 @@ func TestSyncStatus(t *testing.T) {
 		},
 		{
 			label: "unhealthy node",
-			args:  newCommonArgs(),
 			mockClient: &etcdutil.MockClient{
 				EndpointsResponse: []string{
 					"https://127.0.0.1:8081",
@@ -225,7 +198,6 @@ func TestSyncStatus(t *testing.T) {
 		},
 		{
 			label: "unhealthy new node not marked for replace",
-			args:  newCommonArgs(),
 			mockClient: &etcdutil.MockClient{
 				EndpointsResponse: []string{
 					"https://127.0.0.1:8081",
@@ -276,7 +248,6 @@ func TestSyncStatus(t *testing.T) {
 		},
 		{
 			label: "unhealthy member list ignores status and keeps endpoints",
-			args:  newCommonArgs(),
 			mockClient: &etcdutil.MockClient{
 				EndpointsResponse: []string{
 					"https://127.0.0.1:8081",
@@ -319,6 +290,27 @@ func TestSyncStatus(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.label, func(t *testing.T) {
+			args := &arg.Args{
+				Name: "node0",
+				AdvertiseClientURLs: []string{
+					"https://127.0.0.1:8081",
+					"https://10.0.0.1:8081",
+				},
+				InitialCluster: []*arg.Node{
+					&arg.Node{
+						Name:    "node0",
+						PeerURL: "https://10.0.0.1:8001",
+					},
+					&arg.Node{
+						Name:    "node1",
+						PeerURL: "https://10.0.0.2:8001",
+					},
+					&arg.Node{
+						Name:    "node2",
+						PeerURL: "https://10.0.0.3:8001",
+					},
+				},
+			}
 			status := &Status{
 				Endpoints: tt.mockClient.EndpointsResponse,
 				NewEtcdClient: func(endpoints []string) (etcdutil.Client, error) {
@@ -326,7 +318,7 @@ func TestSyncStatus(t *testing.T) {
 					return tt.mockClient, nil
 				},
 			}
-			err := status.SyncStatus(tt.args)
+			err := status.SyncStatus(args)
 			assert.Equal(t, nil, err)
 			assert.Equal(t, tt.expectedClusterHealthy, status.Healthy)
 			assert.Equal(t, tt.expectedSelf, status.Self)

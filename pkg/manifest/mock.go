@@ -32,7 +32,7 @@ func (p *MockEtcdPod) WriteFile(args *arg.Args) error {
 			return fmt.Errorf("Error getting snapshot: %v", err)
 		}
 		if !ok {
-			log.Printf("Snapshot not found. Joining existing cluster")
+			log.Printf("Snapshot not found. Starting new cluster")
 			pod = podspec.Create(args, false, manifestVersion)
 
 		} else {
