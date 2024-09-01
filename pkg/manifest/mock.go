@@ -9,7 +9,6 @@ import (
 	"io"
 	"k8s.io/api/core/v1"
 	"log"
-	"time"
 )
 
 type MockEtcdPod struct {
@@ -21,8 +20,6 @@ func (p *MockEtcdPod) WriteFile(args *arg.Args) error {
 	defer cancel()
 
 	var pod *v1.Pod
-	manifestVersion := fmt.Sprintf("%v", time.Now().Unix())
-
 	switch args.InitialClusterState {
 	case "new":
 		ok, err := args.S3Client.Download(ctx, args.S3BackupBucket, args.S3BackupKey, func(ctx context.Context, r io.Reader) error {
@@ -33,15 +30,15 @@ func (p *MockEtcdPod) WriteFile(args *arg.Args) error {
 		}
 		if !ok {
 			log.Printf("Snapshot not found. Starting new cluster")
-			pod = podspec.Create(args, false, manifestVersion)
+			pod = podspec.Create(args, false)
 
 		} else {
 			log.Printf("Successfully got snapshot. Restoring existing cluster")
-			pod = podspec.Create(args, true, manifestVersion)
+			pod = podspec.Create(args, true)
 		}
 
 	case "existing":
-		pod = podspec.Create(args, false, manifestVersion)
+		pod = podspec.Create(args, false)
 
 	default:
 		return fmt.Errorf("InitialClusterState not defined")

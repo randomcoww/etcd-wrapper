@@ -14,7 +14,7 @@ const (
 	dataDir              string = "/var/etcd/data"
 )
 
-func Create(args *arg.Args, runRestore bool, versionAnnotation string) *v1.Pod {
+func Create(args *arg.Args, runRestore bool) *v1.Pod {
 	var priority int32 = 2000001000
 	var memberPeers []string
 	for _, node := range args.InitialCluster {
@@ -31,9 +31,6 @@ func Create(args *arg.Args, runRestore bool, versionAnnotation string) *v1.Pod {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      args.EtcdPodName,
 			Namespace: args.EtcdPodNamespace,
-			Annotations: map[string]string{
-				"etcd-wrapper/version": versionAnnotation,
-			},
 		},
 		Spec: v1.PodSpec{
 			HostNetwork:       true,
