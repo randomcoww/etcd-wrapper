@@ -29,7 +29,7 @@ func Create(args *arg.Args, runRestore bool) *v1.Pod {
 			Kind:       "Pod",
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      args.EtcdPodName,
+			Name:      fmt.Sprintf("%s-%s", args.EtcdPodName, args.InitialClusterState),
 			Namespace: args.EtcdPodNamespace,
 		},
 		Spec: v1.PodSpec{
