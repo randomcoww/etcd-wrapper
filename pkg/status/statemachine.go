@@ -159,7 +159,7 @@ func (v *Status) Run(args *arg.Args) error {
 						log.Printf("State transitioned to failed")
 					}
 
-				case memberToReplace != nil:
+				case v.Self == v.Leader && memberToReplace != nil:
 					healthCheckFailedCount = 0
 
 					memberCheckFailedCount++
