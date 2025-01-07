@@ -43,6 +43,7 @@ type Args struct {
 	ReadyCheckFailedCountMax  int
 	S3Client                  s3util.Client
 	ClientTLSConfig           *tls.Config
+	PodPriorityClassName      string
 	PodPriority               int32
 }
 
@@ -90,7 +91,8 @@ func New() (*Args, error) {
 	flag.DurationVar(&args.BackupInterval, "backup-interval", 15*time.Minute, "Backup trigger interval.")
 	flag.IntVar(&args.HealthCheckFailedCountMax, "healthcheck-fail-count-allowed", 16, "Number of healthcheck failures to allow before restarting etcd pod.")
 	flag.IntVar(&args.ReadyCheckFailedCountMax, "readiness-fail-count-allowed", 64, "Number of readiness check failures to allow before restarting etcd pod.")
-	flag.IntVar(&podPriority, "etcd-pod-priority", 2000000000, "Priority class int value for etcd pod.")
+	flag.StringVar(&args.PodPriorityClassName, "etcd-pod-priority-class-name", "system-cluster-critical", "Priority class name for etcd pod.")
+	flag.IntVar(&podPriority, "etcd-pod-priority", 2000000000, "Priority int value for etcd pod.")
 	flag.Parse()
 
 	args.S3Client, err = s3util.New(s3BackupEndpoint)

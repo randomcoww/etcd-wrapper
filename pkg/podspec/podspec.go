@@ -32,11 +32,12 @@ func Create(args *arg.Args, runRestore bool) *v1.Pod {
 			Namespace: args.EtcdPodNamespace,
 		},
 		Spec: v1.PodSpec{
-			HostNetwork:    true,
-			InitContainers: []v1.Container{},
-			Containers:     []v1.Container{},
-			Priority:       &args.PodPriority,
-			RestartPolicy:  v1.RestartPolicyAlways,
+			HostNetwork:       true,
+			InitContainers:    []v1.Container{},
+			Containers:        []v1.Container{},
+			PriorityClassName: args.PodPriorityClassName,
+			Priority:          &args.PodPriority,
+			RestartPolicy:     v1.RestartPolicyAlways,
 			Volumes: []v1.Volume{
 				{
 					Name: "cert-file",
