@@ -43,6 +43,7 @@ type Args struct {
 	ReadyCheckFailedCountMax  int
 	S3Client                  s3util.Client
 	ClientTLSConfig           *tls.Config
+	PodPriority               int32
 }
 
 type Node struct {
@@ -80,6 +81,7 @@ func New() (*Args, error) {
 
 	// etcd wrapper args
 	var clientCertFile, clientKeyFile, s3BackupEndpoint, s3BackupResource string
+	var podPriority int
 	flag.StringVar(&clientCertFile, "client-cert-file", "", "Path to the client server TLS cert file.")
 	flag.StringVar(&clientKeyFile, "client-key-file", "", "Path to the client server TLS key file.")
 	flag.StringVar(&s3BackupEndpoint, "s3-backup-endpoint", "s3.amazonaws.com", "S3 endpoint for backup.")
@@ -88,6 +90,7 @@ func New() (*Args, error) {
 	flag.DurationVar(&args.BackupInterval, "backup-interval", 15*time.Minute, "Backup trigger interval.")
 	flag.IntVar(&args.HealthCheckFailedCountMax, "healthcheck-fail-count-allowed", 16, "Number of healthcheck failures to allow before restarting etcd pod.")
 	flag.IntVar(&args.ReadyCheckFailedCountMax, "readiness-fail-count-allowed", 64, "Number of readiness check failures to allow before restarting etcd pod.")
+	flag.IntVar(&podPriority, "etcd-pod-priority", 2000000000, "Priority class int value for etcd pod.")
 	flag.Parse()
 
 	args.S3Client, err = s3util.New(s3BackupEndpoint)
@@ -122,6 +125,7 @@ func New() (*Args, error) {
 	for _, i := range reList.Split(listenClientURLs, -1) {
 		args.ListenClientURLs = append(args.ListenClientURLs, i)
 	}
+	args.PodPriority = int32(podPriority)
 
 	for _, member := range reList.Split(initialCluster, -1) {
 		k := reNode.Split(member, 2)

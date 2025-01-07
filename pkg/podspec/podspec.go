@@ -15,7 +15,6 @@ const (
 )
 
 func Create(args *arg.Args, runRestore bool) *v1.Pod {
-	var priority int32 = 2000001000
 	var memberPeers []string
 	for _, node := range args.InitialCluster {
 		memberPeers = append(memberPeers, fmt.Sprintf("%s=%s", node.Name, node.PeerURL))
@@ -33,12 +32,11 @@ func Create(args *arg.Args, runRestore bool) *v1.Pod {
 			Namespace: args.EtcdPodNamespace,
 		},
 		Spec: v1.PodSpec{
-			HostNetwork:       true,
-			InitContainers:    []v1.Container{},
-			Containers:        []v1.Container{},
-			PriorityClassName: "system-node-critical",
-			Priority:          &priority,
-			RestartPolicy:     v1.RestartPolicyAlways,
+			HostNetwork:    true,
+			InitContainers: []v1.Container{},
+			Containers:     []v1.Container{},
+			Priority:       &args.PodPriority,
+			RestartPolicy:  v1.RestartPolicyAlways,
 			Volumes: []v1.Volume{
 				{
 					Name: "cert-file",
