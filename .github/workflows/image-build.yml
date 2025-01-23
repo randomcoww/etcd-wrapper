@@ -1,7 +1,9 @@
-name: image build
-
+name: CI
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - v*
 
 jobs:
   build:
