@@ -29,5 +29,5 @@ jobs:
         /kaniko/executor \
           --dockerfile="./Containerfile" \
           --context="${{ github.repositoryUrl }}#${{ github.ref }}#${{ github.sha }}" \
-          --destination="ghcr.io/${{ github.repositoryUrl }}:${{ github.head_ref || github.ref_name }}" \
+          --destination="ghcr.io/${{ github.repository }}:${{ github.head_ref || github.ref_name }}" \
           --push-retry 3
