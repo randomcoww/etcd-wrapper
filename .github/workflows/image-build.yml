@@ -7,12 +7,12 @@ jobs:
   build:
     runs-on: arc-runner-etcd-wrapper
     container:
-      image: gcr.io/kaniko-project/executor:latest
+      image: gcr.io/kaniko-project/executor:debug
     permissions:
       contents: read
       packages: write
     steps:
-    - name: Build and push container test
+    - name: Build and push container
       run: |
         # Reference: https://some-natalie.dev/blog/kaniko-in-arc/
 
