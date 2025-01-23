@@ -1,0 +1,33 @@
+name: image build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: arc-runner-etcd-wrapper
+    container:
+      image: gcr.io/kaniko-project/executor:latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+    - name: Build and push container test
+      run: |
+        # Reference: https://some-natalie.dev/blog/kaniko-in-arc/
+
+        cat > /kaniko/.docker/config.json <<EOF
+        {
+          "auths": {
+            "ghcr.io": {
+              "auth": "$(echo -n ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }} | base64)"
+            }
+          }
+        }
+        EOF
+
+        /kaniko/executor \
+          --dockerfile="./Containerfile" \
+          --context="${{ github.repositoryUrl }}#${{ github.ref }}#${{ github.sha }}" \
+          --destination="ghcr.io/${{ github.repositoryUrl }}:${{ github.head_ref || github.ref_name }}" \
+          --push-retry 3

@@ -4,7 +4,7 @@
 TAG=ghcr.io/randomcoww/etcd-wrapper:$(date -u +'%Y%m%d').7
 
 mkdir -p build
-TMPDIR=$(pwd)/build podman build \
+podman build \
   -t $TAG .
 
 podman push $TAG
