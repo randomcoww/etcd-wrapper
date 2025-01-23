@@ -1,3 +1,7 @@
+# References:
+# https://some-natalie.dev/blog/kaniko-in-arc/
+# https://dev.to/ipo/using-kaniko-to-build-and-publish-container-image-with-github-action-on-github-self-hosted-runners-d5m
+
 name: Image Build
 on:
   workflow_dispatch:
@@ -16,10 +20,6 @@ jobs:
     steps:
     - name: Build and release container
       run: |
-        # References:
-        # https://some-natalie.dev/blog/kaniko-in-arc/
-        # https://dev.to/ipo/using-kaniko-to-build-and-publish-container-image-with-github-action-on-github-self-hosted-runners-d5m
-
         cat > /kaniko/.docker/config.json <<EOF
         {
           "auths": {
