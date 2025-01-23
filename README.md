@@ -3,7 +3,6 @@
 ```
 TAG=ghcr.io/randomcoww/etcd-wrapper:$(date -u +'%Y%m%d').7
 
-mkdir -p build
 podman build \
   -t $TAG .
 
