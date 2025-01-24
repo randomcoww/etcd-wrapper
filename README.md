@@ -1,9 +1,9 @@
-### Dev build
+### Dev
 
 ```
 podman run -it --rm \
-  -v $(pwd):/go/etcd-wrapper \
-  -w /go/etcd-wrapper \
+  -v $(pwd):/go/src/etcd-wrapper \
+  -w /go/src/etcd-wrapper \
    golang:alpine sh
 ```
 
