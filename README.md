@@ -1,14 +1,3 @@
-### Image build
-
-```
-TAG=ghcr.io/randomcoww/etcd-wrapper:$(date -u +'%Y%m%d').7
-
-podman build \
-  -t $TAG .
-
-podman push $TAG
-```
-
 ### Dev build
 
 ```
