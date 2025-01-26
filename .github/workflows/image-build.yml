@@ -11,7 +11,7 @@ on:
 
 jobs:
   build:
-    runs-on: arc-runner-etcd-wrapper
+    runs-on: arc-runner-${{ github.event.repository.name }}
     container:
       image: gcr.io/kaniko-project/executor:debug
     permissions:
