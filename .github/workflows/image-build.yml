@@ -20,7 +20,7 @@ jobs:
     steps:
     - name: Build and release container
       run: |
-        cat > /kaniko/.docker/config.json <<EOF
+        cat > $DOCKER_CONFIG/config.json <<EOF
         {
           "auths": {
             "ghcr.io": {
