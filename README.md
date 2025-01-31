@@ -18,6 +18,9 @@ tw() {
     --entrypoint='' \
     -v $(pwd):$(pwd) \
     -w $(pwd) \
+    -e AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID \
+    -e AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY \
+    -e AWS_ENDPOINT_URL_S3=$AWS_ENDPOINT_URL_S3 \
     --net=host \
     docker.io/hashicorp/terraform:latest "$@"
   rc=$?; set +x; return $rc
