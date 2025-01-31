@@ -54,6 +54,8 @@ func (v *client) Download(ctx context.Context, bucket, key string, handler func(
 }
 
 func (v *client) Upload(ctx context.Context, bucket, key string, r io.Reader) error {
-	_, err := v.PutObject(ctx, bucket, key, r, -1, minio.PutObjectOptions{})
+	_, err := v.PutObject(ctx, bucket, key, r, -1, minio.PutObjectOptions{
+		AutoChecksum: minio.ChecksumCRC32,
+	})
 	return err
 }
