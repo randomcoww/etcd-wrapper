@@ -12,15 +12,12 @@ podman run -it --rm \
 Define the `tw` (terraform wrapper) command
 
 ```bash
-mkdir -p $HOME/.aws
-
 tw() {
   set -x
   podman run -it --rm --security-opt label=disable \
     --entrypoint='' \
     -v $(pwd):$(pwd) \
     -w $(pwd) \
-    -v $HOME/.aws:/root/.aws \
     --net=host \
     docker.io/hashicorp/terraform:latest "$@"
   rc=$?; set +x; return $rc
