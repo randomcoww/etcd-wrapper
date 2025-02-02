@@ -30,6 +30,7 @@ func Create(args *arg.Args, runRestore bool) *v1.Pod {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      fmt.Sprintf("%s-%s", args.EtcdPodName, args.InitialClusterState),
 			Namespace: args.EtcdPodNamespace,
+			Labels:    args.EtcdLabels,
 		},
 		Spec: v1.PodSpec{
 			HostNetwork:       true,
