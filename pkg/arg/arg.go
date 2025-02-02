@@ -31,9 +31,9 @@ type Args struct {
 	EtcdImage           string
 	EtcdPodName         string
 	EtcdPodNamespace    string
-	EtcdSnapshotFile    string
+	EtcdPodLabels       map[string]string
 	EtcdPodManifestFile string
-	EtcdLabels          map[string]string
+	EtcdSnapshotFile    string
 
 	// etcd wrapper args
 	S3BackupBucket            string
@@ -75,13 +75,13 @@ func New() (*Args, error) {
 	flag.StringVar(&args.AutoCompationRetention, "auto-compaction-retention", "0", "Auto compaction retention length. 0 means disable auto compaction.")
 
 	// pod manifest args
-	var etcdLabels string
+	var etcdPodLabels string
 	flag.StringVar(&args.EtcdImage, "etcd-image", "", "Etcd container image.")
 	flag.StringVar(&args.EtcdPodName, "etcd-pod-name", "etcd", "Name of etcd pod.")
 	flag.StringVar(&args.EtcdPodNamespace, "etcd-pod-namespace", "kube-system", "Namespace to launch etcd pod.")
 	flag.StringVar(&args.EtcdSnapshotFile, "etcd-snaphot-file", "/var/lib/etcd/etcd.db", "Host path to restore snapshot file.")
 	flag.StringVar(&args.EtcdPodManifestFile, "etcd-pod-manifest-file", "", "Host path to write etcd pod manifest file. This should be where kubelet reads static pod manifests.")
-	flag.StringVar(&etcdLabels, "etcd-pod-labels", "", "Labels to set for etcd pod.")
+	flag.StringVar(&etcdPodLabels, "etcd-pod-labels", "", "Labels to set for etcd pod.")
 
 	// etcd wrapper args
 	var clientCertFile, clientKeyFile, s3BackupEndpoint, s3BackupResource string
@@ -141,9 +141,9 @@ func New() (*Args, error) {
 		args.InitialCluster = append(args.InitialCluster, node)
 	}
 
-	for _, label := range reList.Split(etcdLabels, -1) {
+	for _, label := range reList.Split(etcdPodLabels, -1) {
 		k := reMap.Split(label, 2)
-		args.EtcdLabels[k[0]] = k[1]
+		args.EtcdPodLabels[k[0]] = k[1]
 	}
 	return args, nil
 }

@@ -29,7 +29,7 @@ func TestPodSpec(t *testing.T) {
 				EtcdPodName:      "etcd-pod",
 				EtcdPodNamespace: "test-ns",
 				EtcdImage:        "etcd-image:latest",
-				EtcdLabels: map[string]string{
+				EtcdPodLabels: map[string]string{
 					"key1": "value1",
 					"key2": "value2",
 				},
