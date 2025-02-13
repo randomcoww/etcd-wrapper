@@ -8,6 +8,8 @@ import (
 	"github.com/randomcoww/etcd-wrapper/pkg/s3util"
 	"github.com/stretchr/testify/assert"
 	etcdserverpb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"testing"
 	"time"
 )
@@ -542,6 +544,16 @@ func TestStateMachineRun(t *testing.T) {
 		t.Run(tt.label, func(t *testing.T) {
 			args := &arg.Args{
 				Name: "node0",
+				EtcdPod: &v1.Pod{
+					TypeMeta: metav1.TypeMeta{
+						APIVersion: "v1",
+						Kind:       "Pod",
+					},
+					ObjectMeta: metav1.ObjectMeta{
+						Name:      "etcd-pod",
+						Namespace: "test-ns",
+					},
+				},
 				AdvertiseClientURLs: []string{
 					"https://10.0.0.1:8081",
 				},

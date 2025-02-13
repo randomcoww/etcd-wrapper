@@ -31,15 +31,12 @@ func (p *MockEtcdPod) WriteFile(args *arg.Args) error {
 		if !ok {
 			log.Printf("Snapshot not found. Starting new cluster")
 			pod = podspec.Create(args, false)
-
 		} else {
 			log.Printf("Successfully got snapshot. Restoring existing cluster")
 			pod = podspec.Create(args, true)
 		}
-
 	case "existing":
 		pod = podspec.Create(args, false)
-
 	default:
 		return fmt.Errorf("InitialClusterState not defined")
 	}

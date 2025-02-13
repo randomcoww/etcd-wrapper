@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/randomcoww/etcd-wrapper/pkg/arg"
 	"k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"strings"
 )
 
@@ -15,276 +14,181 @@ const (
 )
 
 func Create(args *arg.Args, runRestore bool) *v1.Pod {
+	pod := args.EtcdPod.DeepCopy()
+	pod.ObjectMeta.Name = fmt.Sprintf("%s-%s", pod.ObjectMeta.Name, args.InitialClusterState)
+	etcdContainer := appendEtcdContainer(args, pod)
+	appendTLS(args, pod, etcdContainer)
+	appendCommonEnvs(args, pod, etcdContainer)
+
+	if runRestore {
+		restoreContainer := appendRestoreContainer(args, pod, etcdContainer)
+		appendCommonEnvs(args, pod, restoreContainer)
+	}
+	return pod
+}
+
+func appendEtcdContainer(args *arg.Args, pod *v1.Pod) *v1.Container {
+	for i, container := range pod.Spec.Containers {
+		if container.Name == etcdContainerName {
+			return &pod.Spec.Containers[i]
+		}
+	}
+	pod.Spec.Containers = append(pod.Spec.Containers, v1.Container{
+		Name: etcdContainerName,
+	})
+	return &pod.Spec.Containers[len(pod.Spec.Containers)-1]
+}
+
+func appendRestoreContainer(args *arg.Args, pod *v1.Pod, etcdContainer *v1.Container) *v1.Container {
+	hostPathFileType := v1.HostPathFile
+
+	pod.Spec.Volumes = append(pod.Spec.Volumes, []v1.Volume{
+		{
+			Name: fmt.Sprintf("db-%s", args.Name),
+			VolumeSource: v1.VolumeSource{
+				EmptyDir: &v1.EmptyDirVolumeSource{
+					Medium: v1.StorageMediumMemory,
+				},
+			},
+		},
+		{
+			Name: fmt.Sprintf("restore-%s", args.Name),
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
+					Path: args.EtcdSnapshotFile,
+					Type: &hostPathFileType,
+				},
+			},
+		},
+	}...)
+
+	sharedVolumeMount := v1.VolumeMount{
+		Name:      fmt.Sprintf("db-%s", args.Name),
+		MountPath: dataDir,
+	}
+	etcdContainer.VolumeMounts = append(etcdContainer.VolumeMounts, sharedVolumeMount)
+	pod.Spec.InitContainers = append(pod.Spec.InitContainers, v1.Container{
+		Name:  restoreContainerName,
+		Image: etcdContainer.Image,
+		Env: []v1.EnvVar{
+			{
+				Name:  "ETCDCTL_API",
+				Value: "3",
+			},
+		},
+		Command: strings.Split(fmt.Sprintf("etcdutl snapshot restore %s"+
+			" --name $(ETCD_NAME)"+
+			" --initial-cluster $(ETCD_INITIAL_CLUSTER)"+
+			" --initial-cluster-token $(ETCD_INITIAL_CLUSTER_TOKEN)"+
+			" --initial-advertise-peer-urls $(ETCD_INITIAL_ADVERTISE_PEER_URLS)"+
+			" --data-dir $(ETCD_DATA_DIR)", args.EtcdSnapshotFile), " "),
+		VolumeMounts: []v1.VolumeMount{
+			sharedVolumeMount,
+			{
+				Name:      fmt.Sprintf("restore-%s", args.Name),
+				MountPath: args.EtcdSnapshotFile,
+			},
+		},
+	})
+	return &pod.Spec.InitContainers[len(pod.Spec.InitContainers)-1]
+}
+
+func appendCommonEnvs(args *arg.Args, pod *v1.Pod, container *v1.Container) {
 	var memberPeers []string
 	for _, node := range args.InitialCluster {
 		memberPeers = append(memberPeers, fmt.Sprintf("%s=%s", node.Name, node.PeerURL))
 	}
 	initialCluster := strings.Join(memberPeers, ",")
+	container.Env = append(container.Env, []v1.EnvVar{
+		{
+			Name:  "ETCD_NAME",
+			Value: args.Name,
+		},
+		{
+			Name:  "ETCD_DATA_DIR",
+			Value: dataDir,
+		},
+		{
+			Name:  "ETCD_INITIAL_CLUSTER_TOKEN",
+			Value: args.InitialClusterToken,
+		},
+		{
+			Name:  "ETCD_INITIAL_CLUSTER_STATE",
+			Value: args.InitialClusterState,
+		},
+		{
+			Name:  "ETCD_INITIAL_CLUSTER",
+			Value: initialCluster,
+		},
+		{
+			Name:  "ETCD_LISTEN_CLIENT_URLS",
+			Value: strings.Join(args.ListenClientURLs, ","),
+		},
+		{
+			Name:  "ETCD_ADVERTISE_CLIENT_URLS",
+			Value: strings.Join(args.AdvertiseClientURLs, ","),
+		},
+		{
+			Name:  "ETCD_LISTEN_PEER_URLS",
+			Value: strings.Join(args.ListenPeerURLs, ","),
+		},
+		{
+			Name:  "ETCD_INITIAL_ADVERTISE_PEER_URLS",
+			Value: strings.Join(args.InitialAdvertisePeerURLs, ","),
+		},
+	}...)
+}
 
+func appendTLS(args *arg.Args, pod *v1.Pod, container *v1.Container) {
 	hostPathFileType := v1.HostPathFile
-	pod := &v1.Pod{
-		TypeMeta: metav1.TypeMeta{
-			APIVersion: "v1",
-			Kind:       "Pod",
+
+	for _, mount := range []struct {
+		env  string
+		path string
+	}{
+		{
+			env:  "ETCD_CERT_FILE",
+			path: args.CertFile,
 		},
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("%s-%s", args.EtcdPodName, args.InitialClusterState),
-			Namespace: args.EtcdPodNamespace,
-			Labels:    args.EtcdPodLabels,
+		{
+			env:  "ETCD_KEY_FILE",
+			path: args.KeyFile,
 		},
-		Spec: v1.PodSpec{
-			HostNetwork:       true,
-			InitContainers:    []v1.Container{},
-			Containers:        []v1.Container{},
-			PriorityClassName: args.PodPriorityClassName,
-			Priority:          &args.PodPriority,
-			RestartPolicy:     v1.RestartPolicyAlways,
-			Volumes: []v1.Volume{
-				{
-					Name: "cert-file",
-					VolumeSource: v1.VolumeSource{
-						HostPath: &v1.HostPathVolumeSource{
-							Path: args.CertFile,
-							Type: &hostPathFileType,
-						},
-					},
-				},
-				{
-					Name: "key-file",
-					VolumeSource: v1.VolumeSource{
-						HostPath: &v1.HostPathVolumeSource{
-							Path: args.KeyFile,
-							Type: &hostPathFileType,
-						},
-					},
-				},
-				{
-					Name: "trusted-ca-file",
-					VolumeSource: v1.VolumeSource{
-						HostPath: &v1.HostPathVolumeSource{
-							Path: args.TrustedCAFile,
-							Type: &hostPathFileType,
-						},
-					},
-				},
-				{
-					Name: "peer-cert-file",
-					VolumeSource: v1.VolumeSource{
-						HostPath: &v1.HostPathVolumeSource{
-							Path: args.PeerCertFile,
-							Type: &hostPathFileType,
-						},
-					},
-				},
-				{
-					Name: "peer-key-file",
-					VolumeSource: v1.VolumeSource{
-						HostPath: &v1.HostPathVolumeSource{
-							Path: args.PeerKeyFile,
-							Type: &hostPathFileType,
-						},
-					},
-				},
-				{
-					Name: "peer-trusted-ca-file",
-					VolumeSource: v1.VolumeSource{
-						HostPath: &v1.HostPathVolumeSource{
-							Path: args.PeerTrustedCAFile,
-							Type: &hostPathFileType,
-						},
-					},
-				},
-				{
-					Name: fmt.Sprintf("db-%s", args.Name),
-					VolumeSource: v1.VolumeSource{
-						EmptyDir: &v1.EmptyDirVolumeSource{
-							Medium: v1.StorageMediumMemory,
-						},
-					},
+		{
+			env:  "ETCD_TRUSTED_CA_FILE",
+			path: args.TrustedCAFile,
+		},
+		{
+			env:  "ETCD_PEER_CERT_FILE",
+			path: args.PeerCertFile,
+		},
+		{
+			env:  "ETCD_PEER_KEY_FILE",
+			path: args.PeerKeyFile,
+		},
+		{
+			env:  "ETCD_PEER_TRUSTED_CA_FILE",
+			path: args.PeerTrustedCAFile,
+		},
+	} {
+		volumeName := strings.ToLower(strings.ReplaceAll(mount.env, "_", "-"))
+		container.Env = append(container.Env, v1.EnvVar{
+			Name:  mount.env,
+			Value: mount.path,
+		})
+		pod.Spec.Volumes = append(pod.Spec.Volumes, v1.Volume{
+			Name: volumeName,
+			VolumeSource: v1.VolumeSource{
+				HostPath: &v1.HostPathVolumeSource{
+					Path: mount.path,
+					Type: &hostPathFileType,
 				},
 			},
-		},
+		})
+		container.VolumeMounts = append(container.VolumeMounts, v1.VolumeMount{
+			Name:      volumeName,
+			MountPath: mount.path,
+			ReadOnly:  true,
+		})
 	}
-
-	// Run recovery for existing clusters
-	if runRestore {
-		pod.Spec.Volumes = append(pod.Spec.Volumes,
-			v1.Volume{
-				Name: "snapshot-restore",
-				VolumeSource: v1.VolumeSource{
-					HostPath: &v1.HostPathVolumeSource{
-						Path: args.EtcdSnapshotFile,
-						Type: &hostPathFileType,
-					},
-				},
-			},
-		)
-
-		pod.Spec.InitContainers = append(pod.Spec.InitContainers,
-			v1.Container{
-				Name:  restoreContainerName,
-				Image: args.EtcdImage,
-				Env: []v1.EnvVar{
-					{
-						Name:  "ETCDCTL_API",
-						Value: "3",
-					},
-				},
-				Command: strings.Split(fmt.Sprintf("etcdutl snapshot restore %[1]s"+
-					" --name %[2]s"+
-					" --initial-cluster %[3]s"+
-					" --initial-cluster-token %[4]s"+
-					" --initial-advertise-peer-urls %[5]s"+
-					" --data-dir %[6]s",
-					args.EtcdSnapshotFile, args.Name, initialCluster, args.InitialClusterToken, strings.Join(args.InitialAdvertisePeerURLs, ","), dataDir), " "),
-				VolumeMounts: []v1.VolumeMount{
-					{
-						Name:      fmt.Sprintf("db-%s", args.Name),
-						MountPath: dataDir,
-					},
-					{
-						Name:      "snapshot-restore",
-						MountPath: args.EtcdSnapshotFile,
-					},
-				},
-			},
-		)
-	}
-
-	pod.Spec.Containers = append(pod.Spec.Containers,
-		v1.Container{
-			Name:  etcdContainerName,
-			Image: args.EtcdImage,
-			Env: []v1.EnvVar{
-				{
-					Name:  "ETCD_NAME",
-					Value: args.Name,
-				},
-				{
-					Name:  "ETCD_DATA_DIR",
-					Value: dataDir,
-				},
-				{
-					Name:  "ETCD_INITIAL_CLUSTER",
-					Value: initialCluster,
-				},
-				{
-					Name:  "ETCD_INITIAL_CLUSTER_STATE",
-					Value: args.InitialClusterState,
-				},
-				{
-					Name:  "ETCD_INITIAL_CLUSTER_TOKEN",
-					Value: args.InitialClusterToken,
-				},
-				{
-					Name:  "ETCD_ENABLE_V2",
-					Value: "false",
-				},
-				{
-					Name:  "ETCD_STRICT_RECONFIG_CHECK",
-					Value: "true",
-				},
-				{
-					Name:  "ETCD_AUTO_COMPACTION_RETENTION",
-					Value: args.AutoCompationRetention,
-				},
-				{
-					Name:  "ETCD_AUTO_COMPACTION_MODE",
-					Value: "revision",
-				},
-				// Listen
-				{
-					Name:  "ETCD_LISTEN_CLIENT_URLS",
-					Value: strings.Join(args.ListenClientURLs, ","),
-				},
-				{
-					Name:  "ETCD_ADVERTISE_CLIENT_URLS",
-					Value: strings.Join(args.AdvertiseClientURLs, ","),
-				},
-				{
-					Name:  "ETCD_LISTEN_PEER_URLS",
-					Value: strings.Join(args.ListenPeerURLs, ","),
-				},
-				{
-					Name:  "ETCD_INITIAL_ADVERTISE_PEER_URLS",
-					Value: strings.Join(args.InitialAdvertisePeerURLs, ","),
-				},
-				// TLS
-				{
-					Name:  "ETCD_PEER_CLIENT_CERT_AUTH",
-					Value: "true",
-				},
-				{
-					Name:  "ETCD_CLIENT_CERT_AUTH",
-					Value: "true",
-				},
-				{
-					Name:  "ETCD_CERT_FILE",
-					Value: "/etc/etcd/cert.pem",
-				},
-				{
-					Name:  "ETCD_KEY_FILE",
-					Value: "/etc/etcd/key.pem",
-				},
-				{
-					Name:  "ETCD_TRUSTED_CA_FILE",
-					Value: "/etc/etcd/ca.pem",
-				},
-				{
-					Name:  "ETCD_PEER_CERT_FILE",
-					Value: "/etc/etcd/peer-cert.pem",
-				},
-				{
-					Name:  "ETCD_PEER_KEY_FILE",
-					Value: "/etc/etcd/peer-key.pem",
-				},
-				{
-					Name:  "ETCD_PEER_TRUSTED_CA_FILE",
-					Value: "/etc/etcd/peer-ca.pem",
-				},
-				{
-					Name:  "ETCD_STRICT_RECONFIG_CHECK",
-					Value: "true",
-				},
-			},
-			VolumeMounts: []v1.VolumeMount{
-				{
-					Name:      "cert-file",
-					MountPath: "/etc/etcd/cert.pem",
-					ReadOnly:  true,
-				},
-				{
-					Name:      "key-file",
-					MountPath: "/etc/etcd/key.pem",
-					ReadOnly:  true,
-				},
-				{
-					Name:      "trusted-ca-file",
-					MountPath: "/etc/etcd/ca.pem",
-					ReadOnly:  true,
-				},
-				{
-					Name:      "peer-cert-file",
-					MountPath: "/etc/etcd/peer-cert.pem",
-					ReadOnly:  true,
-				},
-				{
-					Name:      "peer-key-file",
-					MountPath: "/etc/etcd/peer-key.pem",
-					ReadOnly:  true,
-				},
-				{
-					Name:      "peer-trusted-ca-file",
-					MountPath: "/etc/etcd/peer-ca.pem",
-					ReadOnly:  true,
-				},
-				{
-					Name:      fmt.Sprintf("db-%s", args.Name),
-					MountPath: dataDir,
-				},
-			},
-		},
-	)
-
-	return pod
 }
