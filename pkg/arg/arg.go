@@ -32,7 +32,6 @@ type Args struct {
 	// etcd wrapper args
 	EtcdPod                   *v1.Pod
 	EtcdSnapshotFile          string
-	EtcdPodManifestFile       string
 	S3BackupBucket            string
 	S3BackupKey               string
 	HealthCheckInterval       time.Duration
@@ -41,6 +40,7 @@ type Args struct {
 	ReadyCheckFailedCountMax  int
 	S3Client                  s3util.Client
 	ClientTLSConfig           *tls.Config
+	EtcdPodManifestWritePath  string
 }
 
 type Node struct {
@@ -73,7 +73,7 @@ func New() (*Args, error) {
 	flag.StringVar(&clientCertFile, "client-cert-file", "", "Path to the client server TLS cert file.")
 	flag.StringVar(&clientKeyFile, "client-key-file", "", "Path to the client server TLS key file.")
 	flag.StringVar(&args.EtcdSnapshotFile, "etcd-snaphot-file", "/var/lib/etcd/etcd.db", "Host path to restore snapshot file.")
-	flag.StringVar(&args.EtcdPodManifestFile, "etcd-pod-manifest-file", "", "Host path to write etcd pod manifest file. This should be where kubelet reads static pod manifests.")
+	flag.StringVar(&args.EtcdPodManifestWritePath, "etcd-pod-manifest-write-path", "", "Host path to write etcd pod manifest file. This should be where kubelet reads static pod manifests.")
 	flag.StringVar(&s3BackupEndpoint, "s3-backup-endpoint", "s3.amazonaws.com", "S3 endpoint for backup.")
 	flag.StringVar(&s3BackupResource, "s3-backup-resource", "", "S3 resource name for backup.")
 	flag.DurationVar(&args.HealthCheckInterval, "healthcheck-interval", 6*time.Second, "Healthcheck interval.")

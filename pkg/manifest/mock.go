@@ -20,27 +20,34 @@ func (p *MockEtcdPod) WriteFile(args *arg.Args) error {
 	defer cancel()
 
 	var pod *v1.Pod
+	var ok bool
+	var err error
+
 	switch args.InitialClusterState {
 	case "new":
-		ok, err := args.S3Client.Download(ctx, args.S3BackupBucket, args.S3BackupKey, func(ctx context.Context, r io.Reader) error {
+		if ok, err = args.S3Client.Download(ctx, args.S3BackupBucket, args.S3BackupKey, func(ctx context.Context, r io.Reader) error {
 			return util.WriteFile(r, args.EtcdSnapshotFile)
-		})
-		if err != nil {
+		}); err != nil {
 			return fmt.Errorf("Error getting snapshot: %v", err)
 		}
 		if !ok {
 			log.Printf("Snapshot not found. Starting new cluster")
-			pod = podspec.Create(args, false)
+			if pod, err = podspec.Create(args, false); err != nil {
+				return fmt.Errorf("Error creating pod manifest: %v", err)
+			}
 		} else {
 			log.Printf("Successfully got snapshot. Restoring existing cluster")
-			pod = podspec.Create(args, true)
+			if pod, err = podspec.Create(args, true); err != nil {
+				return fmt.Errorf("Error creating pod manifest: %v", err)
+			}
 		}
 	case "existing":
-		pod = podspec.Create(args, false)
+		if pod, err = podspec.Create(args, false); err != nil {
+			return fmt.Errorf("Error creating pod manifest: %v", err)
+		}
 	default:
 		return fmt.Errorf("InitialClusterState not defined")
 	}
-
 	p.PodSpecResult = pod
 	return nil
 }

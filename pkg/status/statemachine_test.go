@@ -553,6 +553,14 @@ func TestStateMachineRun(t *testing.T) {
 						Name:      "etcd-pod",
 						Namespace: "test-ns",
 					},
+					Spec: v1.PodSpec{
+						Containers: []v1.Container{
+							{
+								Name:  "etcd",
+								Image: "etcd-image:latest",
+							},
+						},
+					},
 				},
 				AdvertiseClientURLs: []string{
 					"https://10.0.0.1:8081",

@@ -185,8 +185,12 @@ func TestPodSpec(t *testing.T) {
 									Name:  "ETCD_INITIAL_ADVERTISE_PEER_URLS",
 									Value: "https://10.0.0.1:8002,https://10.0.0.2:8002,https://10.0.0.3:8002",
 								},
+								{
+									Name:  "ETCD_SNAPSHOT_FILE",
+									Value: "/var/lib/etcd/snapshot.db",
+								},
 							},
-							Command: strings.Split("etcdutl snapshot restore /var/lib/etcd/snapshot.db"+
+							Command: strings.Split("etcdutl snapshot restore $(ETCD_SNAPSHOT_FILE)"+
 								" --name $(ETCD_NAME)"+
 								" --initial-cluster $(ETCD_INITIAL_CLUSTER)"+
 								" --initial-cluster-token $(ETCD_INITIAL_CLUSTER_TOKEN)"+
@@ -198,7 +202,7 @@ func TestPodSpec(t *testing.T) {
 									MountPath: "/var/etcd/data",
 								},
 								{
-									Name:      "restore-etcd-name",
+									Name:      "etcd-snapshot-file",
 									MountPath: "/var/lib/etcd/snapshot.db",
 								},
 							},
@@ -234,28 +238,8 @@ func TestPodSpec(t *testing.T) {
 									Value: "true",
 								},
 								{
-									Name:  "ETCD_CERT_FILE",
-									Value: "/etc/etcd/cert.pem",
-								},
-								{
-									Name:  "ETCD_KEY_FILE",
-									Value: "/etc/etcd/key.pem",
-								},
-								{
-									Name:  "ETCD_TRUSTED_CA_FILE",
-									Value: "/etc/etcd/ca-cert.pem",
-								},
-								{
-									Name:  "ETCD_PEER_CERT_FILE",
-									Value: "/etc/etcd/peer-cert.pem",
-								},
-								{
-									Name:  "ETCD_PEER_KEY_FILE",
-									Value: "/etc/etcd/peer-key.pem",
-								},
-								{
-									Name:  "ETCD_PEER_TRUSTED_CA_FILE",
-									Value: "/etc/etcd/peer-ca-cert.pem",
+									Name:  "ETCDCTL_API",
+									Value: "3",
 								},
 								{
 									Name:  "ETCD_NAME",
@@ -293,41 +277,59 @@ func TestPodSpec(t *testing.T) {
 									Name:  "ETCD_INITIAL_ADVERTISE_PEER_URLS",
 									Value: "https://10.0.0.1:8002,https://10.0.0.2:8002,https://10.0.0.3:8002",
 								},
+								{
+									Name:  "ETCD_CERT_FILE",
+									Value: "/etc/etcd/cert.pem",
+								},
+								{
+									Name:  "ETCD_KEY_FILE",
+									Value: "/etc/etcd/key.pem",
+								},
+								{
+									Name:  "ETCD_TRUSTED_CA_FILE",
+									Value: "/etc/etcd/ca-cert.pem",
+								},
+								{
+									Name:  "ETCD_PEER_CERT_FILE",
+									Value: "/etc/etcd/peer-cert.pem",
+								},
+								{
+									Name:  "ETCD_PEER_KEY_FILE",
+									Value: "/etc/etcd/peer-key.pem",
+								},
+								{
+									Name:  "ETCD_PEER_TRUSTED_CA_FILE",
+									Value: "/etc/etcd/peer-ca-cert.pem",
+								},
 							},
 							VolumeMounts: []v1.VolumeMount{
 								{
+									Name:      "db-etcd-name",
+									MountPath: "/var/etcd/data",
+								},
+								{
 									Name:      "etcd-cert-file",
 									MountPath: "/etc/etcd/cert.pem",
-									ReadOnly:  true,
 								},
 								{
 									Name:      "etcd-key-file",
 									MountPath: "/etc/etcd/key.pem",
-									ReadOnly:  true,
 								},
 								{
 									Name:      "etcd-trusted-ca-file",
 									MountPath: "/etc/etcd/ca-cert.pem",
-									ReadOnly:  true,
 								},
 								{
 									Name:      "etcd-peer-cert-file",
 									MountPath: "/etc/etcd/peer-cert.pem",
-									ReadOnly:  true,
 								},
 								{
 									Name:      "etcd-peer-key-file",
 									MountPath: "/etc/etcd/peer-key.pem",
-									ReadOnly:  true,
 								},
 								{
 									Name:      "etcd-peer-trusted-ca-file",
 									MountPath: "/etc/etcd/peer-ca-cert.pem",
-									ReadOnly:  true,
-								},
-								{
-									Name:      "db-etcd-name",
-									MountPath: "/var/etcd/data",
 								},
 							},
 						},
@@ -336,6 +338,14 @@ func TestPodSpec(t *testing.T) {
 					Priority:          int32Ptr(2000000000),
 					RestartPolicy:     v1.RestartPolicyAlways,
 					Volumes: []v1.Volume{
+						{
+							Name: "db-etcd-name",
+							VolumeSource: v1.VolumeSource{
+								EmptyDir: &v1.EmptyDirVolumeSource{
+									Medium: v1.StorageMediumMemory,
+								},
+							},
+						},
 						{
 							Name: "etcd-cert-file",
 							VolumeSource: v1.VolumeSource{
@@ -391,15 +401,7 @@ func TestPodSpec(t *testing.T) {
 							},
 						},
 						{
-							Name: "db-etcd-name",
-							VolumeSource: v1.VolumeSource{
-								EmptyDir: &v1.EmptyDirVolumeSource{
-									Medium: v1.StorageMediumMemory,
-								},
-							},
-						},
-						{
-							Name: "restore-etcd-name",
+							Name: "etcd-snapshot-file",
 							VolumeSource: v1.VolumeSource{
 								HostPath: &v1.HostPathVolumeSource{
 									Path: "/var/lib/etcd/snapshot.db",
@@ -416,7 +418,7 @@ func TestPodSpec(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.label, func(t *testing.T) {
 
-			pod := Create(tt.args, tt.runRestore)
+			pod, _ := Create(tt.args, tt.runRestore)
 			assert.Equal(t, tt.expectedPodSpec, pod)
 		})
 	}

@@ -13,93 +13,41 @@ const (
 	dataDir              string = "/var/etcd/data"
 )
 
-func Create(args *arg.Args, runRestore bool) *v1.Pod {
+type pathEnv struct {
+	name string
+	path string
+}
+
+func Create(args *arg.Args, runRestore bool) (*v1.Pod, error) {
 	pod := args.EtcdPod.DeepCopy()
+	etcdContainer, err := etcdContainerFromPod(pod, etcdContainerName)
+	if err != nil {
+		return nil, err
+	}
 	pod.ObjectMeta.Name = fmt.Sprintf("%s-%s", pod.ObjectMeta.Name, args.InitialClusterState)
-	etcdContainer := appendEtcdContainer(args, pod)
-	appendTLS(args, pod, etcdContainer)
-	appendCommonEnvs(args, pod, etcdContainer)
 
-	if runRestore {
-		restoreContainer := appendRestoreContainer(args, pod, etcdContainer)
-		appendCommonEnvs(args, pod, restoreContainer)
-	}
-	return pod
-}
-
-func appendEtcdContainer(args *arg.Args, pod *v1.Pod) *v1.Container {
-	for i, container := range pod.Spec.Containers {
-		if container.Name == etcdContainerName {
-			return &pod.Spec.Containers[i]
-		}
-	}
-	pod.Spec.Containers = append(pod.Spec.Containers, v1.Container{
-		Name: etcdContainerName,
-	})
-	return &pod.Spec.Containers[len(pod.Spec.Containers)-1]
-}
-
-func appendRestoreContainer(args *arg.Args, pod *v1.Pod, etcdContainer *v1.Container) *v1.Container {
-	hostPathFileType := v1.HostPathFile
-
+	dataVolumeName := fmt.Sprintf("db-%s", args.Name)
 	pod.Spec.Volumes = append(pod.Spec.Volumes, []v1.Volume{
 		{
-			Name: fmt.Sprintf("db-%s", args.Name),
+			Name: dataVolumeName,
 			VolumeSource: v1.VolumeSource{
 				EmptyDir: &v1.EmptyDirVolumeSource{
 					Medium: v1.StorageMediumMemory,
 				},
 			},
 		},
-		{
-			Name: fmt.Sprintf("restore-%s", args.Name),
-			VolumeSource: v1.VolumeSource{
-				HostPath: &v1.HostPathVolumeSource{
-					Path: args.EtcdSnapshotFile,
-					Type: &hostPathFileType,
-				},
-			},
-		},
 	}...)
 
-	sharedVolumeMount := v1.VolumeMount{
-		Name:      fmt.Sprintf("db-%s", args.Name),
-		MountPath: dataDir,
-	}
-	etcdContainer.VolumeMounts = append(etcdContainer.VolumeMounts, sharedVolumeMount)
-	pod.Spec.InitContainers = append(pod.Spec.InitContainers, v1.Container{
-		Name:  restoreContainerName,
-		Image: etcdContainer.Image,
-		Env: []v1.EnvVar{
-			{
-				Name:  "ETCDCTL_API",
-				Value: "3",
-			},
-		},
-		Command: strings.Split(fmt.Sprintf("etcdutl snapshot restore %s"+
-			" --name $(ETCD_NAME)"+
-			" --initial-cluster $(ETCD_INITIAL_CLUSTER)"+
-			" --initial-cluster-token $(ETCD_INITIAL_CLUSTER_TOKEN)"+
-			" --initial-advertise-peer-urls $(ETCD_INITIAL_ADVERTISE_PEER_URLS)"+
-			" --data-dir $(ETCD_DATA_DIR)", args.EtcdSnapshotFile), " "),
-		VolumeMounts: []v1.VolumeMount{
-			sharedVolumeMount,
-			{
-				Name:      fmt.Sprintf("restore-%s", args.Name),
-				MountPath: args.EtcdSnapshotFile,
-			},
-		},
-	})
-	return &pod.Spec.InitContainers[len(pod.Spec.InitContainers)-1]
-}
-
-func appendCommonEnvs(args *arg.Args, pod *v1.Pod, container *v1.Container) {
+	// common envs
 	var memberPeers []string
 	for _, node := range args.InitialCluster {
 		memberPeers = append(memberPeers, fmt.Sprintf("%s=%s", node.Name, node.PeerURL))
 	}
-	initialCluster := strings.Join(memberPeers, ",")
-	container.Env = append(container.Env, []v1.EnvVar{
+	commonEnvs := []v1.EnvVar{
+		{
+			Name:  "ETCDCTL_API",
+			Value: "3",
+		},
 		{
 			Name:  "ETCD_NAME",
 			Value: args.Name,
@@ -118,7 +66,7 @@ func appendCommonEnvs(args *arg.Args, pod *v1.Pod, container *v1.Container) {
 		},
 		{
 			Name:  "ETCD_INITIAL_CLUSTER",
-			Value: initialCluster,
+			Value: strings.Join(memberPeers, ","),
 		},
 		{
 			Name:  "ETCD_LISTEN_CLIENT_URLS",
@@ -136,59 +84,99 @@ func appendCommonEnvs(args *arg.Args, pod *v1.Pod, container *v1.Container) {
 			Name:  "ETCD_INITIAL_ADVERTISE_PEER_URLS",
 			Value: strings.Join(args.InitialAdvertisePeerURLs, ","),
 		},
-	}...)
-}
-
-func appendTLS(args *arg.Args, pod *v1.Pod, container *v1.Container) {
-	hostPathFileType := v1.HostPathFile
-
-	for _, mount := range []struct {
-		env  string
-		path string
-	}{
+	}
+	commonVolumeMounts := []v1.VolumeMount{
 		{
-			env:  "ETCD_CERT_FILE",
+			Name:      dataVolumeName,
+			MountPath: dataDir,
+		},
+	}
+
+	// etcd container
+	etcdContainer.Env = append(etcdContainer.Env, commonEnvs...)
+	etcdContainer.VolumeMounts = append(etcdContainer.VolumeMounts, commonVolumeMounts...)
+	appendHostPathEnvs(pod, []*v1.Container{etcdContainer}, []*pathEnv{
+		{
+			name: "ETCD_CERT_FILE",
 			path: args.CertFile,
 		},
 		{
-			env:  "ETCD_KEY_FILE",
+			name: "ETCD_KEY_FILE",
 			path: args.KeyFile,
 		},
 		{
-			env:  "ETCD_TRUSTED_CA_FILE",
+			name: "ETCD_TRUSTED_CA_FILE",
 			path: args.TrustedCAFile,
 		},
 		{
-			env:  "ETCD_PEER_CERT_FILE",
+			name: "ETCD_PEER_CERT_FILE",
 			path: args.PeerCertFile,
 		},
 		{
-			env:  "ETCD_PEER_KEY_FILE",
+			name: "ETCD_PEER_KEY_FILE",
 			path: args.PeerKeyFile,
 		},
 		{
-			env:  "ETCD_PEER_TRUSTED_CA_FILE",
+			name: "ETCD_PEER_TRUSTED_CA_FILE",
 			path: args.PeerTrustedCAFile,
 		},
-	} {
-		volumeName := strings.ToLower(strings.ReplaceAll(mount.env, "_", "-"))
-		container.Env = append(container.Env, v1.EnvVar{
-			Name:  mount.env,
-			Value: mount.path,
+	})
+
+	if runRestore {
+		restoreContainer := v1.Container{
+			Name:  restoreContainerName,
+			Image: etcdContainer.Image,
+			Env:   commonEnvs,
+			Command: strings.Split("etcdutl snapshot restore $(ETCD_SNAPSHOT_FILE)"+
+				" --name $(ETCD_NAME)"+
+				" --initial-cluster $(ETCD_INITIAL_CLUSTER)"+
+				" --initial-cluster-token $(ETCD_INITIAL_CLUSTER_TOKEN)"+
+				" --initial-advertise-peer-urls $(ETCD_INITIAL_ADVERTISE_PEER_URLS)"+
+				" --data-dir $(ETCD_DATA_DIR)", " "),
+			VolumeMounts: commonVolumeMounts,
+		}
+		appendHostPathEnvs(pod, []*v1.Container{&restoreContainer}, []*pathEnv{
+			{
+				name: "ETCD_SNAPSHOT_FILE",
+				path: args.EtcdSnapshotFile,
+			},
 		})
+		pod.Spec.InitContainers = append(pod.Spec.InitContainers, restoreContainer)
+	}
+	return pod, nil
+}
+
+func etcdContainerFromPod(pod *v1.Pod, name string) (*v1.Container, error) {
+	for i, container := range pod.Spec.Containers {
+		if container.Name == name {
+			return &pod.Spec.Containers[i], nil
+		}
+	}
+	return nil, fmt.Errorf("Container '%s' not found in etcd pod manifest template.", name)
+}
+
+func appendHostPathEnvs(pod *v1.Pod, containers []*v1.Container, pathEnvs []*pathEnv) {
+	hostPathFileType := v1.HostPathFile
+	for _, env := range pathEnvs {
+		volumeName := strings.ToLower(strings.ReplaceAll(env.name, "_", "-"))
 		pod.Spec.Volumes = append(pod.Spec.Volumes, v1.Volume{
 			Name: volumeName,
 			VolumeSource: v1.VolumeSource{
 				HostPath: &v1.HostPathVolumeSource{
-					Path: mount.path,
+					Path: env.path,
 					Type: &hostPathFileType,
 				},
 			},
 		})
-		container.VolumeMounts = append(container.VolumeMounts, v1.VolumeMount{
-			Name:      volumeName,
-			MountPath: mount.path,
-			ReadOnly:  true,
-		})
+		for _, container := range containers {
+			container.Env = append(container.Env, v1.EnvVar{
+				Name:  env.name,
+				Value: env.path,
+			})
+			container.VolumeMounts = append(container.VolumeMounts, v1.VolumeMount{
+				Name:      volumeName,
+				MountPath: env.path,
+			})
+		}
 	}
 }
