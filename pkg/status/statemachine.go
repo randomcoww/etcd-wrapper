@@ -120,7 +120,7 @@ func (v *Status) Run(args *arg.Args) error {
 					fallthrough
 
 				default:
-					if err := createPodForExistingCluster(); err != nil {
+					if err := createPodForNewCluster(); err != nil {
 						return err
 					}
 					v.MemberState = MemberStateHealthy
