@@ -1,6 +1,8 @@
 name: Cleanup
 on:
   workflow_dispatch:
+  schedule:
+  - cron: "0 0 * * 0"
 
 jobs:
   cleanup:
@@ -15,5 +17,5 @@ jobs:
         with:
           package-name: ${{ github.event.repository.name }}
           package-type: container
-          min-versions-to-keep: 3
+          min-versions-to-keep: 4
           token: ${{ secrets.GITHUB_TOKEN }}
