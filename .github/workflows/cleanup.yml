@@ -1,0 +1,19 @@
+name: Cleanup
+on:
+  workflow_dispatch:
+
+jobs:
+  cleanup:
+    runs-on: arc-runner-${{ github.event.repository.name }}
+    container:
+      image: docker.io/node:current-alpine
+    permissions:
+      packages: write
+    steps:
+      - name: Remove old container images
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: ${{ github.event.repository.name }}
+          package-type: container
+          min-versions-to-keep: 3
+          token: ${{ secrets.GITHUB_TOKEN }}
