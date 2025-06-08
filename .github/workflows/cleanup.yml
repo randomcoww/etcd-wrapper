@@ -1,8 +1,12 @@
 name: Cleanup
 on:
   workflow_dispatch:
-  schedule:
-  - cron: "0 0 * * 0"
+  push:
+    paths-ignore:
+    - .github/**
+    - README.md
+    branches:
+    - master
 
 jobs:
   cleanup:
