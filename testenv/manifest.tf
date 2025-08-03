@@ -72,8 +72,8 @@ module "etcd" {
 
   healthcheck_interval           = "2s"
   backup_interval                = "3m"
-  healthcheck_fail_count_allowed = 16
-  readiness_fail_count_allowed   = 32
+  healthcheck_fail_count_allowed = 10
+  readiness_fail_count_allowed   = 30
 
   s3_access_key_id     = aws_iam_access_key.s3.id
   s3_secret_access_key = aws_iam_access_key.s3.secret

@@ -431,10 +431,10 @@ func TestStateMachineRun(t *testing.T) {
 				&mockStep{
 					mockClient:                      clientResponseNode0Down,
 					expectedMemberState:             MemberStateHealthy,
-					expectedMemberRemovedID:         happyNode0Member.ID,
-					expectedMemberAddedID:           newNode0Member.ID,
+					expectedMemberRemovedID:         0,
+					expectedMemberAddedID:           0,
 					expectedCreateClusterState:      "existing",
-					expectedNodeReplacementPeerURLs: node0MemberWithAdditionalPeer.PeerURLs,
+					expectedNodeReplacementPeerURLs: []string{},
 				},
 				&mockStep{
 					mockClient:          clientResponseNode0Replaced,

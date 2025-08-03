@@ -45,10 +45,6 @@ func Create(args *arg.Args, runRestore bool) (*v1.Pod, error) {
 	}
 	commonEnvs := []v1.EnvVar{
 		{
-			Name:  "ETCDCTL_API",
-			Value: "3",
-		},
-		{
 			Name:  "ETCD_NAME",
 			Value: args.Name,
 		},

@@ -48,10 +48,6 @@ func TestPodSpec(t *testing.T) {
 								Image: "etcd-image:latest",
 								Env: []v1.EnvVar{
 									{
-										Name:  "ETCD_ENABLE_V2",
-										Value: "false",
-									},
-									{
 										Name:  "ETCD_STRICT_RECONFIG_CHECK",
 										Value: "true",
 									},
@@ -146,10 +142,6 @@ func TestPodSpec(t *testing.T) {
 							Image: "etcd-image:latest",
 							Env: []v1.EnvVar{
 								{
-									Name:  "ETCDCTL_API",
-									Value: "3",
-								},
-								{
 									Name:  "ETCD_NAME",
 									Value: "etcd-name",
 								},
@@ -214,10 +206,6 @@ func TestPodSpec(t *testing.T) {
 							Image: "etcd-image:latest",
 							Env: []v1.EnvVar{
 								{
-									Name:  "ETCD_ENABLE_V2",
-									Value: "false",
-								},
-								{
 									Name:  "ETCD_STRICT_RECONFIG_CHECK",
 									Value: "true",
 								},
@@ -236,10 +224,6 @@ func TestPodSpec(t *testing.T) {
 								{
 									Name:  "ETCD_CLIENT_CERT_AUTH",
 									Value: "true",
-								},
-								{
-									Name:  "ETCDCTL_API",
-									Value: "3",
 								},
 								{
 									Name:  "ETCD_NAME",

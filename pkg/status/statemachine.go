@@ -29,15 +29,6 @@ func (v *Status) Run(args *arg.Args) error {
 		return nil
 	}
 
-	replaceMemberSelf := func(m etcdutil.Member) error {
-		if err := replaceMember(m); err != nil {
-			return err
-		}
-		args.ListenPeerURLs = m.GetPeerURLs()
-		args.InitialAdvertisePeerURLs = m.GetPeerURLs()
-		return nil
-	}
-
 	createPodForNewCluster := func() error {
 		log.Printf("Creating new node")
 		args.InitialClusterState = "new"
@@ -113,12 +104,6 @@ func (v *Status) Run(args *arg.Args) error {
 					v.MemberState = MemberStateHealthy
 					log.Printf("State transitioned to healhty")
 
-				case v.Healthy:
-					if memberToReplace := v.GetMemberToReplace(); memberToReplace != nil {
-						replaceMemberSelf(memberToReplace)
-					}
-					fallthrough
-
 				default:
 					if err := createPodForExistingCluster(); err != nil {
 						return err
@@ -181,9 +166,6 @@ func (v *Status) Run(args *arg.Args) error {
 					log.Printf("State transitioned to healhty")
 
 				case v.Healthy:
-					if memberToReplace := v.GetMemberToReplace(); memberToReplace != nil {
-						replaceMemberSelf(memberToReplace)
-					}
 					if err := createPodForExistingCluster(); err != nil {
 						return err
 					}
