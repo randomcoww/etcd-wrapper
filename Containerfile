@@ -1,4 +1,4 @@
-FROM docker.io/golang:alpine as BUILD
+FROM docker.io/golang:alpine as build
 
 WORKDIR /go/src/github.com/randomcoww/etcd-wrapper
 COPY . .
@@ -13,7 +13,7 @@ RUN set -x \
 
 FROM alpine:latest
 
-COPY --from=BUILD /go/src/github.com/randomcoww/etcd-wrapper/etcd-wrapper /
+COPY --from=build /go/src/github.com/randomcoww/etcd-wrapper/etcd-wrapper /
 
 RUN set -x \
   \
