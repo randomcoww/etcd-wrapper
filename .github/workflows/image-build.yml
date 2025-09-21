@@ -33,12 +33,20 @@ jobs:
           }
         }
         EOF
+        echo -e "$INTERNAL_CA_CERT" > $DOCKER_CONFIG/internal.crt
 
         /kaniko/executor \
           --dockerfile="./Containerfile" \
           --context="${{ github.repositoryUrl }}#${{ github.ref }}#${{ github.sha }}" \
           --destination="ghcr.io/${{ github.repository }}:${{ github.head_ref || github.ref_name }}" \
-          --push-retry 3
+          --registry-certificate=$INTERNAL_REGISTRY=$DOCKER_CONFIG/internal.crt \
+          --use-new-run \
+          --skip-unused-stages \
+          --snapshot-mode=redo \
+          --cleanup \
+          --image-download-retry=4 \
+          --image-fs-extract-retry=4 \
+          --push-retry=4
   cleanup:
     needs:
       - build
