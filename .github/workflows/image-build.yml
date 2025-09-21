@@ -2,7 +2,7 @@
 # https://some-natalie.dev/blog/kaniko-in-arc/
 # https://dev.to/ipo/using-kaniko-to-build-and-publish-container-image-with-github-action-on-github-self-hosted-runners-d5m
 
-name: Image Build
+name: Image build
 on:
   workflow_dispatch:
   push:
