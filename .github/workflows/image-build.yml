@@ -16,14 +16,13 @@ jobs:
   build:
     runs-on: arc-runner-${{ github.event.repository.name }}
     container:
-      image: registry.default/randomcoww/kaniko:latest
+      image: docker.io/martizih/kaniko:debug
     permissions:
       contents: read
       packages: write
     steps:
     - name: Build and release container
       run: |
-        mkdir -p $DOCKER_CONFIG
         cat > $DOCKER_CONFIG/config.json <<EOF
         {
           "auths": {
@@ -35,7 +34,7 @@ jobs:
         EOF
         echo -e "$INTERNAL_CA_CERT" > $DOCKER_CONFIG/internal.crt
 
-        /kaniko/executor \
+        executor \
           --dockerfile="./Containerfile" \
           --context="${{ github.repositoryUrl }}#${{ github.ref }}#${{ github.sha }}" \
           --destination="ghcr.io/${{ github.repository }}:${{ github.head_ref || github.ref_name }}" \
