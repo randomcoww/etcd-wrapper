@@ -12,6 +12,9 @@ concurrency:
   group: ${{ github.workflow }}
   cancel-in-progress: true
 
+env:
+  FF_KANIKO_SQUASH_STAGES: true # https://github.com/mzihlmann/kaniko/pull/141
+
 jobs:
   build:
     runs-on: arc-runner-${{ github.event.repository.name }}
@@ -23,6 +26,7 @@ jobs:
     steps:
     - name: Build and release container
       run: |
+        set -e
         cat > $DOCKER_CONFIG/config.json <<EOF
         {
           "auths": {
