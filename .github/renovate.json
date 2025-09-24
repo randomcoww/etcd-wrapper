@@ -1,11 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:recommended"
-  ],
-  "rangeStrategy": "bump",
-  "enabledManagers": [
-    "gomod"
+    "config:best-practices"
   ],
   "packageRules": [
     {
@@ -27,8 +23,5 @@
       "ignoreTests": true,
       "groupName": "minor-update"
     }
-  ],
-  "postUpdateOptions": [
-    "gomodTidy"
   ]
 }
