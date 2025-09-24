@@ -2,9 +2,9 @@
 
 ```
 podman run -it --rm \
-  -v $(pwd):/go/src/etcd-wrapper \
-  -w /go/src/etcd-wrapper \
-   docker.io/golang:alpine sh
+  -v $(pwd):/go/src \
+  -w /go/src \
+  docker.io/golang:alpine sh
 ```
 
 ### Test environment
