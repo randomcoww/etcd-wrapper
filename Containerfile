@@ -1,24 +1,24 @@
 FROM docker.io/golang:alpine as build
 
-WORKDIR /go/src/github.com/randomcoww/etcd-wrapper
+WORKDIR /go/src
 COPY . .
 
 RUN set -x \
   \
   && apk add --no-cache \
     git \
+    ca-certificates \
+  && update-ca-certificates \
   \
-  && CGO_ENABLED=0 GO111MODULE=on GOOS=linux go build -v -ldflags '-s -w' -o etcd-wrapper cmd/main.go \
+  && CGO_ENABLED=0 GO111MODULE=on GOOS=linux \
+    go build -v -ldflags '-s -w' -o etcd-wrapper cmd/main.go \
   && go test ./...
 
-FROM alpine:latest
+FROM scratch
 
-COPY --from=build /go/src/github.com/randomcoww/etcd-wrapper/etcd-wrapper /
+COPY --from=build /go/src/etcd-wrapper /bin/
+COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
-RUN set -x \
-  \
-  && apk add --no-cache \
-    ca-certificates \
-  && update-ca-certificates
+ENV SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
  
-ENTRYPOINT ["/etcd-wrapper"]
+ENTRYPOINT ["/bin/etcd-wrapper"]
