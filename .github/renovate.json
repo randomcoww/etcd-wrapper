@@ -1,6 +1,21 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended"
+  ],
+  "rangeStrategy": "bump",
+  "enabledManagers": [
+    "gomod"
+  ],
   "packageRules": [
+    {
+      "matchManagers": [
+        "gomod"
+      ],
+      "matchDatasources": [
+        "golang-version"
+      ]
+    },
     {
       "matchUpdateTypes": [
         "minor",
@@ -11,5 +26,8 @@
       "automerge": true,
       "ignoreTests": true
     }
+  ],
+  "postUpdateOptions": [
+    "gomodTidy"
   ]
 }
