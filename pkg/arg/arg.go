@@ -5,7 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"github.com/randomcoww/etcd-wrapper/pkg/s3util"
-	"go.etcd.io/etcd/pkg/transport"
+	"github.com/randomcoww/etcd-wrapper/pkg/tlsutil"
 	"k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"os"
@@ -98,11 +98,7 @@ func New() (*Args, error) {
 	if err != nil {
 		return nil, err
 	}
-	args.ClientTLSConfig, err = transport.TLSInfo{
-		CertFile:      clientCertFile,
-		KeyFile:       clientKeyFile,
-		TrustedCAFile: args.TrustedCAFile,
-	}.ClientConfig()
+	args.ClientTLSConfig, err = tlsConfig(args.TrustedCAFile, clientCertFile, clientKeyFile)
 	if err != nil {
 		return nil, err
 	}
@@ -128,6 +124,24 @@ func New() (*Args, error) {
 		args.InitialCluster = append(args.InitialCluster, node)
 	}
 	return args, nil
+}
+
+func tlsConfig(trustedCAFile, clientCertFile, clientKeyFile string) (*tls.Config, error) {
+	rootCAs, err := tlsutil.NewCertPool([]string{trustedCAFile})
+	if err != nil {
+		return nil, err
+	}
+
+	return &tls.Config{
+		MinVersion: tls.VersionTLS13,
+		RootCAs: rootCAs,
+		GetCertificate: func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+			return tlsutil.NewCert(clientCertFile, clientKeyFile)
+		},
+		GetClientCertificate: func(unused *tls.CertificateRequestInfo) (*tls.Certificate, error) {
+			return tlsutil.NewCert(clientCertFile, clientKeyFile)
+		},
+	}, nil
 }
 
 func podFromManifest(templateFile string) (*v1.Pod, error) {
