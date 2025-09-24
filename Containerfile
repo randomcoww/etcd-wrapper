@@ -10,6 +10,7 @@ RUN set -x \
     ca-certificates \
   && update-ca-certificates \
   \
+  && go mod tidy \ 
   && CGO_ENABLED=0 GO111MODULE=on GOOS=linux \
     go build -v -ldflags '-s -w' -o etcd-wrapper cmd/main.go \
   && go test ./...

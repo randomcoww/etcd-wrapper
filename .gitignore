@@ -6,3 +6,4 @@ etcd-wrapper
 secrets.tfvars
 *.log
 output/
+go.sum
