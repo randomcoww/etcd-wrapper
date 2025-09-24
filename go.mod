@@ -1,8 +1,6 @@
 module github.com/randomcoww/etcd-wrapper
 
-go 1.24.0
-
-toolchain go1.25.1
+go 1.25.1
 
 require (
 	github.com/minio/minio-go/v7 v7.0.95
