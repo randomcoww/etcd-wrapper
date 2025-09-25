@@ -31,7 +31,7 @@ jobs:
         {
           "auths": {
             "ghcr.io": {
-              "auth": "$(echo -n ${{ github.actor }}:${{ secrets.GITHUB_TOKEN }} | base64 -w0)"
+              "auth": "$(echo -n ${{ github.repository_owner }}:${{ secrets.GITHUB_TOKEN }} | base64 -w0)"
             }
           }
         }
