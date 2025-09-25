@@ -134,7 +134,7 @@ func tlsConfig(trustedCAFile, clientCertFile, clientKeyFile string) (*tls.Config
 
 	return &tls.Config{
 		MinVersion: tls.VersionTLS13,
-		RootCAs: rootCAs,
+		RootCAs:    rootCAs,
 		GetCertificate: func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 			return tlsutil.NewCert(clientCertFile, clientKeyFile)
 		},
