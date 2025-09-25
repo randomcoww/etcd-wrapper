@@ -1,0 +1,5 @@
+podman run -it --rm \
+  -v $(pwd):$(pwd) \
+  -w $(pwd) \
+  docker.io/golang:alpine \
+  go fmt ./...
