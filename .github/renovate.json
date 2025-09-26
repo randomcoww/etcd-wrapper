@@ -3,6 +3,7 @@
   "extends": [
     "config:best-practices"
   ],
+  "pinDigests": false,
   "packageRules": [
     {
       "matchManagers": [
