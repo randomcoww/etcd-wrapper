@@ -98,16 +98,16 @@ func TestSyncStatus(t *testing.T) {
 					},
 				},
 				StatusResponseWithErr: map[string]*etcdutil.StatusResponseWithErr{
-					"https://127.0.0.1:8081": &etcdutil.StatusResponseWithErr{
+					"https://127.0.0.1:8081": {
 						StatusResponse: happyNode0StatusResponse,
 					},
-					"https://10.0.0.1:8081": &etcdutil.StatusResponseWithErr{
+					"https://10.0.0.1:8081": {
 						StatusResponse: happyNode0StatusResponse,
 					},
-					"https://10.0.0.2:8081": &etcdutil.StatusResponseWithErr{
+					"https://10.0.0.2:8081": {
 						StatusResponse: happyNode1StatusResponse,
 					},
-					"https://10.0.0.3:8081": &etcdutil.StatusResponseWithErr{
+					"https://10.0.0.3:8081": {
 						StatusResponse: happyNode2StatusResponse,
 					},
 				},
@@ -124,15 +124,15 @@ func TestSyncStatus(t *testing.T) {
 			},
 			expectedMemberToReplace: nil,
 			expectedMemberMap: map[uint64]*Member{
-				happyNode0Member.ID: &Member{
+				happyNode0Member.ID: {
 					Member:         happyNode0Member,
 					StatusResponse: happyNode0StatusResponse,
 				},
-				happyNode1Member.ID: &Member{
+				happyNode1Member.ID: {
 					Member:         happyNode1Member,
 					StatusResponse: happyNode1StatusResponse,
 				},
-				happyNode2Member.ID: &Member{
+				happyNode2Member.ID: {
 					Member:         happyNode2Member,
 					StatusResponse: happyNode2StatusResponse,
 				},
@@ -160,10 +160,10 @@ func TestSyncStatus(t *testing.T) {
 					},
 				},
 				StatusResponseWithErr: map[string]*etcdutil.StatusResponseWithErr{
-					"https://10.0.0.2:8081": &etcdutil.StatusResponseWithErr{
+					"https://10.0.0.2:8081": {
 						StatusResponse: happyNode1StatusResponse,
 					},
-					"https://10.0.0.3:8081": &etcdutil.StatusResponseWithErr{
+					"https://10.0.0.3:8081": {
 						StatusResponse: happyNode2StatusResponse,
 					},
 				},
@@ -177,15 +177,15 @@ func TestSyncStatus(t *testing.T) {
 			},
 			expectedMemberToReplace: happyNode0Member,
 			expectedMemberMap: map[uint64]*Member{
-				happyNode0Member.ID: &Member{
+				happyNode0Member.ID: {
 					Member:         happyNode0Member,
 					StatusResponse: nil,
 				},
-				happyNode1Member.ID: &Member{
+				happyNode1Member.ID: {
 					Member:         happyNode1Member,
 					StatusResponse: happyNode1StatusResponse,
 				},
-				happyNode2Member.ID: &Member{
+				happyNode2Member.ID: {
 					Member:         happyNode2Member,
 					StatusResponse: happyNode2StatusResponse,
 				},
@@ -213,10 +213,10 @@ func TestSyncStatus(t *testing.T) {
 					},
 				},
 				StatusResponseWithErr: map[string]*etcdutil.StatusResponseWithErr{
-					"https://10.0.0.2:8081": &etcdutil.StatusResponseWithErr{
+					"https://10.0.0.2:8081": {
 						StatusResponse: happyNode1StatusResponse,
 					},
-					"https://10.0.0.3:8081": &etcdutil.StatusResponseWithErr{
+					"https://10.0.0.3:8081": {
 						StatusResponse: happyNode2StatusResponse,
 					},
 				},
@@ -227,15 +227,15 @@ func TestSyncStatus(t *testing.T) {
 			expectedLeader:          nil,
 			expectedMemberToReplace: nil,
 			expectedMemberMap: map[uint64]*Member{
-				newNode0Member.ID: &Member{
+				newNode0Member.ID: {
 					Member:         newNode0Member,
 					StatusResponse: nil,
 				},
-				happyNode1Member.ID: &Member{
+				happyNode1Member.ID: {
 					Member:         happyNode1Member,
 					StatusResponse: happyNode1StatusResponse,
 				},
-				happyNode2Member.ID: &Member{
+				happyNode2Member.ID: {
 					Member:         happyNode2Member,
 					StatusResponse: happyNode2StatusResponse,
 				},
@@ -259,16 +259,16 @@ func TestSyncStatus(t *testing.T) {
 					Err: errors.New("missing list"),
 				},
 				StatusResponseWithErr: map[string]*etcdutil.StatusResponseWithErr{
-					"https://127.0.0.1:8081": &etcdutil.StatusResponseWithErr{
+					"https://127.0.0.1:8081": {
 						StatusResponse: happyNode0StatusResponse,
 					},
-					"https://10.0.0.1:8081": &etcdutil.StatusResponseWithErr{
+					"https://10.0.0.1:8081": {
 						StatusResponse: happyNode0StatusResponse,
 					},
-					"https://10.0.0.2:8081": &etcdutil.StatusResponseWithErr{
+					"https://10.0.0.2:8081": {
 						StatusResponse: happyNode1StatusResponse,
 					},
-					"https://10.0.0.3:8081": &etcdutil.StatusResponseWithErr{
+					"https://10.0.0.3:8081": {
 						StatusResponse: happyNode2StatusResponse,
 					},
 				},
@@ -297,15 +297,15 @@ func TestSyncStatus(t *testing.T) {
 					"https://10.0.0.1:8081",
 				},
 				InitialCluster: []*arg.Node{
-					&arg.Node{
+					{
 						Name:    "node0",
 						PeerURL: "https://10.0.0.1:8001",
 					},
-					&arg.Node{
+					{
 						Name:    "node1",
 						PeerURL: "https://10.0.0.2:8001",
 					},
-					&arg.Node{
+					{
 						Name:    "node2",
 						PeerURL: "https://10.0.0.3:8001",
 					},

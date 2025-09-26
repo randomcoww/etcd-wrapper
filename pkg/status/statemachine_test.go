@@ -152,13 +152,13 @@ func TestStateMachineRun(t *testing.T) {
 			},
 		},
 		StatusResponseWithErr: map[string]*etcdutil.StatusResponseWithErr{
-			"https://10.0.0.1:8081": &etcdutil.StatusResponseWithErr{
+			"https://10.0.0.1:8081": {
 				StatusResponse: happyNode0StatusResponse,
 			},
-			"https://10.0.0.2:8081": &etcdutil.StatusResponseWithErr{
+			"https://10.0.0.2:8081": {
 				StatusResponse: happyNode1StatusResponse,
 			},
-			"https://10.0.0.3:8081": &etcdutil.StatusResponseWithErr{
+			"https://10.0.0.3:8081": {
 				StatusResponse: happyNode2StatusResponse,
 			},
 		},
@@ -195,10 +195,10 @@ func TestStateMachineRun(t *testing.T) {
 			Member: newNode0Member,
 		},
 		StatusResponseWithErr: map[string]*etcdutil.StatusResponseWithErr{
-			"https://10.0.0.2:8081": &etcdutil.StatusResponseWithErr{
+			"https://10.0.0.2:8081": {
 				StatusResponse: happyNode1StatusResponse,
 			},
-			"https://10.0.0.3:8081": &etcdutil.StatusResponseWithErr{
+			"https://10.0.0.3:8081": {
 				StatusResponse: happyNode2StatusResponse,
 			},
 		},
@@ -212,13 +212,13 @@ func TestStateMachineRun(t *testing.T) {
 			},
 		},
 		StatusResponseWithErr: map[string]*etcdutil.StatusResponseWithErr{
-			"https://10.0.0.4:8081": &etcdutil.StatusResponseWithErr{
+			"https://10.0.0.4:8081": {
 				StatusResponse: replacedNode0StatusResponse,
 			},
-			"https://10.0.0.2:8081": &etcdutil.StatusResponseWithErr{
+			"https://10.0.0.2:8081": {
 				StatusResponse: happyNode1StatusResponse,
 			},
-			"https://10.0.0.3:8081": &etcdutil.StatusResponseWithErr{
+			"https://10.0.0.3:8081": {
 				StatusResponse: happyNode2StatusResponse,
 			},
 		},
@@ -247,10 +247,10 @@ func TestStateMachineRun(t *testing.T) {
 			Member: newNode1Member,
 		},
 		StatusResponseWithErr: map[string]*etcdutil.StatusResponseWithErr{
-			"https://10.0.0.1:8081": &etcdutil.StatusResponseWithErr{
+			"https://10.0.0.1:8081": {
 				StatusResponse: happyNode0StatusResponse,
 			},
-			"https://10.0.0.3:8081": &etcdutil.StatusResponseWithErr{
+			"https://10.0.0.3:8081": {
 				StatusResponse: happyNode2StatusResponse,
 			},
 		},
@@ -264,13 +264,13 @@ func TestStateMachineRun(t *testing.T) {
 			},
 		},
 		StatusResponseWithErr: map[string]*etcdutil.StatusResponseWithErr{
-			"https://10.0.0.1:8081": &etcdutil.StatusResponseWithErr{
+			"https://10.0.0.1:8081": {
 				StatusResponse: happyNode0StatusResponse,
 			},
-			"https://10.0.0.5:8081": &etcdutil.StatusResponseWithErr{
+			"https://10.0.0.5:8081": {
 				StatusResponse: replacedNode1StatusResponse,
 			},
-			"https://10.0.0.3:8081": &etcdutil.StatusResponseWithErr{
+			"https://10.0.0.3:8081": {
 				StatusResponse: happyNode2StatusResponse,
 			},
 		},
@@ -292,15 +292,15 @@ func TestStateMachineRun(t *testing.T) {
 				"https://10.0.0.3:8081",
 			},
 			mockSteps: []*mockStep{
-				&mockStep{
+				{
 					mockClient:          clientResponseHealthy,
 					expectedMemberState: MemberStateHealthy,
 				},
-				&mockStep{
+				{
 					mockClient:          clientResponseHealthy,
 					expectedMemberState: MemberStateHealthy,
 				},
-				&mockStep{
+				{
 					mockClient:          clientResponseHealthy,
 					expectedMemberState: MemberStateHealthy,
 				},
@@ -313,7 +313,7 @@ func TestStateMachineRun(t *testing.T) {
 				"https://10.0.0.1:8081",
 			},
 			mockSteps: []*mockStep{
-				&mockStep{
+				{
 					mockClient:          clientResponseHealthy,
 					expectedMemberState: MemberStateHealthy,
 					expectedEndpoints: []string{
@@ -322,11 +322,11 @@ func TestStateMachineRun(t *testing.T) {
 						"https://10.0.0.3:8081",
 					},
 				},
-				&mockStep{
+				{
 					mockClient:          clientResponseHealthy,
 					expectedMemberState: MemberStateHealthy,
 				},
-				&mockStep{
+				{
 					mockClient:          clientResponseHealthy,
 					expectedMemberState: MemberStateHealthy,
 				},
@@ -339,29 +339,29 @@ func TestStateMachineRun(t *testing.T) {
 				"https://10.0.0.1:8081",
 			},
 			mockSteps: []*mockStep{
-				&mockStep{
+				{
 					mockClient:                 clientResponseNoCluster,
 					expectedMemberState:        MemberStateHealthy,
 					expectedCreateClusterState: "existing",
 				},
-				&mockStep{
+				{
 					mockClient:          clientResponseNoCluster,
 					expectedMemberState: MemberStateHealthy,
 				},
-				&mockStep{
+				{
 					mockClient:          clientResponseNoCluster,
 					expectedMemberState: MemberStateFailed,
 				},
-				&mockStep{
+				{
 					mockClient:                 clientResponseNoCluster,
 					expectedMemberState:        MemberStateWait,
 					expectedCreateClusterState: "new",
 				},
-				&mockStep{
+				{
 					mockClient:          clientResponseNoCluster,
 					expectedMemberState: MemberStateWait,
 				},
-				&mockStep{
+				{
 					mockClient:          clientResponseHealthy,
 					expectedMemberState: MemberStateHealthy,
 					expectedEndpoints: []string{
@@ -370,11 +370,11 @@ func TestStateMachineRun(t *testing.T) {
 						"https://10.0.0.3:8081",
 					},
 				},
-				&mockStep{
+				{
 					mockClient:          clientResponseHealthy,
 					expectedMemberState: MemberStateHealthy,
 				},
-				&mockStep{
+				{
 					mockClient:          clientResponseHealthy,
 					expectedMemberState: MemberStateHealthy,
 				},
@@ -387,12 +387,12 @@ func TestStateMachineRun(t *testing.T) {
 				"https://10.0.0.1:8081",
 			},
 			mockSteps: []*mockStep{
-				&mockStep{
+				{
 					mockClient:                 clientResponseNoCluster,
 					expectedMemberState:        MemberStateHealthy,
 					expectedCreateClusterState: "existing",
 				},
-				&mockStep{
+				{
 					mockClient:          clientResponseHealthy,
 					expectedMemberState: MemberStateHealthy,
 					expectedEndpoints: []string{
@@ -401,11 +401,11 @@ func TestStateMachineRun(t *testing.T) {
 						"https://10.0.0.3:8081",
 					},
 				},
-				&mockStep{
+				{
 					mockClient:          clientResponseHealthy,
 					expectedMemberState: MemberStateHealthy,
 				},
-				&mockStep{
+				{
 					mockClient:          clientResponseHealthy,
 					expectedMemberState: MemberStateHealthy,
 				},
@@ -420,15 +420,15 @@ func TestStateMachineRun(t *testing.T) {
 				"https://10.0.0.3:8081",
 			},
 			mockSteps: []*mockStep{
-				&mockStep{
+				{
 					mockClient:          clientResponseNode0Down,
 					expectedMemberState: MemberStateHealthy,
 				},
-				&mockStep{
+				{
 					mockClient:          clientResponseNode0Down,
 					expectedMemberState: MemberStateFailed,
 				},
-				&mockStep{
+				{
 					mockClient:                      clientResponseNode0Down,
 					expectedMemberState:             MemberStateHealthy,
 					expectedMemberRemovedID:         0,
@@ -436,7 +436,7 @@ func TestStateMachineRun(t *testing.T) {
 					expectedCreateClusterState:      "existing",
 					expectedNodeReplacementPeerURLs: []string{},
 				},
-				&mockStep{
+				{
 					mockClient:          clientResponseNode0Replaced,
 					expectedMemberState: MemberStateHealthy,
 					expectedEndpoints: []string{
@@ -445,15 +445,15 @@ func TestStateMachineRun(t *testing.T) {
 						"https://10.0.0.3:8081",
 					},
 				},
-				&mockStep{
+				{
 					mockClient:          clientResponseNode0Replaced,
 					expectedMemberState: MemberStateFailed,
 				},
-				&mockStep{
+				{
 					mockClient:          clientResponseNode0Replaced,
 					expectedMemberState: MemberStateHealthy,
 				},
-				&mockStep{
+				{
 					mockClient:          clientResponseNode0Replaced,
 					expectedMemberState: MemberStateHealthy,
 				},
@@ -468,17 +468,17 @@ func TestStateMachineRun(t *testing.T) {
 				"https://10.0.0.3:8081",
 			},
 			mockSteps: []*mockStep{
-				&mockStep{
+				{
 					mockClient:          clientResponseNode1Down,
 					expectedMemberState: MemberStateHealthy,
 				},
-				&mockStep{
+				{
 					mockClient:              clientResponseNode1Down,
 					expectedMemberState:     MemberStateHealthy,
 					expectedMemberRemovedID: happyNode1Member.ID,
 					expectedMemberAddedID:   newNode1Member.ID,
 				},
-				&mockStep{
+				{
 					mockClient:          clientResponseNode1Replaced,
 					expectedMemberState: MemberStateHealthy,
 					expectedEndpoints: []string{
@@ -487,11 +487,11 @@ func TestStateMachineRun(t *testing.T) {
 						"https://10.0.0.3:8081",
 					},
 				},
-				&mockStep{
+				{
 					mockClient:          clientResponseNode1Replaced,
 					expectedMemberState: MemberStateHealthy,
 				},
-				&mockStep{
+				{
 					mockClient:          clientResponseNode1Replaced,
 					expectedMemberState: MemberStateHealthy,
 				},
@@ -506,24 +506,24 @@ func TestStateMachineRun(t *testing.T) {
 				"https://10.0.0.3:8081",
 			},
 			mockSteps: []*mockStep{
-				&mockStep{
+				{
 					mockClient:          clientResponseNoCluster,
 					expectedMemberState: MemberStateHealthy,
 				},
-				&mockStep{
+				{
 					mockClient:          clientResponseNoCluster,
 					expectedMemberState: MemberStateFailed,
 				},
-				&mockStep{
+				{
 					mockClient:                 clientResponseNoCluster,
 					expectedMemberState:        MemberStateWait,
 					expectedCreateClusterState: "new",
 				},
-				&mockStep{
+				{
 					mockClient:          clientResponseNoCluster,
 					expectedMemberState: MemberStateWait,
 				},
-				&mockStep{
+				{
 					mockClient:          clientResponseHealthy,
 					expectedMemberState: MemberStateHealthy,
 					expectedEndpoints: []string{
@@ -532,7 +532,7 @@ func TestStateMachineRun(t *testing.T) {
 						"https://10.0.0.3:8081",
 					},
 				},
-				&mockStep{
+				{
 					mockClient:          clientResponseHealthy,
 					expectedMemberState: MemberStateHealthy,
 				},
@@ -566,15 +566,15 @@ func TestStateMachineRun(t *testing.T) {
 					"https://10.0.0.1:8081",
 				},
 				InitialCluster: []*arg.Node{
-					&arg.Node{
+					{
 						Name:    "node0",
 						PeerURL: "https://10.0.0.1:8001",
 					},
-					&arg.Node{
+					{
 						Name:    "node1",
 						PeerURL: "https://10.0.0.2:8001",
 					},
-					&arg.Node{
+					{
 						Name:    "node2",
 						PeerURL: "https://10.0.0.3:8001",
 					},

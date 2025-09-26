@@ -77,15 +77,15 @@ func TestPodSpec(t *testing.T) {
 					},
 				},
 				InitialCluster: []*arg.Node{
-					&arg.Node{
+					{
 						Name:    "node0",
 						PeerURL: "https://10.0.0.1:8001",
 					},
-					&arg.Node{
+					{
 						Name:    "node1",
 						PeerURL: "https://10.0.0.2:8001",
 					},
-					&arg.Node{
+					{
 						Name:    "node2",
 						PeerURL: "https://10.0.0.3:8001",
 					},
@@ -137,7 +137,7 @@ func TestPodSpec(t *testing.T) {
 				Spec: v1.PodSpec{
 					HostNetwork: true,
 					InitContainers: []v1.Container{
-						v1.Container{
+						{
 							Name:  "snapshot-restore",
 							Image: "etcd-image:latest",
 							Env: []v1.EnvVar{
@@ -201,7 +201,7 @@ func TestPodSpec(t *testing.T) {
 						},
 					},
 					Containers: []v1.Container{
-						v1.Container{
+						{
 							Name:  "etcd",
 							Image: "etcd-image:latest",
 							Env: []v1.EnvVar{
