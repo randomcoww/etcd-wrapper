@@ -8,14 +8,6 @@
   },
   "packageRules": [
     {
-      "matchManagers": [
-        "gomod"
-      ],
-      "matchDatasources": [
-        "golang-version"
-      ]
-    },
-    {
       "matchUpdateTypes": [
         "minor",
         "patch",
