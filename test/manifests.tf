@@ -64,6 +64,7 @@ module "etcd" {
   source = "./modules/static_pod"
   name   = "etcd-${each.key}"
   spec = {
+    hostNetwork       = false
     containers = [
       {
         name  = "etcd"
@@ -88,6 +89,20 @@ module "etcd" {
             "${name}=${m.peer_url}"
             ]
           )}",
+        ]
+        ports = [
+          {
+            name = "client"
+            protocol   = "TCP"
+            port = regex(local.url_regex, each.value.client_url).port
+            targetPort = regex(local.url_regex, each.value.client_url).port
+          },
+          {
+            name = "peer"
+            protocol   = "TCP"
+            port = regex(local.url_regex, each.value.peer_url).port
+            targetPort = regex(local.url_regex, each.value.peer_url).port
+          },
         ]
       },
     ]
