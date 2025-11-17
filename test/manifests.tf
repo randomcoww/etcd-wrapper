@@ -40,7 +40,7 @@ resource "local_file" "cert" {
 resource "local_file" "key" {
   for_each = local.members
 
-  filename = "output/${each.key}/cert.pem"
+  filename = "output/${each.key}/key.pem"
   content  = tls_private_key.etcd[each.key].private_key_pem
 }
 
@@ -54,33 +54,33 @@ resource "local_file" "peer-cert" {
 resource "local_file" "peer-key" {
   for_each = local.members
 
-  filename = "output/${each.key}/peer-cert.pem"
+  filename = "output/${each.key}/peer-key.pem"
   content  = tls_private_key.etcd-peer[each.key].private_key_pem
 }
 
 module "etcd" {
-  for_each = local.members
-
   source = "./modules/static_pod"
-  name   = "etcd-${each.key}"
+  name   = "etcd"
   spec = {
     hostNetwork = false
     containers = [
+      for name, m in local.members :
       {
-        name  = "etcd"
+        name  = name
         image = "gcr.io/etcd-development/etcd:v3.6.6"
         args = [
-          "--name=${each.key}",
-          "--trusted-ca-file=${local.base_path}/ca-cert.pem",
-          "--peer-trusted-ca-file=${local.base_path}/peer-ca-cert.pem",
-          "--cert-file=${local.base_path}/${each.key}/cert.pem",
-          "--key-file=${local.base_path}/${each.key}/key.pem",
-          "--peer-cert-file=${local.base_path}/${each.key}/peer-cert.pem",
-          "--peer-key-file=${local.base_path}/${each.key}/peer-key.pem",
-          "--initial-advertise-peer-urls=${each.value.peer_url}",
-          "--listen-peer-urls=${each.value.peer_url}",
-          "--advertise-client-urls=${each.value.client_url}",
-          "--listen-client-urls=${each.value.client_url}",
+          "etcd",
+          "--name=${name}",
+          "--trusted-ca-file=/etc/etcd/ca-cert.pem",
+          "--peer-trusted-ca-file=/etc/etcd/peer-ca-cert.pem",
+          "--cert-file=/etc/etcd/${name}/cert.pem",
+          "--key-file=/etc/etcd/${name}/key.pem",
+          "--peer-cert-file=/etc/etcd/${name}/peer-cert.pem",
+          "--peer-key-file=/etc/etcd/${name}/peer-key.pem",
+          "--initial-advertise-peer-urls=${m.peer_url}",
+          "--listen-peer-urls=${m.peer_url}",
+          "--advertise-client-urls=${m.client_url}",
+          "--listen-client-urls=${m.client_url}",
           "--strict-reconfig-check",
           "--initial-cluster-state=new",
           "--initial-cluster-token=test",
@@ -92,27 +92,39 @@ module "etcd" {
         ]
         ports = [
           {
-            name       = "client"
-            protocol   = "TCP"
-            port       = regex(local.url_regex, each.value.client_url).port
-            targetPort = regex(local.url_regex, each.value.client_url).port
+            hostPort      = tonumber(regex(local.url_regex, m.client_url).port)
+            containerPort = tonumber(regex(local.url_regex, m.client_url).port)
           },
           {
-            name       = "peer"
-            protocol   = "TCP"
-            port       = regex(local.url_regex, each.value.peer_url).port
-            targetPort = regex(local.url_regex, each.value.peer_url).port
+            hostPort      = tonumber(regex(local.url_regex, m.peer_url).port)
+            containerPort = tonumber(regex(local.url_regex, m.peer_url).port)
           },
         ]
+        volumeMounts = [
+          {
+            name      = "data"
+            mountPath = "/var/lib/etcd"
+            subPath   = name
+          },
+          {
+            name      = "data"
+            mountPath = "/etc/etcd"
+          },
+        ]
+      }
+    ]
+    volumes = [
+      {
+        name = "data"
+        hostPath = {
+          path = local.base_path
+        }
       },
     ]
   }
 }
 
 resource "local_file" "pod-manifest" {
-  filename = "output/etcd-manifest.yaml"
-  content = join("---\n", [
-    for name, m in local.members :
-    module.etcd[name].manifest
-  ])
+  filename = "output/manifest.yaml"
+  content  = module.etcd.manifest
 }
