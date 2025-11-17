@@ -9,9 +9,15 @@ resource "tls_cert_request" "etcd-peer" {
   for_each = local.members
 
   private_key_pem = tls_private_key.etcd-peer[each.key].private_key_pem
+
   subject {
     common_name = "kube-etcd-peer"
   }
+
+  ip_addresses = distinct([
+    "127.0.0.1",
+    regex(local.url_regex, each.value.client_url).ip,
+  ])
 }
 
 resource "tls_locally_signed_cert" "etcd-peer" {
