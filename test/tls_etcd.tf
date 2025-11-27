@@ -33,5 +33,6 @@ resource "tls_locally_signed_cert" "etcd" {
     "key_encipherment",
     "digital_signature",
     "server_auth",
+    "client_auth",
   ]
 }

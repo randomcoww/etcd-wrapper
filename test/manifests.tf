@@ -2,6 +2,7 @@
 locals {
   url_regex = "[a-z]+://(?<ip>[\\d.]+):(?<port>\\d+)"
 
+  base_path = abspath("output")
   cluster_token = "test"
   members = {
     node0 = {
@@ -17,7 +18,6 @@ locals {
       peer_url   = "https://127.0.0.1:8092"
     }
   }
-  base_path = abspath("output")
 }
 
 resource "local_file" "ca-cert" {
@@ -80,7 +80,7 @@ module "etcd" {
           "--initial-advertise-peer-urls=${m.peer_url}",
           "--listen-peer-urls=${m.peer_url}",
           "--advertise-client-urls=${m.client_url}",
-          "--listen-client-urls=${m.client_url}",
+          "--listen-client-urls=${m.client_url},unixs:///etc/etcd/${name}.sock",
           "--strict-reconfig-check",
           "--initial-cluster-state=new",
           "--initial-cluster-token=test",
@@ -90,18 +90,6 @@ module "etcd" {
             ]
           )}",
         ]
-        /*
-        ports = [
-          {
-            hostPort      = tonumber(regex(local.url_regex, m.client_url).port)
-            containerPort = tonumber(regex(local.url_regex, m.client_url).port)
-          },
-          {
-            hostPort      = tonumber(regex(local.url_regex, m.peer_url).port)
-            containerPort = tonumber(regex(local.url_regex, m.peer_url).port)
-          },
-        ]
-        */
         volumeMounts = [
           {
             name      = "data"
