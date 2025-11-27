@@ -3,23 +3,23 @@ package config
 import (
 	"crypto/tls"
 	"flag"
+	"fmt"
 	"github.com/randomcoww/etcd-wrapper/pkg/tlsutil"
-	"regexp"
 	"go.uber.org/zap"
+	"os"
+	"regexp"
 	"sort"
 	"strings"
-	"os"
-	"fmt"
 )
 
 type Config struct {
-	ClusterPeerURLs []string
-	Env map[string]string
-	ClientSocketfile string
-	ClientTLSConfig           *tls.Config
-	PeerTLSConfig           *tls.Config
-	Logger *zap.Logger
-	EtcdBinaryFile string
+	ClusterPeerURLs   []string
+	Env               map[string]string
+	ClientSocketfile  string
+	ClientTLSConfig   *tls.Config
+	PeerTLSConfig     *tls.Config
+	Logger            *zap.Logger
+	EtcdBinaryFile    string
 	EtcdctlBinaryFile string
 }
 
@@ -31,8 +31,8 @@ func NewConfig() (*Config, error) {
 
 	config := &Config{
 		ClientSocketfile: "/var/run/etd/client.sock",
-		Env: make(map[string]string),
-		Logger: logger,
+		Env:              make(map[string]string),
+		Logger:           logger,
 	}
 	flag.StringVar(&config.EtcdBinaryFile, "etcd-binary-file", config.EtcdBinaryFile, "Path to etcd binary")
 	flag.StringVar(&config.EtcdctlBinaryFile, "etcdctl-binary-file", config.EtcdctlBinaryFile, "Path to etcdctl binary")
@@ -49,7 +49,7 @@ func NewConfig() (*Config, error) {
 	}
 
 	if v, ok := config.Env["ETCD_LISTEN_CLIENT_URLS"]; ok {
-		config.Env["ETCD_LISTEN_CLIENT_URLS"] = v+",unixs://"+config.ClientSocketfile
+		config.Env["ETCD_LISTEN_CLIENT_URLS"] = v + ",unixs://" + config.ClientSocketfile
 	} else {
 		return nil, fmt.Errorf("env ETCD_LISTEN_CLIENT_URLS is not set")
 	}
