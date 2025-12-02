@@ -52,6 +52,7 @@ func NewConfig() (*Config, error) {
 		for _, u := range reList.Split(v, -1) {
 			config.ListenClientURLs = append(config.ListenClientURLs, u)
 		}
+		sort.Strings(config.ListenClientURLs)
 	} else {
 		return nil, fmt.Errorf("env ETCD_LISTEN_CLIENT_URLS is not set")
 	}
@@ -60,6 +61,7 @@ func NewConfig() (*Config, error) {
 		for _, u := range reList.Split(v, -1) {
 			config.InitialAdvertisePeerURLs = append(config.InitialAdvertisePeerURLs, u)
 		}
+		sort.Strings(config.InitialAdvertisePeerURLs)
 	} else {
 		return nil, fmt.Errorf("env ETCD_INITIAL_ADVERTISE_PEER_URLS is not set")
 	}
