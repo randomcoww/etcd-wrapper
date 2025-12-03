@@ -38,15 +38,23 @@ func NewConfig() (*Config, error) {
 	flag.StringVar(&config.EtcdctlBinaryFile, "etcdctl-binary-file", config.EtcdctlBinaryFile, "Path to etcdctl binary")
 	flag.Parse()
 
-	reList := regexp.MustCompile(`\s*,\s*`)
-	reMap := regexp.MustCompile(`\s*=\s*`)
-
 	for _, e := range os.Environ() {
 		if strings.HasPrefix(e, "ETCD_") {
-			k := reMap.Split(e, 2)
+			k := strings.SplitN(e, "=", 2)
 			config.Env[k[0]] = k[1]
 		}
 	}
+
+	if err := config.ParseEnvs(); err != nil {
+		return nil, err
+	}
+	return config, nil
+}
+
+func (config *Config) ParseEnvs() error {
+	var err error
+	reList := regexp.MustCompile(`\s*,\s*`)
+	reMap := regexp.MustCompile(`\s*=\s*`)
 
 	if v, ok := config.Env["ETCD_LISTEN_CLIENT_URLS"]; ok {
 		for _, u := range reList.Split(v, -1) {
@@ -54,7 +62,7 @@ func NewConfig() (*Config, error) {
 		}
 		sort.Strings(config.ListenClientURLs)
 	} else {
-		return nil, fmt.Errorf("env ETCD_LISTEN_CLIENT_URLS is not set")
+		return fmt.Errorf("env ETCD_LISTEN_CLIENT_URLS is not set")
 	}
 
 	if v, ok := config.Env["ETCD_INITIAL_ADVERTISE_PEER_URLS"]; ok {
@@ -63,7 +71,7 @@ func NewConfig() (*Config, error) {
 		}
 		sort.Strings(config.InitialAdvertisePeerURLs)
 	} else {
-		return nil, fmt.Errorf("env ETCD_INITIAL_ADVERTISE_PEER_URLS is not set")
+		return fmt.Errorf("env ETCD_INITIAL_ADVERTISE_PEER_URLS is not set")
 	}
 
 	if v, ok := config.Env["ETCD_INITIAL_CLUSTER"]; ok {
@@ -72,51 +80,50 @@ func NewConfig() (*Config, error) {
 			config.ClusterPeerURLs = append(config.ClusterPeerURLs, k[1])
 		}
 	} else {
-		return nil, fmt.Errorf("env ETCD_INITIAL_CLUSTER is not set")
+		return fmt.Errorf("env ETCD_INITIAL_CLUSTER is not set")
 	}
 
 	config.Env["ETCD_CLIENT_CERT_AUTH"] = "true"
 	trustedCAFile, ok := config.Env["ETCD_TRUSTED_CA_FILE"]
 	if !ok {
-		return nil, fmt.Errorf("env ETCD_TRUSTED_CA_FILE is required")
+		return fmt.Errorf("env ETCD_TRUSTED_CA_FILE is required")
 	}
 	certFile, ok := config.Env["ETCD_CERT_FILE"]
 	if !ok {
-		return nil, fmt.Errorf("env ETCD_CERT_FILE is required")
+		return fmt.Errorf("env ETCD_CERT_FILE is required")
 	}
 	keyFile, ok := config.Env["ETCD_KEY_FILE"]
 	if !ok {
-		return nil, fmt.Errorf("env ETCD_KEY_FILE is required")
+		return fmt.Errorf("env ETCD_KEY_FILE is required")
 	}
 	config.ClientTLSConfig, err = tlsutil.TLSConfig(trustedCAFile, certFile, keyFile)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	config.Env["ETCD_PEER_CLIENT_CERT_AUTH"] = "true"
 	peerTrustedCAFile, ok := config.Env["ETCD_PEER_TRUSTED_CA_FILE"]
 	if !ok {
-		return nil, fmt.Errorf("env ETCD_PEER_TRUSTED_CA_FILE is required")
+		return fmt.Errorf("env ETCD_PEER_TRUSTED_CA_FILE is required")
 	}
 	peerCertFile, ok := config.Env["ETCD_PEER_CERT_FILE"]
 	if !ok {
-		return nil, fmt.Errorf("env ETCD_PEER_CERT_FILE is required")
+		return fmt.Errorf("env ETCD_PEER_CERT_FILE is required")
 	}
 	peerKeyFile, ok := config.Env["ETCD_PEER_KEY_FILE"]
 	if !ok {
-		return nil, fmt.Errorf("env ETCD_PEER_KEY_FILE is required")
+		return fmt.Errorf("env ETCD_PEER_KEY_FILE is required")
 	}
 	config.PeerTLSConfig, err = tlsutil.TLSConfig(peerTrustedCAFile, peerCertFile, peerKeyFile)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	config.Env["ETCD_LOG_OUTPUTS"] = "stdout"
 	config.Env["ETCD_ENABLE_V2"] = "false"
 	config.Env["ETCD_STRICT_RECONFIG_CHECK"] = "true"
 	config.Env["ETCDCTL_API"] = "3"
-
-	return config, nil
+	return nil
 }
 
 func (config *Config) WriteEnv() []string {

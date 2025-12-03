@@ -55,4 +55,21 @@ func TestNewConfig(t *testing.T) {
 		"https://node0-0:8080",
 		"https://node1-0:8080",
 	})
+	assert.Equal(t, c.WriteEnv(), []string{
+		"ETCDCTL_API=3",
+		"ETCD_CERT_FILE=test/client/cert.pem",
+		"ETCD_CLIENT_CERT_AUTH=true",
+		"ETCD_ENABLE_V2=false",
+		"ETCD_INITIAL_ADVERTISE_PEER_URLS=https://node0-1:8080,https://node0-0:8080",
+		"ETCD_INITIAL_CLUSTER=node0=https://node0-0:8080,node1=https://node1-0:8080",
+		"ETCD_KEY_FILE=test/client/key.pem",
+		"ETCD_LISTEN_CLIENT_URLS=https://node0-1:9080,https://node0-0:9080",
+		"ETCD_LOG_OUTPUTS=stdout",
+		"ETCD_PEER_CERT_FILE=test/peer/cert.pem",
+		"ETCD_PEER_CLIENT_CERT_AUTH=true",
+		"ETCD_PEER_KEY_FILE=test/peer/key.pem",
+		"ETCD_PEER_TRUSTED_CA_FILE=test/peer-ca-cert.pem",
+		"ETCD_STRICT_RECONFIG_CHECK=true",
+		"ETCD_TRUSTED_CA_FILE=test/ca-cert.pem",
+	})
 }
