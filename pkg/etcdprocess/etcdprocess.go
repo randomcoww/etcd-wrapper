@@ -78,7 +78,16 @@ func DataExists(config *c.Config) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return info.IsDir(), nil
+	switch {
+	case info.IsDir():
+		paths, err := os.ReadDir(config.Env["ETCD_DATA_DIR"])
+		if err != nil {
+			return false, err
+		}
+		return len(paths) == 0, nil
+	default:
+		return false, fmt.Errorf("ETCD_DATA_DIR is not a directory")
+	}
 }
 
 func RemoveDataDir(config *c.Config) error {

@@ -14,8 +14,6 @@ import (
 )
 
 func TestCreateCluster(t *testing.T) {
-	ctx, cancel := context.WithCancel(context.Background())
-
 	clientPortBase := 8080
 	peerPortBase := 8090
 	members := []string{
@@ -30,11 +28,11 @@ func TestCreateCluster(t *testing.T) {
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
 
-	var configs []*c.Config
+	var config *c.Config
 	for i, member := range members {
 		testDir := filepath.Join("test", "data-"+member)
 
-		config := &c.Config{
+		config = &c.Config{
 			EtcdBinaryFile: "/mnt/usr/local/bin/etcd",
 			Logger:         logger,
 			Env: map[string]string{
@@ -58,23 +56,21 @@ func TestCreateCluster(t *testing.T) {
 				"ETCD_INITIAL_CLUSTER_TOKEN":       "test",
 			},
 		}
-		configs = append(configs, config)
 		config.ParseEnvs()
 
-		p := NewProcess(ctx, config)
+		p := NewProcess(context.Background(), config)
 		err := p.Run()
 		assert.NoError(t, err)
 
 		defer RemoveDataDir(config)
 		defer p.Wait()
+		defer p.Stop()
 	}
-	defer cancel()
 
-	clientCtx, _ := context.WithTimeout(context.Background(), time.Duration(20*time.Second))
-
-	client, err := etcdclient.NewClientFromPeers(clientCtx, configs[0])
+	ctx, _ := context.WithTimeout(context.Background(), time.Duration(20*time.Second))
+	client, err := etcdclient.NewClientFromPeers(ctx, config)
 	assert.NoError(t, err)
 
-	err = client.GetHealth(clientCtx)
+	err = client.GetHealth(ctx)
 	assert.NoError(t, err)
 }
