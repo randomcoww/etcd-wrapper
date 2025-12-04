@@ -1,0 +1,80 @@
+package etcdprocess
+
+import (
+	"context"
+	"fmt"
+	c "github.com/randomcoww/etcd-wrapper/pkg/config"
+	"github.com/randomcoww/etcd-wrapper/pkg/etcdclient"
+	"github.com/stretchr/testify/assert"
+	"go.uber.org/zap"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+)
+
+func TestCreateCluster(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	clientPortBase := 8080
+	peerPortBase := 8090
+	members := []string{
+		"node0",
+		"node1",
+		"node2",
+	}
+	var initialCluster []string
+	for i, member := range members {
+		initialCluster = append(initialCluster, fmt.Sprintf("%s=https://127.0.0.1:%d", member, peerPortBase+i))
+	}
+	logger, _ := zap.NewProduction()
+	defer logger.Sync()
+
+	var configs []*c.Config
+	for i, member := range members {
+		testDir := filepath.Join("test", "data-"+member)
+
+		config := &c.Config{
+			EtcdBinaryFile: "/mnt/usr/local/bin/etcd",
+			Logger:         logger,
+			Env: map[string]string{
+				"ETCD_DATA_DIR":                    testDir,
+				"ETCD_NAME":                        member,
+				"ETCD_CLIENT_CERT_AUTH":            "true",
+				"ETCD_PEER_CLIENT_CERT_AUTH":       "true",
+				"ETCD_STRICT_RECONFIG_CHECK":       "true",
+				"ETCD_TRUSTED_CA_FILE":             filepath.Join("test", "ca-cert.pem"),
+				"ETCD_CERT_FILE":                   filepath.Join("test", member, "client", "cert.pem"),
+				"ETCD_KEY_FILE":                    filepath.Join("test", member, "client", "key.pem"),
+				"ETCD_PEER_TRUSTED_CA_FILE":        filepath.Join("test", "peer-ca-cert.pem"),
+				"ETCD_PEER_CERT_FILE":              filepath.Join("test", member, "peer", "cert.pem"),
+				"ETCD_PEER_KEY_FILE":               filepath.Join("test", member, "peer", "key.pem"),
+				"ETCD_LISTEN_CLIENT_URLS":          fmt.Sprintf("https://127.0.0.1:%d", clientPortBase+i),
+				"ETCD_ADVERTISE_CLIENT_URLS":       fmt.Sprintf("https://127.0.0.1:%d", clientPortBase+i),
+				"ETCD_LISTEN_PEER_URLS":            fmt.Sprintf("https://127.0.0.1:%d", peerPortBase+i),
+				"ETCD_INITIAL_ADVERTISE_PEER_URLS": fmt.Sprintf("https://127.0.0.1:%d", peerPortBase+i),
+				"ETCD_INITIAL_CLUSTER":             strings.Join(initialCluster, ","),
+				"ETCD_INITIAL_CLUSTER_STATE":       "new",
+				"ETCD_INITIAL_CLUSTER_TOKEN":       "test",
+			},
+		}
+		configs = append(configs, config)
+		config.ParseEnvs()
+
+		p := NewProcess(ctx, config)
+		err := p.Run()
+		assert.NoError(t, err)
+
+		defer RemoveDataDir(config)
+		defer p.Wait()
+	}
+	defer cancel()
+
+	clientCtx, _ := context.WithTimeout(context.Background(), time.Duration(20*time.Second))
+
+	client, err := etcdclient.NewClientFromPeers(clientCtx, configs[0])
+	assert.NoError(t, err)
+
+	err = client.GetHealth(clientCtx)
+	assert.NoError(t, err)
+}

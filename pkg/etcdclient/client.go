@@ -6,6 +6,7 @@ import (
 	etcdserverpb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/server/v3/etcdserver"
+	"io"
 	"net"
 	"net/http"
 	"time"
@@ -80,7 +81,10 @@ func NewClientFromPeers(ctx context.Context, config *c.Config) (EtcdClient, erro
 			TLSClientConfig:     config.PeerTLSConfig,
 		})
 		if err == nil {
-			return NewClient(ctx, config, pcluster.ClientURLs())
+			client, err := NewClient(ctx, config, pcluster.ClientURLs())
+			if err == nil {
+				return client, nil
+			}
 		}
 
 		select {
@@ -152,4 +156,12 @@ func (client *Client) GetHealth(ctx context.Context) error {
 func (client *Client) Defragment(ctx context.Context, endpoint string) error {
 	_, err := client.Maintenance.Defragment(ctx, endpoint)
 	return err
+}
+
+func (client *Client) SnapshotReader(ctx context.Context) (io.Reader, error) {
+	rc, err := client.Maintenance.Snapshot(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return rc, nil
 }
