@@ -13,7 +13,6 @@ type EtcdProcess interface {
 	Run() error
 	Stop() error
 	Wait() error
-	RestoreV3Snapshot(context.Context, *c.Config, string) error
 }
 
 type etcdProcess struct {
@@ -43,19 +42,16 @@ func (p *etcdProcess) Wait() error {
 	return p.Cmd.Wait()
 }
 
-func (p *etcdProcess) RestoreV3Snapshot(ctx context.Context, config *c.Config, snapshotFile string) error {
-	if err := p.Stop(); err != nil {
-		return err
-	}
+func RestoreV3Snapshot(ctx context.Context, config *c.Config, snapshotFile string) error {
 	if err := RemoveDataDir(config); err != nil {
 		return err
 	}
-	c := exec.CommandContext(ctx, config.EtcdctlBinaryFile)
+	c := exec.CommandContext(ctx, config.EtcdutlBinaryFile)
 	c.Args = append(c.Args, "snapshot", "restore", snapshotFile)
 	c.Args = append(c.Args, "--name", config.Env["ETCD_NAME"])
 	c.Args = append(c.Args, "--initial-cluster", config.Env["ETCD_INITIAL_CLUSTER"])
 	c.Args = append(c.Args, "--initial-cluster-token", config.Env["ETCD_INITIAL_CLUSTER_TOKEN"])
-	c.Args = append(c.Args, "--initial-advertise-peer-urls", config.Env["ETCD_ADVERTISE_PEER_URLS"])
+	c.Args = append(c.Args, "--initial-advertise-peer-urls", config.Env["ETCD_INITIAL_ADVERTISE_PEER_URLS"])
 	c.Args = append(c.Args, "--data-dir", config.Env["ETCD_DATA_DIR"])
 	c.Env = config.WriteEnv()
 	c.Stdout = os.Stdout
@@ -68,7 +64,7 @@ func (p *etcdProcess) RestoreV3Snapshot(ctx context.Context, config *c.Config, s
 		return err
 	}
 	if !processState.Success() {
-		return fmt.Errorf("etcdctl snapshot restore returned a non-zero exit code")
+		return fmt.Errorf("etcdutl snapshot restore returned a non-zero exit code")
 	}
 	return nil
 }
@@ -84,7 +80,7 @@ func DataExists(config *c.Config) (bool, error) {
 		if err != nil {
 			return false, err
 		}
-		return len(paths) == 0, nil
+		return len(paths) > 0, nil
 	default:
 		return false, fmt.Errorf("ETCD_DATA_DIR is not a directory")
 	}

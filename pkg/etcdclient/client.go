@@ -54,11 +54,7 @@ type EtcdClient interface {
 	MemberRemove(context.Context, uint64) (Members, error)
 	GetHealth(context.Context) error
 	Defragment(context.Context, string) error
-}
-
-type PeerCluster interface {
-	ClientURLs() []string
-	PeerURLs() []string
+	Snapshot(context.Context) (io.Reader, error)
 }
 
 const (
@@ -158,7 +154,7 @@ func (client *Client) Defragment(ctx context.Context, endpoint string) error {
 	return err
 }
 
-func (client *Client) SnapshotReader(ctx context.Context) (io.Reader, error) {
+func (client *Client) Snapshot(ctx context.Context) (io.Reader, error) {
 	rc, err := client.Maintenance.Snapshot(ctx)
 	if err != nil {
 		return nil, err

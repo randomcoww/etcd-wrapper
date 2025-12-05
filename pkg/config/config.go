@@ -21,7 +21,7 @@ type Config struct {
 	PeerTLSConfig            *tls.Config
 	Logger                   *zap.Logger
 	EtcdBinaryFile           string
-	EtcdctlBinaryFile        string
+	EtcdutlBinaryFile        string
 }
 
 func NewConfig() (*Config, error) {
@@ -35,7 +35,7 @@ func NewConfig() (*Config, error) {
 		Logger: logger,
 	}
 	flag.StringVar(&config.EtcdBinaryFile, "etcd-binary-file", config.EtcdBinaryFile, "Path to etcd binary")
-	flag.StringVar(&config.EtcdctlBinaryFile, "etcdctl-binary-file", config.EtcdctlBinaryFile, "Path to etcdctl binary")
+	flag.StringVar(&config.EtcdutlBinaryFile, "etcdutl-binary-file", config.EtcdutlBinaryFile, "Path to etcdutl binary")
 	flag.Parse()
 
 	for _, e := range os.Environ() {

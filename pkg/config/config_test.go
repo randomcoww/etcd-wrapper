@@ -21,7 +21,7 @@ func TestNewConfig(t *testing.T) {
 	assert.NoError(t, err)
 
 	flag.CommandLine.Set("etcd-binary-file", "/path/etcd")
-	flag.CommandLine.Set("etcdctl-binary-file", "/path/etcdctl")
+	flag.CommandLine.Set("etcdutl-binary-file", "/path/etcdutl")
 
 	assert.Equal(t, c.Env, map[string]string{
 		"ETCD_LISTEN_CLIENT_URLS":          "https://node0-1:9080,https://node0-0:9080",
@@ -42,7 +42,7 @@ func TestNewConfig(t *testing.T) {
 	},
 	)
 	assert.Equal(t, c.EtcdBinaryFile, "/path/etcd")
-	assert.Equal(t, c.EtcdctlBinaryFile, "/path/etcdctl")
+	assert.Equal(t, c.EtcdutlBinaryFile, "/path/etcdutl")
 	assert.Equal(t, c.ListenClientURLs, []string{
 		"https://node0-0:9080",
 		"https://node0-1:9080",
