@@ -29,3 +29,16 @@ func WriteFile(rc io.Reader, path string) error {
 func DeleteFile(path string) error {
 	return os.Remove(path)
 }
+
+func HasMatchingElement[T comparable](s1, s2 []T) {
+	elementsInS1 := make(map[T]struct{})
+	for _, v := range s1 {
+		elementsInS1[v] = struct{}{}
+	}
+	for _, v := range s2 {
+		if _, ok := elementsInS1[v]; ok {
+			return true
+		}
+	}
+	return false
+}
