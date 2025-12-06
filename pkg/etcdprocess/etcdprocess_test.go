@@ -18,6 +18,7 @@ const (
 	peerPortBase      int    = 8090
 	etcdBinaryFile    string = "/mnt/usr/local/bin/etcd"
 	etcdutlBinaryFile string = "/mnt/usr/local/bin/etcdutl"
+	baseTestPath      string = "../../test"
 )
 
 func TestCreateNewCluster(t *testing.T) {
@@ -52,7 +53,7 @@ func TestCreateClusterFromSnapshotRestore(t *testing.T) {
 	configs := memberConfigs("existing")
 	var config *c.Config
 	for _, config = range configs {
-		err := RestoreV3Snapshot(ctx, config, filepath.Join("test", "snapshot.db"))
+		err := RestoreV3Snapshot(ctx, config, filepath.Join(baseTestPath, "snapshot.db"))
 		assert.NoError(t, err)
 
 		ok, err := DataExists(config)
@@ -93,7 +94,7 @@ func memberConfigs(state string) []*c.Config {
 
 	var configs []*c.Config
 	for i, member := range members {
-		testDir := filepath.Join("test", member+".etcd")
+		testDir := filepath.Join(baseTestPath, member+".etcd")
 
 		config := &c.Config{
 			EtcdBinaryFile:    etcdBinaryFile,
@@ -105,12 +106,12 @@ func memberConfigs(state string) []*c.Config {
 				"ETCD_CLIENT_CERT_AUTH":            "true",
 				"ETCD_PEER_CLIENT_CERT_AUTH":       "true",
 				"ETCD_STRICT_RECONFIG_CHECK":       "true",
-				"ETCD_TRUSTED_CA_FILE":             filepath.Join("test", "ca-cert.pem"),
-				"ETCD_CERT_FILE":                   filepath.Join("test", member, "client", "cert.pem"),
-				"ETCD_KEY_FILE":                    filepath.Join("test", member, "client", "key.pem"),
-				"ETCD_PEER_TRUSTED_CA_FILE":        filepath.Join("test", "peer-ca-cert.pem"),
-				"ETCD_PEER_CERT_FILE":              filepath.Join("test", member, "peer", "cert.pem"),
-				"ETCD_PEER_KEY_FILE":               filepath.Join("test", member, "peer", "key.pem"),
+				"ETCD_TRUSTED_CA_FILE":             filepath.Join(baseTestPath, "ca-cert.pem"),
+				"ETCD_CERT_FILE":                   filepath.Join(baseTestPath, member, "client", "cert.pem"),
+				"ETCD_KEY_FILE":                    filepath.Join(baseTestPath, member, "client", "key.pem"),
+				"ETCD_PEER_TRUSTED_CA_FILE":        filepath.Join(baseTestPath, "peer-ca-cert.pem"),
+				"ETCD_PEER_CERT_FILE":              filepath.Join(baseTestPath, member, "peer", "cert.pem"),
+				"ETCD_PEER_KEY_FILE":               filepath.Join(baseTestPath, member, "peer", "key.pem"),
 				"ETCD_LISTEN_CLIENT_URLS":          fmt.Sprintf("https://127.0.0.1:%d", clientPortBase+i),
 				"ETCD_ADVERTISE_CLIENT_URLS":       fmt.Sprintf("https://127.0.0.1:%d", clientPortBase+i),
 				"ETCD_LISTEN_PEER_URLS":            fmt.Sprintf("https://127.0.0.1:%d", peerPortBase+i),

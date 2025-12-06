@@ -2,20 +2,23 @@
 locals {
   url_regex = "[a-z]+://(?<ip>[\\d.]+):(?<port>\\d+)"
 
-  base_path = abspath("output")
+  base_path     = abspath("output")
   cluster_token = "test"
   members = {
     node0 = {
       client_url = "https://127.0.0.1:8080"
       peer_url   = "https://127.0.0.1:8090"
+      initial_cluster_state = "existing"
     }
     node1 = {
       client_url = "https://127.0.0.1:8081"
       peer_url   = "https://127.0.0.1:8091"
+      initial_cluster_state = "existing"
     }
     node2 = {
       client_url = "https://127.0.0.1:8082"
       peer_url   = "https://127.0.0.1:8092"
+      initial_cluster_state = "existing"
     }
   }
 }
@@ -80,9 +83,9 @@ module "etcd" {
           "--initial-advertise-peer-urls=${m.peer_url}",
           "--listen-peer-urls=${m.peer_url}",
           "--advertise-client-urls=${m.client_url}",
-          "--listen-client-urls=${m.client_url},unixs:///etc/etcd/${name}.sock",
+          "--listen-client-urls=${m.client_url}",
           "--strict-reconfig-check",
-          "--initial-cluster-state=new",
+          "--initial-cluster-state=${m.initial_cluster_state}",
           "--initial-cluster-token=test",
           "--initial-cluster=${join(",", [
             for name, m in local.members :
