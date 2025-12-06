@@ -28,11 +28,10 @@ func TestCreateNewCluster(t *testing.T) {
 	var config *c.Config
 	for _, config = range configs {
 		p := NewProcess(context.Background(), config)
-		err := p.Run()
+		err := p.Reconfigure(config)
 		assert.NoError(t, err)
 
 		defer RemoveDataDir(config)
-		defer p.Wait()
 		defer p.Stop()
 	}
 
@@ -61,11 +60,10 @@ func TestCreateClusterFromSnapshotRestore(t *testing.T) {
 		assert.True(t, ok)
 
 		p := NewProcess(context.Background(), config)
-		err = p.Run()
+		err = p.Reconfigure(config)
 		assert.NoError(t, err)
 
 		defer RemoveDataDir(config)
-		defer p.Wait()
 		defer p.Stop()
 	}
 

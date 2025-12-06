@@ -7,12 +7,14 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 )
 
 type EtcdProcess interface {
-	Run() error
+	Start() error
 	Stop() error
 	Wait() error
+	Reconfigure(*c.Config) error
 }
 
 type etcdProcess struct {
@@ -30,16 +32,40 @@ func NewProcess(ctx context.Context, config *c.Config) EtcdProcess {
 	}
 }
 
-func (p *etcdProcess) Run() error {
-	return p.Cmd.Start()
+func (p *etcdProcess) Reconfigure(config *c.Config) error {
+	env := config.WriteEnv()
+	if !slices.Equal(p.Cmd.Env, env) {
+		if err := p.Stop(); err != nil {
+			return err
+		}
+	}
+	copy(p.Cmd.Env, env)
+	return p.Start()
+}
+
+func (p *etcdProcess) Start() error {
+	if p.Cmd.Process == nil {
+		return p.Cmd.Start()
+	}
+	return nil
 }
 
 func (p *etcdProcess) Stop() error {
-	return p.Cmd.Process.Kill()
+	if p.Cmd.Process != nil {
+		if err := p.Cmd.Process.Kill(); err != nil {
+			return err
+		}
+		return p.Wait()
+	}
+	return nil
 }
 
 func (p *etcdProcess) Wait() error {
-	return p.Cmd.Wait()
+	if p.Cmd.Process != nil {
+		_, err := p.Cmd.Process.Wait()
+		return err
+	}
+	return nil
 }
 
 func RestoreV3Snapshot(ctx context.Context, config *c.Config, snapshotFile string) error {

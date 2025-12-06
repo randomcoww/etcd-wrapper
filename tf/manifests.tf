@@ -6,18 +6,18 @@ locals {
   cluster_token = "test"
   members = {
     node0 = {
-      client_url = "https://127.0.0.1:8080"
-      peer_url   = "https://127.0.0.1:8090"
+      client_url            = "https://127.0.0.1:8080"
+      peer_url              = "https://127.0.0.1:8090"
       initial_cluster_state = "existing"
     }
     node1 = {
-      client_url = "https://127.0.0.1:8081"
-      peer_url   = "https://127.0.0.1:8091"
+      client_url            = "https://127.0.0.1:8081"
+      peer_url              = "https://127.0.0.1:8091"
       initial_cluster_state = "existing"
     }
     node2 = {
-      client_url = "https://127.0.0.1:8082"
-      peer_url   = "https://127.0.0.1:8092"
+      client_url            = "https://127.0.0.1:8082"
+      peer_url              = "https://127.0.0.1:8092"
       initial_cluster_state = "existing"
     }
   }
