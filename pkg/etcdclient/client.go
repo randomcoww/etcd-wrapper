@@ -63,9 +63,6 @@ const (
 )
 
 func NewClientFromPeers(ctx context.Context, config *c.Config) (EtcdClient, error) {
-	tick := time.NewTicker(backoffWaitBetween)
-	defer tick.Stop()
-
 	for {
 		pcluster, err := etcdserver.GetClusterFromRemotePeers(config.Logger, config.ClusterPeerURLs, &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
@@ -83,11 +80,12 @@ func NewClientFromPeers(ctx context.Context, config *c.Config) (EtcdClient, erro
 			}
 		}
 
+		timer := time.NewTimer(backoffWaitBetween)
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
 
-		case <-tick.C:
+		case <-timer.C:
 			continue
 		}
 	}
