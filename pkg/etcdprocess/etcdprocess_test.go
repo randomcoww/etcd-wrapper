@@ -24,10 +24,11 @@ const (
 func TestCreateNewCluster(t *testing.T) {
 	ctx, _ := context.WithTimeout(context.Background(), time.Duration(20*time.Second))
 
-	configs := memberConfigs("new")
-	var config *c.Config
-	for _, config = range configs {
+	configs := memberConfigs()
+	for _, config := range configs {
 		p := NewProcess(context.Background(), config)
+
+		config.Env["ETCD_INITIAL_CLUSTER_STATE"] = "new"
 		err := p.Reconfigure(config)
 		assert.NoError(t, err)
 
@@ -35,7 +36,7 @@ func TestCreateNewCluster(t *testing.T) {
 		defer p.Stop()
 	}
 
-	client, err := etcdclient.NewClientFromPeers(ctx, config)
+	client, err := etcdclient.NewClientFromPeers(ctx, configs[0])
 	assert.NoError(t, err)
 
 	err = client.GetHealth(ctx)
@@ -49,9 +50,8 @@ func TestCreateNewCluster(t *testing.T) {
 func TestCreateClusterFromSnapshotRestore(t *testing.T) {
 	ctx, _ := context.WithTimeout(context.Background(), time.Duration(20*time.Second))
 
-	configs := memberConfigs("existing")
-	var config *c.Config
-	for _, config = range configs {
+	configs := memberConfigs()
+	for _, config := range configs {
 		err := RestoreV3Snapshot(ctx, config, filepath.Join(baseTestPath, "snapshot.db"))
 		assert.NoError(t, err)
 
@@ -60,6 +60,8 @@ func TestCreateClusterFromSnapshotRestore(t *testing.T) {
 		assert.True(t, ok)
 
 		p := NewProcess(context.Background(), config)
+
+		config.Env["ETCD_INITIAL_CLUSTER_STATE"] = "existing"
 		err = p.Reconfigure(config)
 		assert.NoError(t, err)
 
@@ -67,7 +69,7 @@ func TestCreateClusterFromSnapshotRestore(t *testing.T) {
 		defer p.Stop()
 	}
 
-	client, err := etcdclient.NewClientFromPeers(ctx, config)
+	client, err := etcdclient.NewClientFromPeers(ctx, configs[0])
 	assert.NoError(t, err)
 
 	err = client.GetHealth(ctx)
@@ -78,7 +80,7 @@ func TestCreateClusterFromSnapshotRestore(t *testing.T) {
 	assert.Equal(t, len(list.GetMembers()), len(configs))
 }
 
-func memberConfigs(state string) []*c.Config {
+func memberConfigs() []*c.Config {
 	members := []string{
 		"node0",
 		"node1",
@@ -115,7 +117,6 @@ func memberConfigs(state string) []*c.Config {
 				"ETCD_LISTEN_PEER_URLS":            fmt.Sprintf("https://127.0.0.1:%d", peerPortBase+i),
 				"ETCD_INITIAL_ADVERTISE_PEER_URLS": fmt.Sprintf("https://127.0.0.1:%d", peerPortBase+i),
 				"ETCD_INITIAL_CLUSTER":             strings.Join(initialCluster, ","),
-				"ETCD_INITIAL_CLUSTER_STATE":       state,
 				"ETCD_INITIAL_CLUSTER_TOKEN":       "test",
 			},
 		}

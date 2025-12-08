@@ -39,7 +39,7 @@ func (p *etcdProcess) Reconfigure(config *c.Config) error {
 			return err
 		}
 	}
-	copy(p.Cmd.Env, env)
+	p.Cmd.Env = env
 	return p.Start()
 }
 
