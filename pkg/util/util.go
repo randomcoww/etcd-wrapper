@@ -30,7 +30,7 @@ func DeleteFile(path string) error {
 	return os.Remove(path)
 }
 
-func HasMatchingElement[T comparable](s1, s2 []T) {
+func HasMatchingElement[T comparable](s1, s2 []T) bool {
 	elementsInS1 := make(map[T]struct{})
 	for _, v := range s1 {
 		elementsInS1[v] = struct{}{}

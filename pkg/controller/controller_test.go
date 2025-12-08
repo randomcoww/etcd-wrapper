@@ -1,10 +1,11 @@
-package etcdprocess
+package controller
 
 import (
 	"context"
 	"fmt"
 	c "github.com/randomcoww/etcd-wrapper/pkg/config"
 	"github.com/randomcoww/etcd-wrapper/pkg/etcdclient"
+	"github.com/randomcoww/etcd-wrapper/pkg/etcdprocess"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 	"path/filepath"
@@ -21,55 +22,68 @@ const (
 	baseTestPath      string = "../../test"
 )
 
-func TestCreateNewCluster(t *testing.T) {
-	ctx, _ := context.WithTimeout(context.Background(), time.Duration(20*time.Second))
+func TestCreateNew(t *testing.T) {
+	ctx, _ := context.WithTimeout(context.Background(), time.Duration(4*time.Second))
+	clientCtx, _ := context.WithTimeout(context.Background(), time.Duration(30*time.Second))
 
 	configs := memberConfigs()
 	for _, config := range configs {
-		p := NewProcess(context.Background(), config)
-
-		config.Env["ETCD_INITIAL_CLUSTER_STATE"] = "new"
-		err := p.Reconfigure(config)
+		controller, err := NewController(context.Background(), config)
 		assert.NoError(t, err)
 
-		defer RemoveDataDir(config)
-		defer p.Stop()
+		err = controller.Run(ctx, config)
+		assert.NoError(t, err)
+
+		defer etcdprocess.RemoveDataDir(config)
+		defer controller.P.Stop()
 	}
 
-	client, err := etcdclient.NewClientFromPeers(ctx, configs[0])
+	client, err := etcdclient.NewClientFromPeers(clientCtx, configs[0])
 	assert.NoError(t, err)
 
-	list, err := client.MemberList(ctx)
+	list, err := client.MemberList(clientCtx)
 	assert.NoError(t, err)
 	assert.Equal(t, len(list.GetMembers()), len(configs))
 }
 
-func TestCreateClusterFromSnapshotRestore(t *testing.T) {
-	ctx, _ := context.WithTimeout(context.Background(), time.Duration(20*time.Second))
+func TestReplaceExisting(t *testing.T) {
+	ctx, _ := context.WithTimeout(context.Background(), time.Duration(8*time.Second))
+	clientCtx, _ := context.WithTimeout(context.Background(), time.Duration(20*time.Second))
 
+	// create new cluster
+	var controllers []*Controller
 	configs := memberConfigs()
 	for _, config := range configs {
-		err := RestoreV3Snapshot(ctx, config, filepath.Join(baseTestPath, "snapshot.db"))
+		controller, err := NewController(context.Background(), config)
+		controllers = append(controllers, controller)
 		assert.NoError(t, err)
 
-		ok, err := DataExists(config)
-		assert.NoError(t, err)
-		assert.True(t, ok)
-
-		p := NewProcess(context.Background(), config)
-
-		config.Env["ETCD_INITIAL_CLUSTER_STATE"] = "existing"
-		err = p.Reconfigure(config)
+		err = controller.Run(ctx, config)
 		assert.NoError(t, err)
 
-		defer RemoveDataDir(config)
-		defer p.Stop()
+		defer etcdprocess.RemoveDataDir(config)
+		defer controller.P.Stop()
 	}
 
-	client, err := etcdclient.NewClientFromPeers(ctx, configs[0])
+	// wait for cluster
+	client, err := etcdclient.NewClientFromPeers(clientCtx, configs[0])
 	assert.NoError(t, err)
 
-	list, err := client.MemberList(ctx)
+	// test stopping node0
+	err = controllers[0].P.Stop()
+	assert.NoError(t, err)
+	err = etcdprocess.RemoveDataDir(configs[0])
+	assert.NoError(t, err)
+
+	// run to replace node0
+	err = controllers[0].Run(ctx, configs[0])
+	assert.NoError(t, err)
+
+	// check result
+	client, err = etcdclient.NewClientFromPeers(clientCtx, configs[0])
+	assert.NoError(t, err)
+
+	list, err := client.MemberList(clientCtx)
 	assert.NoError(t, err)
 	assert.Equal(t, len(list.GetMembers()), len(configs))
 }
