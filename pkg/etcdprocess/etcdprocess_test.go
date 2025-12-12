@@ -7,6 +7,7 @@ import (
 	"github.com/randomcoww/etcd-wrapper/pkg/etcdclient"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -23,16 +24,16 @@ const (
 
 func TestCreateNewCluster(t *testing.T) {
 	ctx, _ := context.WithTimeout(context.Background(), time.Duration(20*time.Second))
+	dataDir, _ := os.MkdirTemp("", "data")
+	defer os.Remove(dataDir)
 
-	configs := memberConfigs()
+	configs := memberConfigs(dataDir)
 	for _, config := range configs {
 		p := NewProcess(context.Background(), config)
 
 		config.Env["ETCD_INITIAL_CLUSTER_STATE"] = "new"
 		err := p.Reconfigure(config)
 		assert.NoError(t, err)
-
-		defer RemoveDataDir(config)
 		defer p.Stop()
 	}
 
@@ -41,18 +42,20 @@ func TestCreateNewCluster(t *testing.T) {
 
 	list, err := client.MemberList(ctx)
 	assert.NoError(t, err)
-	assert.Equal(t, len(list.GetMembers()), len(configs))
+	assert.Equal(t, len(configs), len(list.GetMembers()))
 
 	_, err = client.Status(ctx, configs[0].ListenClientURLs[0])
 	assert.NoError(t, err)
 }
 
-func TestCreateClusterFromSnapshotRestore(t *testing.T) {
+func TestExistingFromSnapshotRestore(t *testing.T) {
 	ctx, _ := context.WithTimeout(context.Background(), time.Duration(20*time.Second))
+	dataDir, _ := os.MkdirTemp("", "data")
+	defer os.Remove(dataDir)
 
-	configs := memberConfigs()
+	configs := memberConfigs(dataDir)
 	for _, config := range configs[1:] { // recover 2 of 3 nodes
-		err := RestoreV3Snapshot(ctx, config, filepath.Join(baseTestPath, "snapshot.db"))
+		err := RestoreV3Snapshot(ctx, config, filepath.Join(baseTestPath, "test-snapshot.db"))
 		assert.NoError(t, err)
 
 		ok, err := DataExists(config)
@@ -66,8 +69,6 @@ func TestCreateClusterFromSnapshotRestore(t *testing.T) {
 		config.Env["ETCD_INITIAL_CLUSTER_STATE"] = "existing"
 		err := p.Reconfigure(config)
 		assert.NoError(t, err)
-
-		defer RemoveDataDir(config)
 		defer p.Stop()
 	}
 
@@ -76,13 +77,17 @@ func TestCreateClusterFromSnapshotRestore(t *testing.T) {
 
 	list, err := client.MemberList(ctx)
 	assert.NoError(t, err)
-	assert.Equal(t, len(list.GetMembers()), len(configs))
+	assert.Equal(t, len(configs), len(list.GetMembers()))
 
 	_, err = client.Status(ctx, configs[0].ListenClientURLs[0])
 	assert.NoError(t, err)
+
+	resp, err := client.C().KV.Get(ctx, "test-key1")
+	assert.NoError(t, err)
+	assert.Equal(t, "test-val1", string(resp.Kvs[0].Value)) // match data that should exist in snapshot
 }
 
-func memberConfigs() []*c.Config {
+func memberConfigs(dataPath string) []*c.Config {
 	members := []string{
 		"node0",
 		"node1",
@@ -96,14 +101,12 @@ func memberConfigs() []*c.Config {
 
 	var configs []*c.Config
 	for i, member := range members {
-		testDir := filepath.Join(baseTestPath, member+".etcd")
-
 		config := &c.Config{
 			EtcdBinaryFile:    etcdBinaryFile,
 			EtcdutlBinaryFile: etcdutlBinaryFile,
 			Logger:            logger,
 			Env: map[string]string{
-				"ETCD_DATA_DIR":                    testDir,
+				"ETCD_DATA_DIR":                    filepath.Join(dataPath, member+".etcd"),
 				"ETCD_NAME":                        member,
 				"ETCD_CLIENT_CERT_AUTH":            "true",
 				"ETCD_PEER_CLIENT_CERT_AUTH":       "true",
