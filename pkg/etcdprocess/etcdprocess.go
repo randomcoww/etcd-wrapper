@@ -7,14 +7,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 )
 
 type EtcdProcess interface {
 	Start() error
 	Stop() error
 	Wait() error
-	Reconfigure(*c.Config) error
 }
 
 type etcdProcess struct {
@@ -32,17 +30,6 @@ func NewProcess(ctx context.Context, config *c.Config) EtcdProcess {
 	}
 }
 
-func (p *etcdProcess) Reconfigure(config *c.Config) error {
-	env := config.WriteEnv()
-	if !slices.Equal(p.Cmd.Env, env) {
-		if err := p.Stop(); err != nil {
-			return err
-		}
-	}
-	p.Cmd.Env = env
-	return p.Start()
-}
-
 func (p *etcdProcess) Start() error {
 	if p.Cmd.Process == nil {
 		return p.Cmd.Start()
@@ -52,10 +39,7 @@ func (p *etcdProcess) Start() error {
 
 func (p *etcdProcess) Stop() error {
 	if p.Cmd.Process != nil {
-		if err := p.Cmd.Process.Kill(); err != nil {
-			return err
-		}
-		return p.Wait()
+		return p.Cmd.Process.Kill()
 	}
 	return nil
 }
