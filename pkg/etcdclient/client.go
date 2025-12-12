@@ -55,6 +55,7 @@ type EtcdClient interface {
 	GetHealth(context.Context) error
 	Defragment(context.Context, string) error
 	Snapshot(context.Context) (io.Reader, error)
+	C() *clientv3.Client
 }
 
 const (
@@ -161,4 +162,8 @@ func (client *Client) Snapshot(ctx context.Context) (io.Reader, error) {
 		return nil, err
 	}
 	return rc, nil
+}
+
+func (client *Client) C() *clientv3.Client {
+	return client.Client
 }

@@ -29,7 +29,7 @@ func TestNewConfig(t *testing.T) {
 	flag.CommandLine.Set("etcd-binary-file", "/path/etcd")
 	flag.CommandLine.Set("etcdutl-binary-file", "/path/etcdutl")
 
-	assert.Equal(t, c.Env, map[string]string{
+	assert.Equal(t, map[string]string{
 		"ETCD_LISTEN_CLIENT_URLS":          "https://node0-1:9080,https://node0-0:9080",
 		"ETCD_INITIAL_ADVERTISE_PEER_URLS": "https://node0-1:8080,https://node0-0:8080",
 		"ETCD_INITIAL_CLUSTER":             "node0=https://node0-0:8080,node1=https://node1-0:8080",
@@ -45,23 +45,22 @@ func TestNewConfig(t *testing.T) {
 		"ETCD_ENABLE_V2":                   "false",
 		"ETCD_STRICT_RECONFIG_CHECK":       "true",
 		"ETCDCTL_API":                      "3",
-	},
-	)
-	assert.Equal(t, c.EtcdBinaryFile, "/path/etcd")
-	assert.Equal(t, c.EtcdutlBinaryFile, "/path/etcdutl")
-	assert.Equal(t, c.ListenClientURLs, []string{
+	}, c.Env)
+	assert.Equal(t, "/path/etcd", c.EtcdBinaryFile)
+	assert.Equal(t, "/path/etcdutl", c.EtcdutlBinaryFile)
+	assert.Equal(t, []string{
 		"https://node0-0:9080",
 		"https://node0-1:9080",
-	})
-	assert.Equal(t, c.InitialAdvertisePeerURLs, []string{
+	}, c.ListenClientURLs)
+	assert.Equal(t, []string{
 		"https://node0-0:8080",
 		"https://node0-1:8080",
-	})
-	assert.Equal(t, c.ClusterPeerURLs, []string{
+	}, c.InitialAdvertisePeerURLs)
+	assert.Equal(t, []string{
 		"https://node0-0:8080",
 		"https://node1-0:8080",
-	})
-	assert.Equal(t, c.WriteEnv(), []string{
+	}, c.ClusterPeerURLs)
+	assert.Equal(t, []string{
 		"ETCDCTL_API=3",
 		"ETCD_CERT_FILE=" + filepath.Join(baseTestPath, member, "client", "cert.pem"),
 		"ETCD_CLIENT_CERT_AUTH=true",
@@ -77,5 +76,5 @@ func TestNewConfig(t *testing.T) {
 		"ETCD_PEER_TRUSTED_CA_FILE=" + filepath.Join(baseTestPath, "peer-ca-cert.pem"),
 		"ETCD_STRICT_RECONFIG_CHECK=true",
 		"ETCD_TRUSTED_CA_FILE=" + filepath.Join(baseTestPath, "ca-cert.pem"),
-	})
+	}, c.WriteEnv())
 }
