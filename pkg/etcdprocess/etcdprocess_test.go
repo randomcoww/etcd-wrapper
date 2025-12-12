@@ -42,24 +42,29 @@ func TestCreateNewCluster(t *testing.T) {
 	list, err := client.MemberList(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, len(list.GetMembers()), len(configs))
+
+	_, err = client.Status(ctx, configs[0].ListenClientURLs[0])
+	assert.NoError(t, err)
 }
 
 func TestCreateClusterFromSnapshotRestore(t *testing.T) {
 	ctx, _ := context.WithTimeout(context.Background(), time.Duration(20*time.Second))
 
 	configs := memberConfigs()
-	for _, config := range configs {
+	for _, config := range configs[1:] { // recover 2 of 3 nodes
 		err := RestoreV3Snapshot(ctx, config, filepath.Join(baseTestPath, "snapshot.db"))
 		assert.NoError(t, err)
 
 		ok, err := DataExists(config)
 		assert.NoError(t, err)
 		assert.True(t, ok)
+	}
 
+	for _, config := range configs {
 		p := NewProcess(context.Background(), config)
 
 		config.Env["ETCD_INITIAL_CLUSTER_STATE"] = "existing"
-		err = p.Reconfigure(config)
+		err := p.Reconfigure(config)
 		assert.NoError(t, err)
 
 		defer RemoveDataDir(config)
@@ -72,6 +77,9 @@ func TestCreateClusterFromSnapshotRestore(t *testing.T) {
 	list, err := client.MemberList(ctx)
 	assert.NoError(t, err)
 	assert.Equal(t, len(list.GetMembers()), len(configs))
+
+	_, err = client.Status(ctx, configs[0].ListenClientURLs[0])
+	assert.NoError(t, err)
 }
 
 func memberConfigs() []*c.Config {
