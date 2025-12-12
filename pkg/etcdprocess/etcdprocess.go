@@ -97,7 +97,10 @@ func RestoreV3Snapshot(ctx context.Context, config *c.Config, snapshotFile strin
 
 func DataExists(config *c.Config) (bool, error) {
 	info, err := os.Stat(config.Env["ETCD_DATA_DIR"])
-	if err != nil {
+	switch {
+	case os.IsNotExist(err):
+		return false, nil
+	case err != nil:
 		return false, err
 	}
 	switch {
