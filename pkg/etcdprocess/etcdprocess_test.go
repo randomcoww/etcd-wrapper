@@ -24,10 +24,10 @@ const (
 
 func TestCreateNewCluster(t *testing.T) {
 	ctx, _ := context.WithTimeout(context.Background(), time.Duration(20*time.Second))
-	dataDir, _ := os.MkdirTemp("", "data")
-	defer os.Remove(dataDir)
+	dataPath, _ := os.MkdirTemp("", "data")
+	defer os.RemoveAll(dataPath)
 
-	configs := memberConfigs(dataDir)
+	configs := memberConfigs(dataPath)
 	for _, config := range configs {
 		p := NewProcess(context.Background(), config)
 		err := p.Start()
@@ -50,10 +50,10 @@ func TestCreateNewCluster(t *testing.T) {
 
 func TestExistingFromSnapshotRestore(t *testing.T) {
 	ctx, _ := context.WithTimeout(context.Background(), time.Duration(20*time.Second))
-	dataDir, _ := os.MkdirTemp("", "data")
-	defer os.Remove(dataDir)
+	dataPath, _ := os.MkdirTemp("", "data")
+	defer os.RemoveAll(dataPath)
 
-	configs := memberConfigs(dataDir)
+	configs := memberConfigs(dataPath)
 	for _, config := range configs[1:] { // recover 2 of 3 nodes
 		err := RestoreV3Snapshot(ctx, config, filepath.Join(baseTestPath, "test-snapshot.db"))
 		assert.NoError(t, err)
