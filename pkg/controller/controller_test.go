@@ -6,8 +6,10 @@ import (
 	c "github.com/randomcoww/etcd-wrapper/pkg/config"
 	"github.com/randomcoww/etcd-wrapper/pkg/etcdclient"
 	"github.com/randomcoww/etcd-wrapper/pkg/etcdprocess"
+	"github.com/randomcoww/etcd-wrapper/pkg/s3client"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -22,73 +24,99 @@ const (
 	baseTestPath      string = "../../test"
 )
 
-func TestCreateNew(t *testing.T) {
+func TestRestoreSnapshot(t *testing.T) {
+	dataPath, _ := os.MkdirTemp("", "data")
+	defer os.RemoveAll(dataPath)
+
+	config := memberConfigs(dataPath)[0]
+	controller := &Controller{
+		S3Client:       &s3client.MockClientSuccess{},
+		restoreTimeout: 4 * time.Second,
+	}
+
 	ctx, _ := context.WithTimeout(context.Background(), time.Duration(4*time.Second))
+	ok, err := controller.restoreSnapshot(ctx, config)
+	assert.NoError(t, err)
+	assert.True(t, ok)
+
+	ok, err = etcdprocess.DataExists(config)
+	assert.NoError(t, err)
+	assert.True(t, ok)
+}
+
+func TestRunEtcdNew(t *testing.T) {
+	dataPath, _ := os.MkdirTemp("", "data")
+	defer os.RemoveAll(dataPath)
+
+	configs := memberConfigs(dataPath)
+	for _, config := range configs {
+		ctx, _ := context.WithTimeout(context.Background(), time.Duration(8*time.Second))
+		controller := &Controller{
+			P:              etcdprocess.NewProcess(context.Background(), config),
+			S3Client:       &s3client.MockClientNoBackup{},
+			peerTimeout:    6 * time.Second,
+			clientTimeout:  4 * time.Second,
+			restoreTimeout: 4 * time.Second,
+		}
+		err := controller.RunEtcd(ctx, config)
+		assert.NoError(t, err)
+
+		defer controller.P.Wait()
+		defer controller.P.Stop()
+	}
+
 	clientCtx, _ := context.WithTimeout(context.Background(), time.Duration(30*time.Second))
-
-	configs := memberConfigs()
-	for _, config := range configs {
-		controller, err := NewController(context.Background(), config)
-		assert.NoError(t, err)
-
-		err = controller.Run(ctx, config)
-		assert.NoError(t, err)
-
-		defer etcdprocess.RemoveDataDir(config)
-		defer controller.P.Stop()
-	}
-
 	client, err := etcdclient.NewClientFromPeers(clientCtx, configs[0])
 	assert.NoError(t, err)
 
-	list, err := client.MemberList(clientCtx)
+	memberCtx, _ := context.WithTimeout(context.Background(), time.Duration(30*time.Second))
+	list, err := client.MemberList(memberCtx)
 	assert.NoError(t, err)
 	assert.Equal(t, len(list.GetMembers()), len(configs))
+
+	_, err = client.Status(memberCtx, configs[0].ListenClientURLs[0])
+	assert.NoError(t, err)
 }
 
-func TestReplaceExisting(t *testing.T) {
-	ctx, _ := context.WithTimeout(context.Background(), time.Duration(8*time.Second))
-	clientCtx, _ := context.WithTimeout(context.Background(), time.Duration(20*time.Second))
+func TestRunEtcdRestore(t *testing.T) {
+	dataPath, _ := os.MkdirTemp("", "data")
+	defer os.RemoveAll(dataPath)
 
-	// create new cluster
-	var controllers []*Controller
-	configs := memberConfigs()
+	configs := memberConfigs(dataPath)
 	for _, config := range configs {
-		controller, err := NewController(context.Background(), config)
-		controllers = append(controllers, controller)
+		ctx, _ := context.WithTimeout(context.Background(), time.Duration(8*time.Second))
+		controller := &Controller{
+			P:              etcdprocess.NewProcess(context.Background(), config),
+			S3Client:       &s3client.MockClientSuccess{},
+			peerTimeout:    6 * time.Second,
+			clientTimeout:  4 * time.Second,
+			restoreTimeout: 4 * time.Second,
+		}
+		err := controller.RunEtcd(ctx, config)
 		assert.NoError(t, err)
 
-		err = controller.Run(ctx, config)
-		assert.NoError(t, err)
-
-		defer etcdprocess.RemoveDataDir(config)
+		defer controller.P.Wait()
 		defer controller.P.Stop()
 	}
 
-	// wait for cluster
+	clientCtx, _ := context.WithTimeout(context.Background(), time.Duration(30*time.Second))
 	client, err := etcdclient.NewClientFromPeers(clientCtx, configs[0])
 	assert.NoError(t, err)
 
-	// test stopping node0
-	err = controllers[0].P.Stop()
-	assert.NoError(t, err)
-	err = etcdprocess.RemoveDataDir(configs[0])
-	assert.NoError(t, err)
-
-	// run to replace node0
-	err = controllers[0].Run(ctx, configs[0])
-	assert.NoError(t, err)
-
-	// check result
-	client, err = etcdclient.NewClientFromPeers(clientCtx, configs[0])
-	assert.NoError(t, err)
-
-	list, err := client.MemberList(clientCtx)
+	memberCtx, _ := context.WithTimeout(context.Background(), time.Duration(30*time.Second))
+	list, err := client.MemberList(memberCtx)
 	assert.NoError(t, err)
 	assert.Equal(t, len(list.GetMembers()), len(configs))
+
+	_, err = client.Status(memberCtx, configs[0].ListenClientURLs[0])
+	assert.NoError(t, err)
+
+	resp, err := client.C().KV.Get(memberCtx, "test-key1")
+	assert.NoError(t, err)
+	assert.Equal(t, "test-val1", string(resp.Kvs[0].Value)) // match data that should exist in snapshot
 }
 
-func memberConfigs() []*c.Config {
+func memberConfigs(dataPath string) []*c.Config {
 	members := []string{
 		"node0",
 		"node1",
@@ -102,14 +130,15 @@ func memberConfigs() []*c.Config {
 
 	var configs []*c.Config
 	for i, member := range members {
-		testDir := filepath.Join(baseTestPath, member+".etcd")
-
 		config := &c.Config{
 			EtcdBinaryFile:    etcdBinaryFile,
 			EtcdutlBinaryFile: etcdutlBinaryFile,
+			S3BackupEndpoint:  "https://test.internal",
+			S3BackupBucket:    "bucket",
+			S3BackupKey:       "path/key",
 			Logger:            logger,
 			Env: map[string]string{
-				"ETCD_DATA_DIR":                    testDir,
+				"ETCD_DATA_DIR":                    filepath.Join(dataPath, member+".etcd"),
 				"ETCD_NAME":                        member,
 				"ETCD_CLIENT_CERT_AUTH":            "true",
 				"ETCD_PEER_CLIENT_CERT_AUTH":       "true",
@@ -126,6 +155,7 @@ func memberConfigs() []*c.Config {
 				"ETCD_INITIAL_ADVERTISE_PEER_URLS": fmt.Sprintf("https://127.0.0.1:%d", peerPortBase+i),
 				"ETCD_INITIAL_CLUSTER":             strings.Join(initialCluster, ","),
 				"ETCD_INITIAL_CLUSTER_TOKEN":       "test",
+				"ETCD_INITIAL_CLUSTER_STATE":       "new",
 			},
 		}
 		config.ParseEnvs()

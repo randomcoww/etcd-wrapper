@@ -5,81 +5,84 @@ import (
 	c "github.com/randomcoww/etcd-wrapper/pkg/config"
 	"github.com/randomcoww/etcd-wrapper/pkg/etcdclient"
 	"github.com/randomcoww/etcd-wrapper/pkg/etcdprocess"
+	"github.com/randomcoww/etcd-wrapper/pkg/s3client"
 	"github.com/randomcoww/etcd-wrapper/pkg/util"
 	etcdserverpb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"io"
+	"os"
 	"time"
 )
 
 type Controller struct {
-	P etcdprocess.EtcdProcess
+	P              etcdprocess.EtcdProcess
+	S3Client       s3client.Client
+	peerTimeout    time.Duration
+	clientTimeout  time.Duration
+	restoreTimeout time.Duration
 }
 
-const (
-	backoffWaitBetween time.Duration = 2 * time.Second
-)
-
-func NewController(ctx context.Context, config *c.Config) (*Controller, error) {
-	return &Controller{
-		P: etcdprocess.NewProcess(ctx, config),
-	}, nil
-}
-
-func (c *Controller) Run(ctx context.Context, config *c.Config) error {
-	config.Env["ETCD_INITIAL_CLUSTER_STATE"] = "existing"
-	client, err := etcdclient.NewClientFromPeers(ctx, config)
+func (c *Controller) RunEtcd(ctx context.Context, config *c.Config) error {
+	peerCtx, _ := context.WithTimeout(context.Background(), time.Duration(c.peerTimeout))
+	client, err := etcdclient.NewClientFromPeers(peerCtx, config)
 	if err == nil {
-		if err = client.GetHealth(ctx); err == nil {
-			list, err := client.MemberList(ctx)
-			if err == nil {
-				var localMember *etcdserverpb.Member
-				for _, member := range list.GetMembers() {
-					if util.HasMatchingElement(member.GetPeerURLs(), config.InitialAdvertisePeerURLs) {
-						localMember = member
-						break
-					}
+		clientCtx, _ := context.WithTimeout(context.Background(), time.Duration(c.clientTimeout))
+		list, err := client.MemberList(clientCtx)
+		if err == nil {
+			var localMember *etcdserverpb.Member
+			for _, member := range list.GetMembers() {
+				if util.HasMatchingElement(member.GetPeerURLs(), config.InitialAdvertisePeerURLs) {
+					localMember = member
+					break
 				}
-
-				if localMember != nil {
-					status, err := client.Status(ctx, config.ListenClientURLs[0])
-					if err == nil {
-						if status.GetHeader().GetClusterId() == localMember.GetID() {
-							return nil // nothing to do
-						}
-					}
-					if len(list.GetMembers()) >= len(config.ClusterPeerURLs) {
-						list, err = client.MemberRemove(ctx, localMember.GetID())
-						if err != nil {
-							return err
-						}
-					}
-					if err = c.P.Stop(); err != nil {
-						return err
-					}
-					return etcdprocess.RemoveDataDir(config)
-				}
-
+			}
+			if localMember != nil {
 				if len(list.GetMembers()) < len(config.ClusterPeerURLs) {
-					list, err = client.MemberAdd(ctx, config.InitialAdvertisePeerURLs)
+					list, err = client.MemberAdd(clientCtx, config.InitialAdvertisePeerURLs)
 					if err != nil {
 						return err
 					}
 				}
-				return c.P.Reconfigure(config)
+			}
+		}
+	} else {
+		ok, err := etcdprocess.DataExists(config)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			restoreCtx, _ := context.WithTimeout(context.Background(), time.Duration(c.restoreTimeout))
+			ok, err = c.restoreSnapshot(restoreCtx, config)
+			if err != nil {
+				return err
 			}
 		}
 	}
+	return c.P.Start()
+}
 
-	/*
-		if err = etcdprocess.RestoreV3Snapshot(ctx, config, snapshotFile); err != nil {
-			return err
-		}
-	*/
-	ok, err := etcdprocess.DataExists(config)
+func (c *Controller) restoreSnapshot(ctx context.Context, config *c.Config) (bool, error) {
+	snapshotFile, err := os.CreateTemp("", "snapshot*.db")
 	if err != nil {
-		return err
+		return false, err
+	}
+	defer os.RemoveAll(snapshotFile.Name())
+	defer snapshotFile.Close()
+
+	ok, err := c.S3Client.Download(ctx, config.S3BackupBucket, config.S3BackupKey, func(ctx context.Context, reader io.Reader) (bool, error) {
+		b, err := io.Copy(snapshotFile, reader)
+		if err != nil {
+			return false, err
+		}
+		return b > 0, nil
+	})
+	if err != nil {
+		return false, err
 	}
 	if !ok {
-		config.Env["ETCD_INITIAL_CLUSTER_STATE"] = "new"
+		return false, nil
 	}
-	return c.P.Reconfigure(config)
+	if err := etcdprocess.RestoreV3Snapshot(ctx, config, snapshotFile.Name()); err != nil {
+		return false, err
+	}
+	return true, nil
 }
