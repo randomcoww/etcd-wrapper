@@ -1,7 +1,6 @@
 package config
 
 import (
-	"flag"
 	"github.com/stretchr/testify/assert"
 	"path/filepath"
 	"testing"
@@ -23,11 +22,16 @@ func TestNewConfig(t *testing.T) {
 	t.Setenv("ETCD_PEER_CERT_FILE", filepath.Join(baseTestPath, member, "peer", "cert.pem"))
 	t.Setenv("ETCD_PEER_KEY_FILE", filepath.Join(baseTestPath, member, "peer", "key.pem"))
 
-	c, err := NewConfig()
+	c, err := NewConfig([]string{
+		"etcd-wrapper",
+		"-etcd-binary-file",
+		"/path/etcd",
+		"-etcdutl-binary-file",
+		"/path/etcdutl",
+		"-s3-backup-resource",
+		"https://test.internal:9000/bucket/path/key",
+	})
 	assert.NoError(t, err)
-
-	flag.CommandLine.Set("etcd-binary-file", "/path/etcd")
-	flag.CommandLine.Set("etcdutl-binary-file", "/path/etcdutl")
 
 	assert.Equal(t, map[string]string{
 		"ETCD_LISTEN_CLIENT_URLS":          "https://node0-1:9080,https://node0-0:9080",
@@ -48,6 +52,9 @@ func TestNewConfig(t *testing.T) {
 	}, c.Env)
 	assert.Equal(t, "/path/etcd", c.EtcdBinaryFile)
 	assert.Equal(t, "/path/etcdutl", c.EtcdutlBinaryFile)
+	assert.Equal(t, "https://test.internal:9000", c.S3BackupEndpoint)
+	assert.Equal(t, "bucket", c.S3BackupBucket)
+	assert.Equal(t, "path/key", c.S3BackupKey)
 	assert.Equal(t, []string{
 		"https://node0-0:9080",
 		"https://node0-1:9080",

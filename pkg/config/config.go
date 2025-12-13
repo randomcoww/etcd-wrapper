@@ -22,9 +22,12 @@ type Config struct {
 	Logger                   *zap.Logger
 	EtcdBinaryFile           string
 	EtcdutlBinaryFile        string
+	S3BackupEndpoint         string
+	S3BackupBucket           string
+	S3BackupKey              string
 }
 
-func NewConfig() (*Config, error) {
+func NewConfig(args []string) (*Config, error) {
 	logger, err := zap.NewProduction()
 	if err != nil {
 		return nil, err
@@ -34,9 +37,27 @@ func NewConfig() (*Config, error) {
 		Env:    make(map[string]string),
 		Logger: logger,
 	}
-	flag.StringVar(&config.EtcdBinaryFile, "etcd-binary-file", config.EtcdBinaryFile, "Path to etcd binary")
-	flag.StringVar(&config.EtcdutlBinaryFile, "etcdutl-binary-file", config.EtcdutlBinaryFile, "Path to etcdutl binary")
-	flag.Parse()
+	var s3resource string
+	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
+	flags.StringVar(&config.EtcdBinaryFile, "etcd-binary-file", config.EtcdBinaryFile, "Path to etcd binary")
+	flags.StringVar(&config.EtcdutlBinaryFile, "etcdutl-binary-file", config.EtcdutlBinaryFile, "Path to etcdutl binary")
+	flags.StringVar(&s3resource, "s3-backup-resource", s3resource, "S3 resource for backup")
+	if err := flags.Parse(args[1:]); err != nil {
+		return nil, err
+	}
+
+	reS3Resource := regexp.MustCompile(`(?P<endpoint>[a-z]+://[\w.-]+(:\d+)?)/(?P<bucket>[\w.-]+)(/(?P<key>[\w.-/]+))?`)
+	match := reS3Resource.FindStringSubmatch(s3resource)
+	for i, k := range reS3Resource.SubexpNames() {
+		switch k {
+		case "endpoint":
+			config.S3BackupEndpoint = match[i]
+		case "bucket":
+			config.S3BackupBucket = match[i]
+		case "key":
+			config.S3BackupKey = match[i]
+		}
+	}
 
 	for _, e := range os.Environ() {
 		if strings.HasPrefix(e, "ETCD_") {
@@ -44,10 +65,10 @@ func NewConfig() (*Config, error) {
 			config.Env[k[0]] = k[1]
 		}
 	}
-
 	if err := config.ParseEnvs(); err != nil {
 		return nil, err
 	}
+
 	return config, nil
 }
 
