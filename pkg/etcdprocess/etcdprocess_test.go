@@ -23,7 +23,6 @@ const (
 )
 
 func TestCreateNewCluster(t *testing.T) {
-	ctx, _ := context.WithTimeout(context.Background(), time.Duration(20*time.Second))
 	dataPath, _ := os.MkdirTemp("", "data")
 	defer os.RemoveAll(dataPath)
 
@@ -37,6 +36,7 @@ func TestCreateNewCluster(t *testing.T) {
 		defer p.Stop()
 	}
 
+	ctx, _ := context.WithTimeout(context.Background(), time.Duration(20*time.Second))
 	client, err := etcdclient.NewClientFromPeers(ctx, configs[0])
 	assert.NoError(t, err)
 
@@ -49,13 +49,13 @@ func TestCreateNewCluster(t *testing.T) {
 }
 
 func TestExistingFromSnapshotRestore(t *testing.T) {
-	ctx, _ := context.WithTimeout(context.Background(), time.Duration(20*time.Second))
 	dataPath, _ := os.MkdirTemp("", "data")
 	defer os.RemoveAll(dataPath)
 
 	configs := memberConfigs(dataPath)
 	for _, config := range configs[1:] { // recover 2 of 3 nodes
-		err := RestoreV3Snapshot(ctx, config, filepath.Join(baseTestPath, "test-snapshot.db"))
+		restoreCtx, _ := context.WithTimeout(context.Background(), time.Duration(4*time.Second))
+		err := RestoreV3Snapshot(restoreCtx, config, filepath.Join(baseTestPath, "test-snapshot.db"))
 		assert.NoError(t, err)
 
 		ok, err := DataExists(config)
@@ -72,6 +72,7 @@ func TestExistingFromSnapshotRestore(t *testing.T) {
 		defer p.Stop()
 	}
 
+	ctx, _ := context.WithTimeout(context.Background(), time.Duration(20*time.Second))
 	client, err := etcdclient.NewClientFromPeers(ctx, configs[0])
 	assert.NoError(t, err)
 
@@ -104,6 +105,9 @@ func memberConfigs(dataPath string) []*c.Config {
 		config := &c.Config{
 			EtcdBinaryFile:    etcdBinaryFile,
 			EtcdutlBinaryFile: etcdutlBinaryFile,
+			S3BackupEndpoint:  "https://test.internal",
+			S3BackupBucket:    "bucket",
+			S3BackupKey:       "path/key",
 			Logger:            logger,
 			Env: map[string]string{
 				"ETCD_DATA_DIR":                    filepath.Join(dataPath, member+".etcd"),
