@@ -1,9 +1,15 @@
 ### Dev environment
 
 ```bash
+podman volume create \
+  --driver image \
+  --opt image="gcr.io/etcd-development/etcd:v3.6.6" etcdvolume
+
 podman run -it --rm \
   -v $(pwd):/go/src \
+  -v etcdvolume:/mnt \
   -w /go/src \
+  --net host \
   docker.io/golang:alpine sh
 ```
 
@@ -22,6 +28,6 @@ terraform() {
 ```
 
 ```bash
-terraform -chdir=test init -upgrade && \
-terraform -chdir=test apply
+terraform -chdir=tf init -upgrade && \
+terraform -chdir=tf apply
 ```

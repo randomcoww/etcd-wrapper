@@ -2,10 +2,12 @@ package etcdclient
 
 import (
 	"context"
+	"errors"
 	c "github.com/randomcoww/etcd-wrapper/pkg/config"
 	etcdserverpb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/server/v3/etcdserver"
+	etcderrors "go.etcd.io/etcd/server/v3/etcdserver/errors"
 	"io"
 	"net"
 	"net/http"
@@ -131,19 +133,47 @@ func (client *Client) Status(ctx context.Context, endpoint string) (Status, erro
 }
 
 func (client *Client) MemberAdd(ctx context.Context, peerURLs []string) (Members, error) {
-	resp, err := client.Cluster.MemberAdd(ctx, peerURLs)
-	if err != nil {
-		return nil, err
+	for {
+		resp, err := client.Cluster.MemberAdd(ctx, peerURLs)
+		switch {
+		case err == nil:
+			return (*etcdserverpb.MemberAddResponse)(resp), nil
+		case errors.Is(err, etcderrors.ErrUnhealthy):
+			continue
+		default:
+			return nil, err
+		}
+
+		timer := time.NewTimer(backoffWaitBetween)
+		select {
+		case <-ctx.Done():
+			return nil, err
+		case <-timer.C:
+			continue
+		}
 	}
-	return (*etcdserverpb.MemberAddResponse)(resp), nil
 }
 
 func (client *Client) MemberRemove(ctx context.Context, id uint64) (Members, error) {
-	resp, err := client.Cluster.MemberRemove(ctx, id)
-	if err != nil {
-		return nil, err
+	for {
+		resp, err := client.Cluster.MemberRemove(ctx, id)
+		switch {
+		case err == nil:
+			return (*etcdserverpb.MemberRemoveResponse)(resp), nil
+		case errors.Is(err, etcderrors.ErrUnhealthy):
+			continue
+		default:
+			return nil, err
+		}
+
+		timer := time.NewTimer(backoffWaitBetween)
+		select {
+		case <-ctx.Done():
+			return nil, err
+		case <-timer.C:
+			continue
+		}
 	}
-	return (*etcdserverpb.MemberRemoveResponse)(resp), nil
 }
 
 func (client *Client) GetHealth(ctx context.Context) error {

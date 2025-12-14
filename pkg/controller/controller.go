@@ -1,57 +1,65 @@
 package controller
 
 import (
+	"bytes"
 	"context"
 	c "github.com/randomcoww/etcd-wrapper/pkg/config"
 	"github.com/randomcoww/etcd-wrapper/pkg/etcdclient"
 	"github.com/randomcoww/etcd-wrapper/pkg/etcdprocess"
 	"github.com/randomcoww/etcd-wrapper/pkg/s3client"
-	"github.com/randomcoww/etcd-wrapper/pkg/util"
-	etcdserverpb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"io"
 	"os"
 	"time"
 )
 
 type Controller struct {
-	P              etcdprocess.EtcdProcess
-	S3Client       s3client.Client
-	peerTimeout    time.Duration
-	clientTimeout  time.Duration
-	restoreTimeout time.Duration
+	P                  etcdprocess.EtcdProcess
+	S3Client           s3client.Client
+	peerTimeout        time.Duration
+	restoreTimeout     time.Duration
+	uploadTimeout      time.Duration
+	statusTimeout      time.Duration
+	backoffWaitBetween time.Duration
 }
 
-func (c *Controller) RunEtcd(ctx context.Context, config *c.Config) error {
-	peerCtx, _ := context.WithTimeout(context.Background(), time.Duration(c.peerTimeout))
-	client, err := etcdclient.NewClientFromPeers(peerCtx, config)
-	if err == nil {
-		clientCtx, _ := context.WithTimeout(context.Background(), time.Duration(c.clientTimeout))
-		list, err := client.MemberList(clientCtx)
-		if err == nil {
-			var localMember *etcdserverpb.Member
-			for _, member := range list.GetMembers() {
-				if util.HasMatchingElement(member.GetPeerURLs(), config.InitialAdvertisePeerURLs) {
-					localMember = member
-					break
-				}
-			}
-			if localMember != nil {
-				if len(list.GetMembers()) < len(config.ClusterPeerURLs) {
-					list, err = client.MemberAdd(clientCtx, config.InitialAdvertisePeerURLs)
-					if err != nil {
-						return err
-					}
-				}
-			}
+func (c *Controller) RunEtcd(config *c.Config) error {
+	if err := c.runEtcd(config); err != nil {
+		return err
+	}
+	defer c.P.Wait()
+	defer c.P.Stop()
+
+	return c.P.Wait()
+}
+
+func (c *Controller) RunNode(ctx context.Context, config *c.Config) error {
+	for {
+		if err := c.runNode(config); err != nil {
+			return err
 		}
-	} else {
+
+		timer := time.NewTimer(c.backoffWaitBetween)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+
+		case <-timer.C:
+			continue
+		}
+	}
+	return nil
+}
+
+func (c *Controller) runEtcd(config *c.Config) error {
+	ctx, _ := context.WithTimeout(context.Background(), time.Duration(c.peerTimeout))
+	_, err := etcdclient.NewClientFromPeers(ctx, config)
+	if err != nil {
 		ok, err := etcdprocess.DataExists(config)
 		if err != nil {
 			return err
 		}
 		if !ok {
-			restoreCtx, _ := context.WithTimeout(context.Background(), time.Duration(c.restoreTimeout))
-			ok, err = c.restoreSnapshot(restoreCtx, config)
+			ok, err = c.restoreSnapshot(config)
 			if err != nil {
 				return err
 			}
@@ -60,7 +68,42 @@ func (c *Controller) RunEtcd(ctx context.Context, config *c.Config) error {
 	return c.P.Start()
 }
 
-func (c *Controller) restoreSnapshot(ctx context.Context, config *c.Config) (bool, error) {
+func (c *Controller) runNode(config *c.Config) error {
+	peerCtx, _ := context.WithTimeout(context.Background(), time.Duration(c.peerTimeout))
+	client, err := etcdclient.NewClientFromPeers(peerCtx, config)
+	if err != nil {
+		return err
+	}
+
+	statusCtx, _ := context.WithTimeout(context.Background(), time.Duration(c.statusTimeout))
+	status, err := client.Status(statusCtx, config.ListenClientURLs[0])
+	if err != nil {
+		return err
+	}
+
+	if status.GetHeader().GetMemberId() != status.GetLeader() { // check if leader
+		return nil
+	}
+
+	uploadCtx, _ := context.WithTimeout(context.Background(), time.Duration(c.uploadTimeout))
+	reader, err := client.Snapshot(uploadCtx)
+	if err != nil {
+		return err
+	}
+
+	buf := &bytes.Buffer{}
+	b, err := io.Copy(buf, reader)
+	if err != nil {
+		return err
+	}
+	if err := c.S3Client.Upload(uploadCtx, config.S3BackupBucket, config.S3BackupKey, buf, b); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *Controller) restoreSnapshot(config *c.Config) (bool, error) {
+	ctx, _ := context.WithTimeout(context.Background(), time.Duration(c.restoreTimeout))
 	snapshotFile, err := os.CreateTemp("", "snapshot*.db")
 	if err != nil {
 		return false, err

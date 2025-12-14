@@ -1,7 +1,9 @@
 package s3client
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -23,7 +25,14 @@ func (client *MockClientSuccess) Download(ctx context.Context, bucket, key strin
 	return handler(ctx, file)
 }
 
-func (client *MockClientSuccess) Upload(ctx context.Context, bucket, key string, r io.Reader, fileSize int64) error {
+func (client *MockClientSuccess) Upload(ctx context.Context, bucket, key string, reader io.Reader, fileSize int64) error {
+	b, err := io.Copy(&bytes.Buffer{}, reader)
+	if err != nil {
+		return err
+	}
+	if b != fileSize {
+		return fmt.Errorf("Wrong fileSize")
+	}
 	return nil
 }
 

@@ -62,30 +62,31 @@ resource "local_file" "peer-key" {
 }
 
 module "etcd" {
+  for_each = local.members
+
   source = "./modules/static_pod"
-  name   = "etcd"
+  name   = each.key
   spec = {
     hostNetwork = true
     containers = [
-      for name, m in local.members :
       {
-        name  = name
+        name  = "etcd"
         image = "gcr.io/etcd-development/etcd:v3.6.6"
         args = [
           "etcd",
-          "--name=${name}",
+          "--name=${each.key}",
           "--trusted-ca-file=/etc/etcd/ca-cert.pem",
           "--peer-trusted-ca-file=/etc/etcd/peer-ca-cert.pem",
-          "--cert-file=/etc/etcd/${name}/client/cert.pem",
-          "--key-file=/etc/etcd/${name}/client/key.pem",
-          "--peer-cert-file=/etc/etcd/${name}/peer/cert.pem",
-          "--peer-key-file=/etc/etcd/${name}/peer/key.pem",
-          "--initial-advertise-peer-urls=${m.peer_url}",
-          "--listen-peer-urls=${m.peer_url}",
-          "--advertise-client-urls=${m.client_url}",
-          "--listen-client-urls=${m.client_url}",
+          "--cert-file=/etc/etcd/${each.key}/client/cert.pem",
+          "--key-file=/etc/etcd/${each.key}/client/key.pem",
+          "--peer-cert-file=/etc/etcd/${each.key}/peer/cert.pem",
+          "--peer-key-file=/etc/etcd/${each.key}/peer/key.pem",
+          "--initial-advertise-peer-urls=${each.value.peer_url}",
+          "--listen-peer-urls=${each.value.peer_url}",
+          "--advertise-client-urls=${each.value.client_url}",
+          "--listen-client-urls=${each.value.client_url}",
           "--strict-reconfig-check",
-          "--initial-cluster-state=${m.initial_cluster_state}",
+          "--initial-cluster-state=${each.value.initial_cluster_state}",
           "--initial-cluster-token=test",
           "--initial-cluster=${join(",", [
             for name, m in local.members :
@@ -97,14 +98,14 @@ module "etcd" {
           {
             name      = "data"
             mountPath = "/var/lib/etcd"
-            subPath   = name
+            subPath   = each.key
           },
           {
             name      = "data"
             mountPath = "/etc/etcd"
           },
         ]
-      }
+      },
     ]
     volumes = [
       {
@@ -118,8 +119,10 @@ module "etcd" {
 }
 
 resource "local_file" "pod-manifest" {
-  filename             = "output/manifest.yaml"
-  content              = module.etcd.manifest
+  for_each = local.members
+
+  filename             = "output/${each.key}.yaml"
+  content              = module.etcd[each.key].manifest
   directory_permission = "0700"
   file_permission      = "0600"
 }
