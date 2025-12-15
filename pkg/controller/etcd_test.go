@@ -21,11 +21,10 @@ func TestRestoreSnapshot(t *testing.T) {
 		restoreTimeout: 4 * time.Second,
 	}
 
-	ok, err := controller.restoreSnapshot(config)
+	err := controller.restoreSnapshot(config)
 	assert.NoError(t, err)
-	assert.True(t, ok)
 
-	ok, err = etcdprocess.DataExists(config)
+	ok, err := etcdprocess.DataExists(config)
 	assert.NoError(t, err)
 	assert.True(t, ok)
 }
