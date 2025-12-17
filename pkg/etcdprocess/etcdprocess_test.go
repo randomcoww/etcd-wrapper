@@ -127,6 +127,7 @@ func memberConfigs(dataPath string) []*c.Config {
 				"ETCD_INITIAL_ADVERTISE_PEER_URLS": fmt.Sprintf("https://127.0.0.1:%d", peerPortBase+i),
 				"ETCD_INITIAL_CLUSTER":             strings.Join(initialCluster, ","),
 				"ETCD_INITIAL_CLUSTER_TOKEN":       "test",
+				"ETCD_LOG_LEVEL":                   "error",
 			},
 		}
 		config.ParseEnvs()
