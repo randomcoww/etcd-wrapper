@@ -7,6 +7,8 @@ import (
 	"github.com/randomcoww/etcd-wrapper/pkg/etcdclient"
 	"github.com/randomcoww/etcd-wrapper/pkg/etcdprocess"
 	"github.com/randomcoww/etcd-wrapper/pkg/s3client"
+	"github.com/randomcoww/etcd-wrapper/pkg/util"
+	etcdserverpb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.uber.org/zap"
 	"io"
 	"os"
@@ -48,17 +50,53 @@ func (c *Controller) runEtcd(config *c.Config) error {
 		return err
 	}
 	if !ok {
-		ctx, _ := context.WithTimeout(context.Background(), time.Duration(config.PeerTimeout)) // wait for existing cluster
-		if _, err = etcdclient.NewClientFromPeers(ctx, config); err != nil {                   // no cluster found, go through new cluster steps
+		peeerCtx, _ := context.WithTimeout(context.Background(), time.Duration(config.PeerTimeout)) // wait for existing cluster
+		client, err := etcdclient.NewClientFromPeers(peeerCtx, config)
+		if err != nil { // no cluster found, go through new cluster steps
 			err = c.restoreSnapshot(config)
 			switch err {
-			case nil, e.ErrNoBackup:
+			case nil:
+			case e.ErrNoBackup:
+				config.Logger.Info("start new cluster")
+				return c.P.StartNew()
 			default:
 				return err
 			}
+		} else {
+			clientCtx, _ := context.WithTimeout(context.Background(), time.Duration(config.ReplaceTimeout))
+			listResp, err := client.MemberList(clientCtx)
+			if err != nil {
+				config.Logger.Error("list member failed", zap.Error(err))
+				return err
+			}
+			var localMember *etcdserverpb.Member
+			for _, member := range listResp.GetMembers() {
+				if util.HasMatchingElement(member.GetPeerURLs(), config.InitialAdvertisePeerURLs) {
+					localMember = member
+					break
+				}
+			}
+			if localMember != nil && len(listResp.GetMembers()) >= len(config.ClusterPeerURLs) {
+				listResp, err = client.MemberRemove(clientCtx, localMember.GetID())
+				if err != nil {
+					config.Logger.Error("remove member failed", zap.Error(err))
+					return err
+				}
+				config.Logger.Info("removed local member")
+				localMember = nil
+			}
+			if localMember == nil && len(listResp.GetMembers()) < len(config.ClusterPeerURLs) {
+				listResp, err = client.MemberAdd(clientCtx, config.InitialAdvertisePeerURLs)
+				if err != nil {
+					config.Logger.Error("add member failed", zap.Error(err))
+					return err
+				}
+				config.Logger.Info("added local member")
+			}
 		}
 	}
-	return c.P.Start()
+	config.Logger.Info("start existing cluster")
+	return c.P.StartExisting()
 }
 
 func (c *Controller) runNode(config *c.Config) error {

@@ -29,6 +29,7 @@ type Config struct {
 	S3TLSConfig              *tls.Config
 	PeerTimeout              time.Duration
 	RestoreTimeout           time.Duration
+	ReplaceTimeout           time.Duration
 	UploadTimeout            time.Duration
 	StatusTimeout            time.Duration
 	NodeRunInterval          time.Duration
@@ -52,6 +53,7 @@ func NewConfig(args []string) (*Config, error) {
 	flags.StringVar(&s3CAFile, "s3-backup-ca-file", s3CAFile, "CA file for S3 resource")
 	flags.DurationVar(&config.PeerTimeout, "initial-cluster-timeout", 2*time.Minute, "Initial existing cluster lookup timeout")
 	flags.DurationVar(&config.RestoreTimeout, "restore-snapshot-timeout", 8*time.Second, "Restore snapshot timeout")
+	flags.DurationVar(&config.ReplaceTimeout, "member-replace-timeout", 30*time.Second, "RMember replace timeout")
 	flags.DurationVar(&config.UploadTimeout, "backup-snapshot-timeout", 8*time.Second, "Backup snapshot timeout")
 	flags.DurationVar(&config.StatusTimeout, "status-timeout", 8*time.Second, "Local member status lookup timeout")
 	flags.DurationVar(&config.NodeRunInterval, "node-run-interval", 15*time.Minute, "Node status check and backup interval")
@@ -136,6 +138,10 @@ func (config *Config) ParseEnvs() error {
 		}
 	} else {
 		return fmt.Errorf("env ETCD_INITIAL_CLUSTER not set")
+	}
+
+	if _, ok := config.Env["ETCD_DATA_DIR"]; !ok {
+		return fmt.Errorf("env ETCD_DATA_DIR is not set")
 	}
 
 	config.Env["ETCD_CLIENT_CERT_AUTH"] = "true"

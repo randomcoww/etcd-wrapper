@@ -92,7 +92,7 @@ module "minio" {
         args = [
           "server",
           "--certs-dir",
-          "/var/lib/minio/certs",
+          "/etc/minio/certs",
           "--address",
           "0.0.0.0:${local.minio_port}",
           "/var/lib/minio",
@@ -110,8 +110,12 @@ module "minio" {
         volumeMounts = [
           {
             name      = "data"
+            mountPath = "/etc/minio/certs"
+            subPath   = "minio/certs"
+          },
+          {
+            name      = "tempdata"
             mountPath = "/var/lib/minio"
-            subPath   = "minio"
           },
         ]
       },
@@ -149,6 +153,12 @@ module "minio" {
           path = abspath(local.base_path)
         }
       },
+      {
+        name = "tempdata"
+        emptyDir = {
+          medium = "Memory"
+        }
+      },
     ]
   }
 }
@@ -174,14 +184,14 @@ module "etcd" {
           "-s3-backup-ca-file",
           "/etc/etcd/minio/certs/CAs/ca.crt",
           "-initial-cluster-timeout",
-          "1m",
+          "30s",
           "-node-run-interval",
-          "4m",
+          "1m",
         ]
         env = [
           for k, v in {
             "ETCD_NAME"                        = each.key
-            "ETCD_DATA_DIR"                    = local.data_path
+            "ETCD_DATA_DIR"                    = "${local.data_path}/data"
             "ETCD_LISTEN_PEER_URLS"            = each.value.peer_url
             "ETCD_LISTEN_CLIENT_URLS"          = each.value.client_url
             "ETCD_INITIAL_ADVERTISE_PEER_URLS" = each.value.peer_url
@@ -198,6 +208,7 @@ module "etcd" {
             "ETCD_PEER_CERT_FILE"        = "/etc/etcd/${each.key}/peer/cert.pem"
             "ETCD_PEER_KEY_FILE"         = "/etc/etcd/${each.key}/peer/key.pem"
             "ETCD_STRICT_RECONFIG_CHECK" = true
+            "ETCD_LOG_LEVEL"             = "error"
             "AWS_ACCESS_KEY_ID"          = local.minio_username
             "AWS_SECRET_ACCESS_KEY"      = local.minio_password
           } :

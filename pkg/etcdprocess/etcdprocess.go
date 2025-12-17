@@ -6,11 +6,11 @@ import (
 	c "github.com/randomcoww/etcd-wrapper/pkg/config"
 	"os"
 	"os/exec"
-	"path/filepath"
 )
 
 type EtcdProcess interface {
-	Start() error
+	StartNew() error
+	StartExisting() error
 	Stop() error
 	Wait() error
 }
@@ -30,8 +30,17 @@ func NewProcess(ctx context.Context, config *c.Config) EtcdProcess {
 	}
 }
 
-func (p *etcdProcess) Start() error {
+func (p *etcdProcess) StartNew() error {
 	if p.Cmd.Process == nil {
+		p.Cmd.Args = append(p.Cmd.Args, "--initial-cluster-state", "new")
+		return p.Cmd.Start()
+	}
+	return nil
+}
+
+func (p *etcdProcess) StartExisting() error {
+	if p.Cmd.Process == nil {
+		p.Cmd.Args = append(p.Cmd.Args, "--initial-cluster-state", "existing")
 		return p.Cmd.Start()
 	}
 	return nil
@@ -89,11 +98,7 @@ func DataExists(config *c.Config) (bool, error) {
 	}
 	switch {
 	case info.IsDir():
-		paths, err := os.ReadDir(config.Env["ETCD_DATA_DIR"])
-		if err != nil {
-			return false, err
-		}
-		return len(paths) > 0, nil
+		return true, nil
 	default:
 		return false, fmt.Errorf("ETCD_DATA_DIR is not a directory")
 	}
@@ -109,19 +114,9 @@ func RemoveDataDir(config *c.Config) error {
 	}
 	switch {
 	case info.IsDir():
-		paths, err := os.ReadDir(config.Env["ETCD_DATA_DIR"])
-		if err != nil {
-			return err
-		}
-		for _, path := range paths {
-			if err := os.RemoveAll(filepath.Join(config.Env["ETCD_DATA_DIR"], path.Name())); err != nil {
-				return err
-			}
-		}
+		return os.RemoveAll(config.Env["ETCD_DATA_DIR"])
 	default:
-		if err := os.RemoveAll(config.Env["ETCD_DATA_DIR"]); err != nil {
-			return err
-		}
+		return fmt.Errorf("ETCD_DATA_DIR is not a directory")
 	}
 	return nil
 }
