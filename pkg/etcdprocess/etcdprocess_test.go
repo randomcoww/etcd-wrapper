@@ -29,7 +29,7 @@ func TestCreateNewCluster(t *testing.T) {
 	configs := memberConfigs(dataPath)
 	for _, config := range configs {
 		p := NewProcess(context.Background(), config)
-		err := p.Start()
+		err := p.StartNew()
 		assert.NoError(t, err)
 
 		defer p.Wait()
@@ -65,7 +65,7 @@ func TestExistingFromSnapshotRestore(t *testing.T) {
 
 	for _, config := range configs {
 		p := NewProcess(context.Background(), config)
-		err := p.Start()
+		err := p.StartExisting()
 		assert.NoError(t, err)
 
 		defer p.Wait()
@@ -127,7 +127,6 @@ func memberConfigs(dataPath string) []*c.Config {
 				"ETCD_INITIAL_ADVERTISE_PEER_URLS": fmt.Sprintf("https://127.0.0.1:%d", peerPortBase+i),
 				"ETCD_INITIAL_CLUSTER":             strings.Join(initialCluster, ","),
 				"ETCD_INITIAL_CLUSTER_TOKEN":       "test",
-				"ETCD_INITIAL_CLUSTER_STATE":       "new",
 			},
 		}
 		config.ParseEnvs()

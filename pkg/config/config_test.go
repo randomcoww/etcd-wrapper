@@ -21,6 +21,7 @@ func TestNewConfig(t *testing.T) {
 	t.Setenv("ETCD_PEER_TRUSTED_CA_FILE", filepath.Join(baseTestPath, "peer-ca-cert.pem"))
 	t.Setenv("ETCD_PEER_CERT_FILE", filepath.Join(baseTestPath, member, "peer", "cert.pem"))
 	t.Setenv("ETCD_PEER_KEY_FILE", filepath.Join(baseTestPath, member, "peer", "key.pem"))
+	t.Setenv("ETCD_DATA_DIR", "/data/test")
 
 	c, err := NewConfig([]string{
 		"etcd-wrapper",
@@ -51,6 +52,7 @@ func TestNewConfig(t *testing.T) {
 		"ETCD_ENABLE_V2":                   "false",
 		"ETCD_STRICT_RECONFIG_CHECK":       "true",
 		"ETCDCTL_API":                      "3",
+		"ETCD_DATA_DIR":                    "/data/test",
 	}, c.Env)
 	assert.Equal(t, "/path/etcd", c.EtcdBinaryFile)
 	assert.Equal(t, "/path/etcdutl", c.EtcdutlBinaryFile)
@@ -73,6 +75,7 @@ func TestNewConfig(t *testing.T) {
 		"ETCDCTL_API=3",
 		"ETCD_CERT_FILE=" + filepath.Join(baseTestPath, member, "client", "cert.pem"),
 		"ETCD_CLIENT_CERT_AUTH=true",
+		"ETCD_DATA_DIR=/data/test",
 		"ETCD_ENABLE_V2=false",
 		"ETCD_INITIAL_ADVERTISE_PEER_URLS=https://node0-1:8080,https://node0-0:8080",
 		"ETCD_INITIAL_CLUSTER=node0=https://node0-0:8080,node1=https://node1-0:8080",
