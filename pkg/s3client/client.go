@@ -1,10 +1,15 @@
 package s3client
 
 import (
+	"bytes"
 	"context"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
+	c "github.com/randomcoww/etcd-wrapper/pkg/config"
 	"io"
+	"net"
+	"net/http"
+	"time"
 )
 
 type client struct {
@@ -12,15 +17,27 @@ type client struct {
 }
 
 type Client interface {
-	Download(context.Context, string, string, func(context.Context, io.Reader) (bool, error)) (bool, error)
-	Upload(context.Context, string, string, io.Reader, int64) error
+	Download(context.Context, *c.Config, func(context.Context, io.Reader) (bool, error)) (bool, error)
+	Upload(context.Context, *c.Config, io.Reader) (bool, error)
 }
 
-func NewClient(endpoint string) (*client, error) {
-	minioClient, err := minio.New(endpoint, &minio.Options{
+func NewClient(config *c.Config) (*client, error) {
+	opts := &minio.Options{
 		Creds:  credentials.NewEnvAWS(),
 		Secure: true,
-	})
+	}
+	if config.S3TLSConfig != nil {
+		opts.Transport = &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: (&net.Dialer{
+				Timeout:   2 * time.Second,
+				KeepAlive: 30 * time.Second, // value taken from http.DefaultTransport
+			}).DialContext,
+			TLSHandshakeTimeout: 10 * time.Second, // value taken from http.DefaultTransport
+			TLSClientConfig:     config.S3TLSConfig,
+		}
+	}
+	minioClient, err := minio.New(config.S3BackupEndpoint, opts)
 	if err != nil {
 		return nil, err
 	}
@@ -29,8 +46,8 @@ func NewClient(endpoint string) (*client, error) {
 	}, nil
 }
 
-func (v *client) Download(ctx context.Context, bucket, key string, handler func(context.Context, io.Reader) (bool, error)) (bool, error) {
-	object, err := v.GetObject(ctx, bucket, key, minio.GetObjectOptions{})
+func (v *client) Download(ctx context.Context, config *c.Config, handler func(context.Context, io.Reader) (bool, error)) (bool, error) {
+	object, err := v.GetObject(ctx, config.S3BackupBucket, config.S3BackupKey, minio.GetObjectOptions{})
 	if err != nil {
 		switch minio.ToErrorResponse(err).StatusCode {
 		case 404:
@@ -55,9 +72,19 @@ func (v *client) Download(ctx context.Context, bucket, key string, handler func(
 	return true, nil
 }
 
-func (v *client) Upload(ctx context.Context, bucket, key string, r io.Reader, fileSize int64) error {
-	_, err := v.PutObject(ctx, bucket, key, r, fileSize, minio.PutObjectOptions{
+func (v *client) Upload(ctx context.Context, config *c.Config, reader io.Reader) (bool, error) {
+	buf := &bytes.Buffer{}
+	size, err := io.Copy(buf, reader)
+	if err != nil {
+		return false, err
+	}
+	if size == 0 {
+		return false, nil
+	}
+	if _, err = v.PutObject(ctx, config.S3BackupBucket, config.S3BackupKey, buf, size, minio.PutObjectOptions{
 		AutoChecksum: minio.ChecksumCRC32,
-	})
-	return err
+	}); err != nil {
+		return false, err
+	}
+	return true, nil
 }

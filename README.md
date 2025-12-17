@@ -7,7 +7,7 @@ podman volume create \
 
 podman run -it --rm \
   -v $(pwd):/go/src \
-  -v etcdvolume:/mnt \
+  -v etcdvolume:/etcd \
   -w /go/src \
   --net host \
   docker.io/golang:alpine sh
@@ -28,6 +28,6 @@ terraform() {
 ```
 
 ```bash
-terraform -chdir=tf init -upgrade && \
-terraform -chdir=tf apply
+terraform -chdir=test init -upgrade && \
+terraform -chdir=test apply
 ```

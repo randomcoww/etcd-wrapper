@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/assert"
 	"os"
 	"testing"
-	"time"
 )
 
 func TestNode(t *testing.T) {
@@ -19,12 +18,8 @@ func TestNode(t *testing.T) {
 
 	for _, config := range configs {
 		controller := &Controller{
-			P:              etcdprocess.NewProcess(context.Background(), config),
-			S3Client:       &s3client.MockClientNoBackup{},
-			peerTimeout:    6 * time.Second,
-			restoreTimeout: 4 * time.Second,
-			uploadTimeout:  4 * time.Second,
-			statusTimeout:  4 * time.Second,
+			P:        etcdprocess.NewProcess(context.Background(), config),
+			S3Client: &s3client.MockClientNoBackup{},
 		}
 		defer controller.P.Wait()
 		defer controller.P.Stop()

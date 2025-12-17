@@ -17,8 +17,7 @@ func TestRestoreSnapshot(t *testing.T) {
 
 	config := memberConfigs(dataPath)[0]
 	controller := &Controller{
-		S3Client:       &s3client.MockClientSuccess{},
-		restoreTimeout: 4 * time.Second,
+		S3Client: &s3client.MockClientSuccess{},
 	}
 
 	err := controller.restoreSnapshot(config)
@@ -36,10 +35,8 @@ func TestRunEtcdNew(t *testing.T) {
 	configs := memberConfigs(dataPath)
 	for _, config := range configs {
 		controller := &Controller{
-			P:              etcdprocess.NewProcess(context.Background(), config),
-			S3Client:       &s3client.MockClientNoBackup{},
-			peerTimeout:    6 * time.Second,
-			restoreTimeout: 4 * time.Second,
+			P:        etcdprocess.NewProcess(context.Background(), config),
+			S3Client: &s3client.MockClientNoBackup{},
 		}
 		err := controller.runEtcd(config)
 		assert.NoError(t, err)
@@ -68,10 +65,8 @@ func TestRunEtcdRestore(t *testing.T) {
 	configs := memberConfigs(dataPath)
 	for _, config := range configs {
 		controller := &Controller{
-			P:              etcdprocess.NewProcess(context.Background(), config),
-			S3Client:       &s3client.MockClientSuccess{},
-			peerTimeout:    6 * time.Second,
-			restoreTimeout: 4 * time.Second,
+			P:        etcdprocess.NewProcess(context.Background(), config),
+			S3Client: &s3client.MockClientSuccess{},
 		}
 		err := controller.runEtcd(config)
 		assert.NoError(t, err)

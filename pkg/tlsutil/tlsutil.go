@@ -7,7 +7,7 @@ import (
 	"io/ioutil"
 )
 
-func TLSConfig(trustedCAFile, clientCertFile, clientKeyFile string) (*tls.Config, error) {
+func TLSCAConfig(trustedCAFile string) (*tls.Config, error) {
 	rootCAs, err := newCertPool([]string{trustedCAFile})
 	if err != nil {
 		return nil, err
@@ -16,13 +16,22 @@ func TLSConfig(trustedCAFile, clientCertFile, clientKeyFile string) (*tls.Config
 	return &tls.Config{
 		MinVersion: tls.VersionTLS13,
 		RootCAs:    rootCAs,
-		GetCertificate: func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-			return newCert(clientCertFile, clientKeyFile)
-		},
-		GetClientCertificate: func(unused *tls.CertificateRequestInfo) (*tls.Certificate, error) {
-			return newCert(clientCertFile, clientKeyFile)
-		},
 	}, nil
+}
+
+func TLSConfig(trustedCAFile, clientCertFile, clientKeyFile string) (*tls.Config, error) {
+	config, err := TLSCAConfig(trustedCAFile)
+	if err != nil {
+		return nil, err
+	}
+
+	config.GetCertificate = func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
+		return newCert(clientCertFile, clientKeyFile)
+	}
+	config.GetClientCertificate = func(unused *tls.CertificateRequestInfo) (*tls.Certificate, error) {
+		return newCert(clientCertFile, clientKeyFile)
+	}
+	return config, nil
 }
 
 func newCertPool(CAFiles []string) (*x509.CertPool, error) {

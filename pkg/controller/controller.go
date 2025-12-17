@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"bytes"
 	"context"
 	c "github.com/randomcoww/etcd-wrapper/pkg/config"
 	e "github.com/randomcoww/etcd-wrapper/pkg/controller/errors"
@@ -15,56 +14,42 @@ import (
 )
 
 type Controller struct {
-	P                  etcdprocess.EtcdProcess
-	S3Client           s3client.Client
-	peerTimeout        time.Duration
-	restoreTimeout     time.Duration
-	uploadTimeout      time.Duration
-	statusTimeout      time.Duration
-	backoffWaitBetween time.Duration
+	P        etcdprocess.EtcdProcess
+	S3Client s3client.Client
 }
 
 func (c *Controller) RunEtcd(config *c.Config) error {
-	if err := c.runEtcd(config); err != nil {
-		return err
-	}
-	defer c.P.Wait()
-	defer c.P.Stop()
-
-	return c.P.Wait()
+	return c.runEtcd(config)
 }
 
 func (c *Controller) RunNode(ctx context.Context, config *c.Config) error {
 	for {
-		err := c.runNode(config)
-		switch err {
-		case nil, e.ErrNoCluster:
-			continue
-		default:
-			return err
-		}
-
-		timer := time.NewTimer(c.backoffWaitBetween)
+		timer := time.NewTimer(config.NodeRunInterval)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-timer.C:
-			continue
+			err := c.runNode(config)
+			switch err {
+			case nil, e.ErrNoCluster:
+				continue
+			default:
+				return err
+			}
 		}
 	}
 	return nil
 }
 
 func (c *Controller) runEtcd(config *c.Config) error {
-	ctx, _ := context.WithTimeout(context.Background(), time.Duration(c.peerTimeout))
-	_, err := etcdclient.NewClientFromPeers(ctx, config)
+	ok, err := etcdprocess.DataExists(config)
 	if err != nil {
-		ok, err := etcdprocess.DataExists(config)
-		if err != nil {
-			config.Logger.Error("data dir check failed", zap.Error(err))
-			return err
-		}
-		if !ok {
+		config.Logger.Error("data dir check failed", zap.Error(err))
+		return err
+	}
+	if !ok {
+		ctx, _ := context.WithTimeout(context.Background(), time.Duration(config.PeerTimeout)) // wait for existing cluster
+		if _, err = etcdclient.NewClientFromPeers(ctx, config); err != nil {                   // no cluster found, go through new cluster steps
 			err = c.restoreSnapshot(config)
 			switch err {
 			case nil, e.ErrNoBackup:
@@ -77,13 +62,13 @@ func (c *Controller) runEtcd(config *c.Config) error {
 }
 
 func (c *Controller) runNode(config *c.Config) error {
-	peerCtx, _ := context.WithTimeout(context.Background(), time.Duration(c.peerTimeout))
+	peerCtx, _ := context.WithTimeout(context.Background(), time.Duration(config.PeerTimeout))
 	client, err := etcdclient.NewClientFromPeers(peerCtx, config)
 	if err != nil {
 		config.Logger.Error("get cluster failed", zap.Error(err))
 		return e.ErrNoCluster
 	}
-	statusCtx, _ := context.WithTimeout(context.Background(), time.Duration(c.statusTimeout))
+	statusCtx, _ := context.WithTimeout(context.Background(), time.Duration(config.StatusTimeout))
 	status, err := client.Status(statusCtx, config.ListenClientURLs[0])
 	if err != nil {
 		config.Logger.Error("get local node status failed", zap.Error(err))
@@ -91,30 +76,31 @@ func (c *Controller) runNode(config *c.Config) error {
 	}
 	config.Logger.Info("health check success")
 
+	if err := client.Defragment(statusCtx, config.ListenClientURLs[0]); err != nil {
+		config.Logger.Error("run defragment failed", zap.Error(err))
+		return e.ErrDefragment
+	}
+	config.Logger.Info("defragment success")
+
 	if status.GetHeader().GetMemberId() != status.GetLeader() { // check if leader
 		return nil
 	}
 	config.Logger.Info("local node is leader")
 
-	uploadCtx, _ := context.WithTimeout(context.Background(), time.Duration(c.uploadTimeout))
+	uploadCtx, _ := context.WithTimeout(context.Background(), time.Duration(config.UploadTimeout))
 	reader, err := client.Snapshot(uploadCtx)
 	if err != nil {
 		config.Logger.Error("create backup snapshot failed", zap.Error(err))
 		return e.ErrCreateSnapshot
 	}
-	buf := &bytes.Buffer{}
-	b, err := io.Copy(buf, reader)
+	ok, err := c.S3Client.Upload(uploadCtx, config, reader)
 	if err != nil {
-		config.Logger.Error("create snapshot failed", zap.Error(err))
-		return err
-	}
-	if b == 0 {
-		config.Logger.Error("snapshot file is zero length")
-		return e.ErrSnapshotEmpty
-	}
-	if err := c.S3Client.Upload(uploadCtx, config.S3BackupBucket, config.S3BackupKey, buf, b); err != nil {
 		config.Logger.Error("upload backup snapshot failed", zap.Error(err))
 		return e.ErrUploadBackup
+	}
+	if !ok {
+		config.Logger.Error("snapshot file is empty")
+		return e.ErrSnapshotEmpty
 	}
 	config.Logger.Info("created backup")
 
@@ -122,7 +108,7 @@ func (c *Controller) runNode(config *c.Config) error {
 }
 
 func (c *Controller) restoreSnapshot(config *c.Config) error {
-	ctx, _ := context.WithTimeout(context.Background(), time.Duration(c.restoreTimeout))
+	ctx, _ := context.WithTimeout(context.Background(), time.Duration(config.RestoreTimeout))
 	snapshotFile, err := os.CreateTemp("", "snapshot*.db")
 	if err != nil {
 		config.Logger.Error("open file for snapshot failed", zap.Error(err))
@@ -131,7 +117,7 @@ func (c *Controller) restoreSnapshot(config *c.Config) error {
 	defer os.RemoveAll(snapshotFile.Name())
 	defer snapshotFile.Close()
 
-	ok, err := c.S3Client.Download(ctx, config.S3BackupBucket, config.S3BackupKey, func(ctx context.Context, reader io.Reader) (bool, error) {
+	ok, err := c.S3Client.Download(ctx, config, func(ctx context.Context, reader io.Reader) (bool, error) {
 		b, err := io.Copy(snapshotFile, reader)
 		if err != nil {
 			return false, err

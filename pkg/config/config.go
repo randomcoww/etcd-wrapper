@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"time"
 )
 
 type Config struct {
@@ -25,6 +26,12 @@ type Config struct {
 	S3BackupEndpoint         string
 	S3BackupBucket           string
 	S3BackupKey              string
+	S3TLSConfig              *tls.Config
+	PeerTimeout              time.Duration
+	RestoreTimeout           time.Duration
+	UploadTimeout            time.Duration
+	StatusTimeout            time.Duration
+	NodeRunInterval          time.Duration
 }
 
 func NewConfig(args []string) (*Config, error) {
@@ -37,18 +44,33 @@ func NewConfig(args []string) (*Config, error) {
 		Env:    make(map[string]string),
 		Logger: logger,
 	}
-	var s3resource string
+	var s3resource, s3CAFile string
 	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
 	flags.StringVar(&config.EtcdBinaryFile, "etcd-binary-file", config.EtcdBinaryFile, "Path to etcd binary")
 	flags.StringVar(&config.EtcdutlBinaryFile, "etcdutl-binary-file", config.EtcdutlBinaryFile, "Path to etcdutl binary")
 	flags.StringVar(&s3resource, "s3-backup-resource", s3resource, "S3 resource for backup")
+	flags.StringVar(&s3CAFile, "s3-backup-ca-file", s3CAFile, "CA file for S3 resource")
+	flags.DurationVar(&config.PeerTimeout, "initial-cluster-timeout", 2*time.Minute, "Initial existing cluster lookup timeout")
+	flags.DurationVar(&config.RestoreTimeout, "restore-snapshot-timeout", 8*time.Second, "Restore snapshot timeout")
+	flags.DurationVar(&config.UploadTimeout, "backup-snapshot-timeout", 8*time.Second, "Backup snapshot timeout")
+	flags.DurationVar(&config.StatusTimeout, "status-timeout", 8*time.Second, "Local member status lookup timeout")
+	flags.DurationVar(&config.NodeRunInterval, "node-run-interval", 15*time.Minute, "Node status check and backup interval")
 	if err := flags.Parse(args[1:]); err != nil {
 		return nil, err
 	}
+	if config.EtcdBinaryFile == "" {
+		return nil, fmt.Errorf("etcd-binary-file not set")
+	}
+	if config.EtcdutlBinaryFile == "" {
+		return nil, fmt.Errorf("etcdutl-binary-file not set")
+	}
 
-	reS3Resource := regexp.MustCompile(`(?P<endpoint>[a-z]+://[\w.-]+(:\d+)?)/(?P<bucket>[\w.-]+)(/(?P<key>[\w.-/]+))?`)
+	reS3Resource := regexp.MustCompile(`(://)?(?P<endpoint>[\w.-]+(:\d+)?)/(?P<bucket>[\w.-]+)(/(?P<key>[\w.-/]+))?`)
 	match := reS3Resource.FindStringSubmatch(s3resource)
 	for i, k := range reS3Resource.SubexpNames() {
+		if i >= len(match) {
+			continue
+		}
 		switch k {
 		case "endpoint":
 			config.S3BackupEndpoint = match[i]
@@ -56,6 +78,18 @@ func NewConfig(args []string) (*Config, error) {
 			config.S3BackupBucket = match[i]
 		case "key":
 			config.S3BackupKey = match[i]
+		}
+	}
+	if config.S3BackupEndpoint == "" {
+		return nil, fmt.Errorf("endpoint not found in s3-backup-resource")
+	}
+	if config.S3BackupBucket == "" {
+		return nil, fmt.Errorf("bucket not found in s3-backup-resource")
+	}
+	if s3CAFile != "" {
+		config.S3TLSConfig, err = tlsutil.TLSCAConfig(s3CAFile)
+		if err != nil {
+			return nil, err
 		}
 	}
 
@@ -83,7 +117,7 @@ func (config *Config) ParseEnvs() error {
 		}
 		sort.Strings(config.ListenClientURLs)
 	} else {
-		return fmt.Errorf("env ETCD_LISTEN_CLIENT_URLS is not set")
+		return fmt.Errorf("env ETCD_LISTEN_CLIENT_URLS not set")
 	}
 
 	if v, ok := config.Env["ETCD_INITIAL_ADVERTISE_PEER_URLS"]; ok {
@@ -92,7 +126,7 @@ func (config *Config) ParseEnvs() error {
 		}
 		sort.Strings(config.InitialAdvertisePeerURLs)
 	} else {
-		return fmt.Errorf("env ETCD_INITIAL_ADVERTISE_PEER_URLS is not set")
+		return fmt.Errorf("env ETCD_INITIAL_ADVERTISE_PEER_URLS not set")
 	}
 
 	if v, ok := config.Env["ETCD_INITIAL_CLUSTER"]; ok {
@@ -101,7 +135,7 @@ func (config *Config) ParseEnvs() error {
 			config.ClusterPeerURLs = append(config.ClusterPeerURLs, k[1])
 		}
 	} else {
-		return fmt.Errorf("env ETCD_INITIAL_CLUSTER is not set")
+		return fmt.Errorf("env ETCD_INITIAL_CLUSTER not set")
 	}
 
 	config.Env["ETCD_CLIENT_CERT_AUTH"] = "true"

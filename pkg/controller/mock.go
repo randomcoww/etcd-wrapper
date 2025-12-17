@@ -6,13 +6,14 @@ import (
 	"go.uber.org/zap"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 const (
 	clientPortBase    int    = 8080
 	peerPortBase      int    = 8090
-	etcdBinaryFile    string = "/mnt/usr/local/bin/etcd"
-	etcdutlBinaryFile string = "/mnt/usr/local/bin/etcdutl"
+	etcdBinaryFile    string = "/etcd/usr/local/bin/etcd"
+	etcdutlBinaryFile string = "/etcd/usr/local/bin/etcdutl"
 	baseTestPath      string = "../../test"
 )
 
@@ -33,9 +34,13 @@ func memberConfigs(dataPath string) []*c.Config {
 		config := &c.Config{
 			EtcdBinaryFile:    etcdBinaryFile,
 			EtcdutlBinaryFile: etcdutlBinaryFile,
-			S3BackupEndpoint:  "https://test.internal",
+			S3BackupEndpoint:  "test.internal",
 			S3BackupBucket:    "bucket",
 			S3BackupKey:       "path/key",
+			PeerTimeout:       6 * time.Second,
+			RestoreTimeout:    4 * time.Second,
+			UploadTimeout:     4 * time.Second,
+			StatusTimeout:     4 * time.Second,
 			Logger:            logger,
 			Env: map[string]string{
 				"ETCD_DATA_DIR":                    filepath.Join(dataPath, member+".etcd"),
@@ -43,12 +48,12 @@ func memberConfigs(dataPath string) []*c.Config {
 				"ETCD_CLIENT_CERT_AUTH":            "true",
 				"ETCD_PEER_CLIENT_CERT_AUTH":       "true",
 				"ETCD_STRICT_RECONFIG_CHECK":       "false",
-				"ETCD_TRUSTED_CA_FILE":             filepath.Join(baseTestPath, "ca-cert.pem"),
-				"ETCD_CERT_FILE":                   filepath.Join(baseTestPath, member, "client", "cert.pem"),
-				"ETCD_KEY_FILE":                    filepath.Join(baseTestPath, member, "client", "key.pem"),
-				"ETCD_PEER_TRUSTED_CA_FILE":        filepath.Join(baseTestPath, "peer-ca-cert.pem"),
-				"ETCD_PEER_CERT_FILE":              filepath.Join(baseTestPath, member, "peer", "cert.pem"),
-				"ETCD_PEER_KEY_FILE":               filepath.Join(baseTestPath, member, "peer", "key.pem"),
+				"ETCD_TRUSTED_CA_FILE":             filepath.Join(baseTestPath, "outputs", "ca-cert.pem"),
+				"ETCD_CERT_FILE":                   filepath.Join(baseTestPath, "outputs", member, "client", "cert.pem"),
+				"ETCD_KEY_FILE":                    filepath.Join(baseTestPath, "outputs", member, "client", "key.pem"),
+				"ETCD_PEER_TRUSTED_CA_FILE":        filepath.Join(baseTestPath, "outputs", "peer-ca-cert.pem"),
+				"ETCD_PEER_CERT_FILE":              filepath.Join(baseTestPath, "outputs", member, "peer", "cert.pem"),
+				"ETCD_PEER_KEY_FILE":               filepath.Join(baseTestPath, "outputs", member, "peer", "key.pem"),
 				"ETCD_LISTEN_CLIENT_URLS":          fmt.Sprintf("https://127.0.0.1:%d", clientPortBase+i),
 				"ETCD_ADVERTISE_CLIENT_URLS":       fmt.Sprintf("https://127.0.0.1:%d", clientPortBase+i),
 				"ETCD_LISTEN_PEER_URLS":            fmt.Sprintf("https://127.0.0.1:%d", peerPortBase+i),
