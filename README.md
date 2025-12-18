@@ -28,6 +28,5 @@ terraform() {
 ```
 
 ```bash
-terraform -chdir=test init -upgrade && \
-terraform -chdir=test apply
+terraform -chdir=test init -upgrade && terraform -chdir=test apply
 ```

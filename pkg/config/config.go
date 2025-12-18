@@ -88,11 +88,13 @@ func NewConfig(args []string) (*Config, error) {
 	if config.S3BackupBucket == "" {
 		return nil, fmt.Errorf("bucket not found in s3-backup-resource")
 	}
+	var s3CAFiles []string
 	if s3CAFile != "" {
-		config.S3TLSConfig, err = tlsutil.TLSCAConfig(s3CAFile)
-		if err != nil {
-			return nil, err
-		}
+		s3CAFiles = append(s3CAFiles, s3CAFile)
+	}
+	config.S3TLSConfig, err = tlsutil.TLSCAConfig(s3CAFiles)
+	if err != nil {
+		return nil, err
 	}
 
 	for _, e := range os.Environ() {
@@ -157,7 +159,7 @@ func (config *Config) ParseEnvs() error {
 	if !ok {
 		return fmt.Errorf("env ETCD_KEY_FILE is required")
 	}
-	config.ClientTLSConfig, err = tlsutil.TLSConfig(trustedCAFile, certFile, keyFile)
+	config.ClientTLSConfig, err = tlsutil.TLSConfig([]string{trustedCAFile}, certFile, keyFile)
 	if err != nil {
 		return err
 	}
@@ -175,7 +177,7 @@ func (config *Config) ParseEnvs() error {
 	if !ok {
 		return fmt.Errorf("env ETCD_PEER_KEY_FILE is required")
 	}
-	config.PeerTLSConfig, err = tlsutil.TLSConfig(peerTrustedCAFile, peerCertFile, peerKeyFile)
+	config.PeerTLSConfig, err = tlsutil.TLSConfig([]string{peerTrustedCAFile}, peerCertFile, peerKeyFile)
 	if err != nil {
 		return err
 	}

@@ -114,16 +114,19 @@ func (c *Controller) runNode(config *c.Config) error {
 	}
 	config.Logger.Info("health check success")
 
+	config.Logger.Info("node", zap.Int64("ID", int64(status.GetHeader().GetMemberId())))
+	config.Logger.Info("leader", zap.Int64("ID", int64(status.GetLeader())))
+
 	if err := client.Defragment(statusCtx, config.ListenClientURLs[0]); err != nil {
 		config.Logger.Error("run defragment failed", zap.Error(err))
 		return e.ErrDefragment
 	}
 	config.Logger.Info("defragment success")
 
-	if status.GetHeader().GetMemberId() != status.GetLeader() { // check if leader
+	if status.GetHeader().GetMemberId() != status.GetLeader() { // continue if leader
+		config.Logger.Info("skipping backup on non leader")
 		return nil
 	}
-	config.Logger.Info("local node is leader")
 
 	uploadCtx, _ := context.WithTimeout(context.Background(), time.Duration(config.UploadTimeout))
 	reader, err := client.Snapshot(uploadCtx)

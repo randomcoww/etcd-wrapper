@@ -7,8 +7,8 @@ import (
 	"io/ioutil"
 )
 
-func TLSCAConfig(trustedCAFile string) (*tls.Config, error) {
-	rootCAs, err := newCertPool([]string{trustedCAFile})
+func TLSCAConfig(trustedCAFiles []string) (*tls.Config, error) {
+	rootCAs, err := newCertPool(trustedCAFiles)
 	if err != nil {
 		return nil, err
 	}
@@ -19,8 +19,8 @@ func TLSCAConfig(trustedCAFile string) (*tls.Config, error) {
 	}, nil
 }
 
-func TLSConfig(trustedCAFile, clientCertFile, clientKeyFile string) (*tls.Config, error) {
-	config, err := TLSCAConfig(trustedCAFile)
+func TLSConfig(trustedCAFiles []string, clientCertFile, clientKeyFile string) (*tls.Config, error) {
+	config, err := TLSCAConfig(trustedCAFiles)
 	if err != nil {
 		return nil, err
 	}

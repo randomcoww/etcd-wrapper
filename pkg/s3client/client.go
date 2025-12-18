@@ -25,9 +25,7 @@ func NewClient(config *c.Config) (*client, error) {
 	opts := &minio.Options{
 		Creds:  credentials.NewEnvAWS(),
 		Secure: true,
-	}
-	if config.S3TLSConfig != nil {
-		opts.Transport = &http.Transport{
+		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
 				Timeout:   2 * time.Second,
@@ -35,7 +33,7 @@ func NewClient(config *c.Config) (*client, error) {
 			}).DialContext,
 			TLSHandshakeTimeout: 10 * time.Second, // value taken from http.DefaultTransport
 			TLSClientConfig:     config.S3TLSConfig,
-		}
+		},
 	}
 	minioClient, err := minio.New(config.S3BackupEndpoint, opts)
 	if err != nil {
