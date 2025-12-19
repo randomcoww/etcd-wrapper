@@ -44,6 +44,8 @@ func (c *Controller) RunNode(ctx context.Context, config *c.Config) error {
 }
 
 func (c *Controller) runEtcd(config *c.Config) error {
+	defer config.Logger.Sync()
+
 	ok, err := etcdprocess.DataExists(config)
 	if err != nil {
 		config.Logger.Error("data dir check failed", zap.Error(err))
@@ -100,6 +102,8 @@ func (c *Controller) runEtcd(config *c.Config) error {
 }
 
 func (c *Controller) runNode(config *c.Config) error {
+	defer config.Logger.Sync()
+
 	peerCtx, _ := context.WithTimeout(context.Background(), time.Duration(config.PeerTimeout))
 	client, err := etcdclient.NewClientFromPeers(peerCtx, config)
 	if err != nil {

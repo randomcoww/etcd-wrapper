@@ -52,10 +52,10 @@ func NewConfig(args []string) (*Config, error) {
 	flags.StringVar(&s3resource, "s3-backup-resource", s3resource, "S3 resource for backup")
 	flags.StringVar(&s3CAFile, "s3-backup-ca-file", s3CAFile, "CA file for S3 resource")
 	flags.DurationVar(&config.PeerTimeout, "initial-cluster-timeout", 2*time.Minute, "Initial existing cluster lookup timeout")
-	flags.DurationVar(&config.RestoreTimeout, "restore-snapshot-timeout", 12*time.Second, "Restore snapshot timeout")
+	flags.DurationVar(&config.RestoreTimeout, "restore-snapshot-timeout", 1*time.Minute, "Restore snapshot timeout")
 	flags.DurationVar(&config.ReplaceTimeout, "member-replace-timeout", 30*time.Second, "Member replace timeout")
-	flags.DurationVar(&config.UploadTimeout, "backup-snapshot-timeout", 12*time.Second, "Backup snapshot timeout")
-	flags.DurationVar(&config.StatusTimeout, "status-timeout", 12*time.Second, "Local member status lookup timeout")
+	flags.DurationVar(&config.UploadTimeout, "backup-snapshot-timeout", 1*time.Minute, "Backup snapshot timeout")
+	flags.DurationVar(&config.StatusTimeout, "status-timeout", 30*time.Second, "Local member status lookup timeout")
 	flags.DurationVar(&config.NodeRunInterval, "node-run-interval", 15*time.Minute, "Node status check and backup interval")
 	if err := flags.Parse(args[1:]); err != nil {
 		return nil, err

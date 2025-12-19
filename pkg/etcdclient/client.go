@@ -139,7 +139,6 @@ func (client *Client) MemberAdd(ctx context.Context, peerURLs []string) (Members
 		case err == nil:
 			return (*etcdserverpb.MemberAddResponse)(resp), nil
 		case errors.Is(err, etcderrors.ErrUnhealthy):
-			continue
 		default:
 			return nil, err
 		}
@@ -161,7 +160,6 @@ func (client *Client) MemberRemove(ctx context.Context, id uint64) (Members, err
 		case err == nil:
 			return (*etcdserverpb.MemberRemoveResponse)(resp), nil
 		case errors.Is(err, etcderrors.ErrUnhealthy):
-			continue
 		default:
 			return nil, err
 		}
