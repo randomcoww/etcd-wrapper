@@ -22,6 +22,7 @@ func TestNewConfig(t *testing.T) {
 	t.Setenv("ETCD_PEER_CERT_FILE", filepath.Join(baseTestPath, member, "peer", "cert.pem"))
 	t.Setenv("ETCD_PEER_KEY_FILE", filepath.Join(baseTestPath, member, "peer", "key.pem"))
 	t.Setenv("ETCD_DATA_DIR", "/data/test")
+	t.Setenv("ETCD_INITIAL_CLUSTER_STATE", "new")
 
 	c, err := NewConfig([]string{
 		"etcd-wrapper",

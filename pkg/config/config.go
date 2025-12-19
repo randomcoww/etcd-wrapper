@@ -184,10 +184,11 @@ func (config *Config) ParseEnvs() error {
 		return err
 	}
 
+	delete(config.Env, "ETCD_INITIAL_CLUSTER_STATE") // this is set internally
 	config.Env["ETCD_LOG_OUTPUTS"] = "stdout"
 	config.Env["ETCD_ENABLE_V2"] = "false"
 	config.Env["ETCD_STRICT_RECONFIG_CHECK"] = "true"
-	config.Env["ETCDCTL_API"] = "3"
+	config.Env["ETCDCTL_API"] = "3" // used by etcdutl
 	return nil
 }
 
