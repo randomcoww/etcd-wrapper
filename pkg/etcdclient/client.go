@@ -81,6 +81,7 @@ func NewClientFromPeers(ctx context.Context, config *c.Config) (EtcdClient, erro
 			if err == nil {
 				err = client.GetHealth(ctx)
 				if err == nil {
+					config.ClusterPeerURLs = pcluster.PeerURLs()
 					return client, nil
 				}
 			}

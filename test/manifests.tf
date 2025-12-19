@@ -180,7 +180,7 @@ module "etcd" {
           "-etcdutl-binary-file",
           "/etcd/usr/local/bin/etcdutl",
           "-s3-backup-resource",
-          "127.0.0.1:${local.minio_port}/${local.minio_bucket}/snapshot",
+          "https://127.0.0.1:${local.minio_port}/${local.minio_bucket}/snapshot/etcd.db",
           "-s3-backup-ca-file",
           "/etc/etcd/minio/certs/CAs/ca.crt",
           "-initial-cluster-timeout",

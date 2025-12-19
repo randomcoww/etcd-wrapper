@@ -29,7 +29,7 @@ type Config struct {
 	S3BackupBucket           string
 	S3BackupKey              string
 	S3TLSConfig              *tls.Config
-	PeerTimeout              time.Duration
+	ClusterTimeout           time.Duration
 	RestoreTimeout           time.Duration
 	ReplaceTimeout           time.Duration
 	UploadTimeout            time.Duration
@@ -53,7 +53,7 @@ func NewConfig(args []string) (*Config, error) {
 	flags.StringVar(&config.EtcdutlBinaryFile, "etcdutl-binary-file", config.EtcdutlBinaryFile, "Path to etcdutl binary")
 	flags.StringVar(&s3resource, "s3-backup-resource", s3resource, "S3 resource for backup")
 	flags.StringVar(&s3CAFile, "s3-backup-ca-file", s3CAFile, "CA file for S3 resource")
-	flags.DurationVar(&config.PeerTimeout, "initial-cluster-timeout", 2*time.Minute, "Initial existing cluster lookup timeout")
+	flags.DurationVar(&config.ClusterTimeout, "initial-cluster-timeout", 2*time.Minute, "Initial existing cluster lookup timeout")
 	flags.DurationVar(&config.RestoreTimeout, "restore-snapshot-timeout", 1*time.Minute, "Restore snapshot timeout")
 	flags.DurationVar(&config.ReplaceTimeout, "member-replace-timeout", 30*time.Second, "Member replace timeout")
 	flags.DurationVar(&config.UploadTimeout, "backup-snapshot-timeout", 1*time.Minute, "Backup snapshot timeout")
@@ -112,20 +112,12 @@ func (config *Config) ParseEnvs() error {
 	reMap := regexp.MustCompile(`\s*=\s*`)
 
 	if v, ok := config.Env["ETCD_LISTEN_CLIENT_URLS"]; ok {
-		for _, cl := range reList.Split(v, -1) { // try to get a localhost IP to use for hitting client
-			u, err := url.Parse(cl)
+		for _, s := range reList.Split(v, -1) { // try to get a localhost IP to use for hitting client
+			ip, err := getIPFromHost(s)
 			if err != nil {
 				return err
 			}
-			host, _, err := net.SplitHostPort(u.Host)
-			if err != nil {
-				return err
-			}
-			ip := net.ParseIP(host)
-			if ip == nil {
-				return fmt.Errorf("IP not found in listen client URL: %s", cl)
-			}
-			config.LocalClientURL = cl
+			config.LocalClientURL = s
 			if ip.IsLoopback() {
 				break
 			}
@@ -206,4 +198,20 @@ func (config *Config) WriteEnv() []string {
 	}
 	sort.Strings(envs)
 	return envs
+}
+
+func getIPFromHost(s string) (net.IP, error) {
+	u, err := url.Parse(s)
+	if err != nil {
+		return nil, err
+	}
+	host, _, err := net.SplitHostPort(u.Host)
+	if err != nil {
+		return nil, err
+	}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return nil, fmt.Errorf("IP not found in listen client URL: %s", s)
+	}
+	return ip, nil
 }

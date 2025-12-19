@@ -52,8 +52,8 @@ func (c *Controller) runEtcd(config *c.Config) error {
 		return err
 	}
 	if !ok {
-		peeerCtx, _ := context.WithTimeout(context.Background(), time.Duration(config.PeerTimeout)) // wait for existing cluster
-		client, err := etcdclient.NewClientFromPeers(peeerCtx, config)
+		clusterCtx, _ := context.WithTimeout(context.Background(), time.Duration(config.ClusterTimeout)) // wait for existing cluster
+		client, err := etcdclient.NewClientFromPeers(clusterCtx, config)
 		if err != nil { // no cluster found, go through new cluster steps
 			err = c.restoreSnapshot(config)
 			switch err {
@@ -104,8 +104,8 @@ func (c *Controller) runEtcd(config *c.Config) error {
 func (c *Controller) runNode(config *c.Config) error {
 	defer config.Logger.Sync()
 
-	peerCtx, _ := context.WithTimeout(context.Background(), time.Duration(config.PeerTimeout))
-	client, err := etcdclient.NewClientFromPeers(peerCtx, config)
+	clusterCtx, _ := context.WithTimeout(context.Background(), time.Duration(config.ClusterTimeout))
+	client, err := etcdclient.NewClientFromPeers(clusterCtx, config)
 	if err != nil {
 		config.Logger.Error("get cluster failed", zap.Error(err))
 		return e.ErrNoCluster
