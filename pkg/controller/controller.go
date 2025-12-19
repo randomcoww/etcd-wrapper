@@ -33,7 +33,7 @@ func (c *Controller) RunNode(ctx context.Context, config *c.Config) error {
 		case <-timer.C:
 			err := c.runNode(config)
 			switch err {
-			case nil, e.ErrNoCluster:
+			case nil, e.ErrNoCluster, e.ErrLocalNode: // container healthcheck should terminate node under these conditions
 				continue
 			default:
 				return err
@@ -111,7 +111,7 @@ func (c *Controller) runNode(config *c.Config) error {
 		return e.ErrNoCluster
 	}
 	statusCtx, _ := context.WithTimeout(context.Background(), time.Duration(config.StatusTimeout))
-	status, err := client.Status(statusCtx, config.ListenClientURLs[0])
+	status, err := client.Status(statusCtx, config.LocalClientURL)
 	if err != nil {
 		config.Logger.Error("get local node status failed", zap.Error(err))
 		return e.ErrLocalNode
@@ -121,7 +121,7 @@ func (c *Controller) runNode(config *c.Config) error {
 	config.Logger.Info("node", zap.Int64("ID", int64(status.GetHeader().GetMemberId())))
 	config.Logger.Info("leader", zap.Int64("ID", int64(status.GetLeader())))
 
-	if err := client.Defragment(statusCtx, config.ListenClientURLs[0]); err != nil {
+	if err := client.Defragment(statusCtx, config.LocalClientURL); err != nil {
 		config.Logger.Error("run defragment failed", zap.Error(err))
 		return e.ErrDefragment
 	}

@@ -35,7 +35,7 @@ func NewClient(config *c.Config) (*client, error) {
 			TLSClientConfig:     config.S3TLSConfig,
 		},
 	}
-	minioClient, err := minio.New(config.S3BackupEndpoint, opts)
+	minioClient, err := minio.New(config.S3BackupHost, opts)
 	if err != nil {
 		return nil, err
 	}

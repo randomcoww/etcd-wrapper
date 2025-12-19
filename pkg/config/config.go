@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"github.com/randomcoww/etcd-wrapper/pkg/tlsutil"
 	"go.uber.org/zap"
+	"net"
+	"net/url"
 	"os"
 	"regexp"
 	"sort"
@@ -14,7 +16,7 @@ import (
 )
 
 type Config struct {
-	ListenClientURLs         []string
+	LocalClientURL           string
 	InitialAdvertisePeerURLs []string
 	ClusterPeerURLs          []string
 	Env                      map[string]string
@@ -23,7 +25,7 @@ type Config struct {
 	Logger                   *zap.Logger
 	EtcdBinaryFile           string
 	EtcdutlBinaryFile        string
-	S3BackupEndpoint         string
+	S3BackupHost             string
 	S3BackupBucket           string
 	S3BackupKey              string
 	S3TLSConfig              *tls.Config
@@ -67,27 +69,21 @@ func NewConfig(args []string) (*Config, error) {
 		return nil, fmt.Errorf("etcdutl-binary-file not set")
 	}
 
-	reS3Resource := regexp.MustCompile(`(://)?(?P<endpoint>[\w.\-]+(:\d+)?)/(?P<bucket>[\w.\-]+)(/(?P<key>[\w.\-/]+))?`)
-	match := reS3Resource.FindStringSubmatch(s3resource)
-	for i, k := range reS3Resource.SubexpNames() {
-		if i >= len(match) {
-			continue
-		}
-		switch k {
-		case "endpoint":
-			config.S3BackupEndpoint = match[i]
-		case "bucket":
-			config.S3BackupBucket = match[i]
-		case "key":
-			config.S3BackupKey = match[i]
-		}
+	u, err := url.Parse(s3resource)
+	if err != nil {
+		return nil, err
 	}
-	if config.S3BackupEndpoint == "" {
-		return nil, fmt.Errorf("endpoint not found in s3-backup-resource")
+	if u.Host == "" {
+		return nil, fmt.Errorf("host not found in s3-backup-resource")
 	}
-	if config.S3BackupBucket == "" {
-		return nil, fmt.Errorf("bucket not found in s3-backup-resource")
+	config.S3BackupHost = u.Host
+	parts := strings.Split(u.Path, "/")
+	if len(parts) < 3 { // path always starts with / so first element should be blank
+		return nil, fmt.Errorf("bucket and key not found in s3-backup-resource")
 	}
+	config.S3BackupBucket = parts[1]
+	config.S3BackupKey = strings.Join(parts[2:], "/")
+
 	var s3CAFiles []string
 	if s3CAFile != "" {
 		s3CAFiles = append(s3CAFiles, s3CAFile)
@@ -116,10 +112,24 @@ func (config *Config) ParseEnvs() error {
 	reMap := regexp.MustCompile(`\s*=\s*`)
 
 	if v, ok := config.Env["ETCD_LISTEN_CLIENT_URLS"]; ok {
-		for _, u := range reList.Split(v, -1) {
-			config.ListenClientURLs = append(config.ListenClientURLs, u)
+		for _, cl := range reList.Split(v, -1) { // try to get a localhost IP to use for hitting client
+			u, err := url.Parse(cl)
+			if err != nil {
+				return err
+			}
+			host, _, err := net.SplitHostPort(u.Host)
+			if err != nil {
+				return err
+			}
+			ip := net.ParseIP(host)
+			if ip == nil {
+				return fmt.Errorf("IP not found in listen client URL: %s", cl)
+			}
+			config.LocalClientURL = cl
+			if ip.IsLoopback() {
+				break
+			}
 		}
-		sort.Strings(config.ListenClientURLs)
 	} else {
 		return fmt.Errorf("env ETCD_LISTEN_CLIENT_URLS not set")
 	}

@@ -44,7 +44,7 @@ func TestCreateNewCluster(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, len(configs), len(list.GetMembers()))
 
-	_, err = client.Status(ctx, configs[0].ListenClientURLs[0])
+	_, err = client.Status(ctx, configs[0].LocalClientURL)
 	assert.NoError(t, err)
 }
 
@@ -80,7 +80,7 @@ func TestExistingFromSnapshotRestore(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, len(configs), len(list.GetMembers()))
 
-	_, err = client.Status(ctx, configs[0].ListenClientURLs[0])
+	_, err = client.Status(ctx, configs[0].LocalClientURL)
 	assert.NoError(t, err)
 
 	resp, err := client.C().KV.Get(ctx, "test-key1")
@@ -105,7 +105,7 @@ func memberConfigs(dataPath string) []*c.Config {
 		config := &c.Config{
 			EtcdBinaryFile:    etcdBinaryFile,
 			EtcdutlBinaryFile: etcdutlBinaryFile,
-			S3BackupEndpoint:  "https://test.internal",
+			S3BackupHost:      "https://test.internal",
 			S3BackupBucket:    "bucket",
 			S3BackupKey:       "path/key",
 			Logger:            logger,
