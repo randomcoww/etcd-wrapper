@@ -55,6 +55,7 @@ type EtcdClient interface {
 	GetHealth(context.Context) error
 	Defragment(context.Context, string) error
 	Snapshot(context.Context) (io.Reader, error)
+	Close() error
 	C() *clientv3.Client
 }
 

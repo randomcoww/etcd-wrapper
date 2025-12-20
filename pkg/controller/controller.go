@@ -65,6 +65,8 @@ func (c *Controller) runEtcd(config *c.Config) error {
 				return err
 			}
 		} else {
+			defer client.Close()
+
 			clientCtx, _ := context.WithTimeout(context.Background(), time.Duration(config.ReplaceTimeout))
 			listResp, err := client.MemberList(clientCtx)
 			if err != nil {
@@ -110,6 +112,8 @@ func (c *Controller) runNode(config *c.Config) error {
 		config.Logger.Error("get cluster failed", zap.Error(err))
 		return e.ErrNoCluster
 	}
+	defer client.Close()
+
 	statusCtx, _ := context.WithTimeout(context.Background(), time.Duration(config.StatusTimeout))
 	status, err := client.Status(statusCtx, config.LocalClientURL)
 	if err != nil {
