@@ -20,19 +20,22 @@ func TestControllerNew(t *testing.T) {
 	dataPath, _ := os.MkdirTemp("", "data")
 	defer os.RemoveAll(dataPath)
 
+	var controllers []*Controller
 	configs := c.MockConfigs(dataPath)
 	for _, config := range configs {
 		p := etcdprocess.NewProcess(context.Background(), config)
 		defer p.Wait()
 		defer p.Stop()
 
-		controller := &Controller{
+		controllers = append(controllers, &Controller{
 			P:        p,
 			S3Client: &s3client.MockClientNoBackup{},
-		}
-		err := controller.runEtcd(config)
-		assert.NoError(t, err)
+		})
+	}
 
+	for i, config := range configs {
+		err := controllers[i].runEtcd(config)
+		assert.NoError(t, err)
 		time.Sleep(4 * time.Second)
 	}
 
@@ -40,27 +43,35 @@ func TestControllerNew(t *testing.T) {
 	client, err := etcdclient.NewClientFromPeers(ctx, configs[2])
 	assert.NoError(t, err)
 
-	_, err = client.Status(ctx, configs[2].LocalClientURL)
-	assert.NoError(t, err)
+	for i, config := range configs {
+		_, err = client.Status(ctx, config.LocalClientURL)
+		assert.NoError(t, err)
+
+		err := controllers[i].runNode(config)
+		assert.NoError(t, err)
+	}
 }
 
 func TestControllerRestore(t *testing.T) {
 	dataPath, _ := os.MkdirTemp("", "data")
 	defer os.RemoveAll(dataPath)
 
+	var controllers []*Controller
 	configs := c.MockConfigs(dataPath)
 	for _, config := range configs {
 		p := etcdprocess.NewProcess(context.Background(), config)
 		defer p.Wait()
 		defer p.Stop()
 
-		controller := &Controller{
+		controllers = append(controllers, &Controller{
 			P:        p,
 			S3Client: &s3client.MockClientSuccess{},
-		}
-		err := controller.runEtcd(config)
-		assert.NoError(t, err)
+		})
+	}
 
+	for i, config := range configs {
+		err := controllers[i].runEtcd(config)
+		assert.NoError(t, err)
 		time.Sleep(4 * time.Second)
 	}
 
@@ -68,6 +79,15 @@ func TestControllerRestore(t *testing.T) {
 	client, err := etcdclient.NewClientFromPeers(ctx, configs[2])
 	assert.NoError(t, err)
 
-	_, err = client.Status(ctx, configs[2].LocalClientURL)
+	for i, config := range configs {
+		_, err = client.Status(ctx, config.LocalClientURL)
+		assert.NoError(t, err)
+
+		err := controllers[i].runNode(config)
+		assert.NoError(t, err)
+	}
+
+	resp, err := client.C().KV.Get(ctx, "test-key1")
 	assert.NoError(t, err)
+	assert.Equal(t, "test-val1", string(resp.Kvs[0].Value)) // match data that should exist in snapshot
 }
