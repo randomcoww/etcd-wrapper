@@ -34,7 +34,7 @@ func TestControllerNew(t *testing.T) {
 	}
 
 	for i, config := range configs {
-		err := controllers[i].RunEtcd(config)
+		err := controllers[i].runEtcd(config)
 		assert.NoError(t, err)
 		time.Sleep(4 * time.Second)
 	}
@@ -70,7 +70,7 @@ func TestControllerRestore(t *testing.T) {
 	}
 
 	for i, config := range configs {
-		err := controllers[i].RunEtcd(config)
+		err := controllers[i].runEtcd(config)
 		assert.NoError(t, err)
 		time.Sleep(4 * time.Second)
 	}
