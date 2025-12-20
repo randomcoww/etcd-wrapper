@@ -2,12 +2,10 @@ package etcdclient
 
 import (
 	"context"
-	"errors"
 	c "github.com/randomcoww/etcd-wrapper/pkg/config"
 	etcdserverpb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/server/v3/etcdserver"
-	etcderrors "go.etcd.io/etcd/server/v3/etcdserver/errors"
 	"io"
 	"net"
 	"net/http"
@@ -139,9 +137,7 @@ func (client *Client) MemberAdd(ctx context.Context, peerURLs []string) (Members
 		switch {
 		case err == nil:
 			return (*etcdserverpb.MemberAddResponse)(resp), nil
-		case errors.Is(err, etcderrors.ErrUnhealthy):
 		default:
-			return nil, err
 		}
 
 		timer := time.NewTimer(backoffWaitBetween)
@@ -160,9 +156,7 @@ func (client *Client) MemberRemove(ctx context.Context, id uint64) (Members, err
 		switch {
 		case err == nil:
 			return (*etcdserverpb.MemberRemoveResponse)(resp), nil
-		case errors.Is(err, etcderrors.ErrUnhealthy):
 		default:
-			return nil, err
 		}
 
 		timer := time.NewTimer(backoffWaitBetween)

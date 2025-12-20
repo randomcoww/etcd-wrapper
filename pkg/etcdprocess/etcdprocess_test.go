@@ -2,31 +2,24 @@ package etcdprocess
 
 import (
 	"context"
-	"fmt"
 	c "github.com/randomcoww/etcd-wrapper/pkg/config"
 	"github.com/randomcoww/etcd-wrapper/pkg/etcdclient"
 	"github.com/stretchr/testify/assert"
-	"go.uber.org/zap"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 )
 
 const (
-	clientPortBase    int    = 8080
-	peerPortBase      int    = 8090
-	etcdBinaryFile    string = "/etcd/usr/local/bin/etcd"
-	etcdutlBinaryFile string = "/etcd/usr/local/bin/etcdutl"
-	baseTestPath      string = "../../test"
+	baseTestPath string = "../../test"
 )
 
 func TestCreateNewCluster(t *testing.T) {
 	dataPath, _ := os.MkdirTemp("", "data")
 	defer os.RemoveAll(dataPath)
 
-	configs := memberConfigs(dataPath)
+	configs := c.MockConfigs(dataPath)
 	for _, config := range configs {
 		p := NewProcess(context.Background(), config)
 		err := p.StartNew()
@@ -52,7 +45,7 @@ func TestExistingFromSnapshotRestore(t *testing.T) {
 	dataPath, _ := os.MkdirTemp("", "data")
 	defer os.RemoveAll(dataPath)
 
-	configs := memberConfigs(dataPath)
+	configs := c.MockConfigs(dataPath)
 	for _, config := range configs[1:] { // recover 2 of 3 nodes
 		restoreCtx, _ := context.WithTimeout(context.Background(), time.Duration(4*time.Second))
 		err := RestoreV3Snapshot(restoreCtx, config, filepath.Join(baseTestPath, "test-snapshot.db"))
@@ -86,52 +79,4 @@ func TestExistingFromSnapshotRestore(t *testing.T) {
 	resp, err := client.C().KV.Get(ctx, "test-key1")
 	assert.NoError(t, err)
 	assert.Equal(t, "test-val1", string(resp.Kvs[0].Value)) // match data that should exist in snapshot
-}
-
-func memberConfigs(dataPath string) []*c.Config {
-	members := []string{
-		"node0",
-		"node1",
-		"node2",
-	}
-	var initialCluster []string
-	for i, member := range members {
-		initialCluster = append(initialCluster, fmt.Sprintf("%s=https://127.0.0.1:%d", member, peerPortBase+i))
-	}
-	logger, _ := zap.NewProduction()
-
-	var configs []*c.Config
-	for i, member := range members {
-		config := &c.Config{
-			EtcdBinaryFile:    etcdBinaryFile,
-			EtcdutlBinaryFile: etcdutlBinaryFile,
-			S3BackupHost:      "https://test.internal",
-			S3BackupBucket:    "bucket",
-			S3BackupKey:       "path/key",
-			Logger:            logger,
-			Env: map[string]string{
-				"ETCD_DATA_DIR":                    filepath.Join(dataPath, member+".etcd"),
-				"ETCD_NAME":                        member,
-				"ETCD_CLIENT_CERT_AUTH":            "true",
-				"ETCD_PEER_CLIENT_CERT_AUTH":       "true",
-				"ETCD_STRICT_RECONFIG_CHECK":       "true",
-				"ETCD_TRUSTED_CA_FILE":             filepath.Join(baseTestPath, "outputs", "ca-cert.pem"),
-				"ETCD_CERT_FILE":                   filepath.Join(baseTestPath, "outputs", member, "client", "cert.pem"),
-				"ETCD_KEY_FILE":                    filepath.Join(baseTestPath, "outputs", member, "client", "key.pem"),
-				"ETCD_PEER_TRUSTED_CA_FILE":        filepath.Join(baseTestPath, "outputs", "peer-ca-cert.pem"),
-				"ETCD_PEER_CERT_FILE":              filepath.Join(baseTestPath, "outputs", member, "peer", "cert.pem"),
-				"ETCD_PEER_KEY_FILE":               filepath.Join(baseTestPath, "outputs", member, "peer", "key.pem"),
-				"ETCD_LISTEN_CLIENT_URLS":          fmt.Sprintf("https://127.0.0.1:%d", clientPortBase+i),
-				"ETCD_ADVERTISE_CLIENT_URLS":       fmt.Sprintf("https://127.0.0.1:%d", clientPortBase+i),
-				"ETCD_LISTEN_PEER_URLS":            fmt.Sprintf("https://127.0.0.1:%d", peerPortBase+i),
-				"ETCD_INITIAL_ADVERTISE_PEER_URLS": fmt.Sprintf("https://127.0.0.1:%d", peerPortBase+i),
-				"ETCD_INITIAL_CLUSTER":             strings.Join(initialCluster, ","),
-				"ETCD_INITIAL_CLUSTER_TOKEN":       "test",
-				"ETCD_LOG_LEVEL":                   "error",
-			},
-		}
-		config.ParseEnvs()
-		configs = append(configs, config)
-	}
-	return configs
 }

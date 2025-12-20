@@ -7,8 +7,7 @@ import (
 )
 
 const (
-	baseTestPath string = "../../test/outputs"
-	member       string = "node0"
+	member string = "node0"
 )
 
 func TestNewConfig(t *testing.T) {
