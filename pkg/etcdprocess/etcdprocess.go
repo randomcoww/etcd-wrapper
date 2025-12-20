@@ -9,8 +9,9 @@ import (
 )
 
 type EtcdProcess interface {
-	StartNew() error
-	StartExisting() error
+	SetNew(*c.Config)
+	SetExisting(*c.Config)
+	Start() error
 	Stop() error
 	Wait() error
 }
@@ -23,24 +24,24 @@ func NewProcess(ctx context.Context, config *c.Config) EtcdProcess {
 	cmd := exec.CommandContext(ctx, config.EtcdBinaryFile)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Env = config.WriteEnv()
 
 	return &etcdProcess{
 		Cmd: cmd,
 	}
 }
 
-func (p *etcdProcess) StartNew() error {
-	if p.Cmd.Process == nil {
-		p.Cmd.Args = append(p.Cmd.Args, "--initial-cluster-state", "new")
-		return p.Cmd.Start()
-	}
-	return nil
+func (p *etcdProcess) SetNew(config *c.Config) {
+	config.Env["ETCD_INITIAL_CLUSTER_STATE"] = "new"
+	p.Cmd.Env = config.WriteEnv()
 }
 
-func (p *etcdProcess) StartExisting() error {
+func (p *etcdProcess) SetExisting(config *c.Config) {
+	config.Env["ETCD_INITIAL_CLUSTER_STATE"] = "existing"
+	p.Cmd.Env = config.WriteEnv()
+}
+
+func (p *etcdProcess) Start() error {
 	if p.Cmd.Process == nil {
-		p.Cmd.Args = append(p.Cmd.Args, "--initial-cluster-state", "existing")
 		return p.Cmd.Start()
 	}
 	return nil

@@ -21,7 +21,11 @@ type Controller struct {
 }
 
 func (c *Controller) RunEtcd(config *c.Config) error {
-	return c.runEtcd(config)
+	err := c.configureProcess(config)
+	if err != nil {
+		return err
+	}
+	return c.P.Start()
 }
 
 func (c *Controller) RunNode(ctx context.Context, config *c.Config) error {
@@ -43,7 +47,7 @@ func (c *Controller) RunNode(ctx context.Context, config *c.Config) error {
 	return nil
 }
 
-func (c *Controller) runEtcd(config *c.Config) error {
+func (c *Controller) configureProcess(config *c.Config) error {
 	defer config.Logger.Sync()
 
 	ok, err := etcdprocess.DataExists(config)
@@ -60,7 +64,8 @@ func (c *Controller) runEtcd(config *c.Config) error {
 			case nil:
 			case e.ErrNoBackup:
 				config.Logger.Info("start new cluster")
-				return c.P.StartNew()
+				c.P.SetNew(config)
+				return nil
 			default:
 				return err
 			}
@@ -100,7 +105,8 @@ func (c *Controller) runEtcd(config *c.Config) error {
 		}
 	}
 	config.Logger.Info("start existing cluster")
-	return c.P.StartExisting()
+	c.P.SetExisting(config)
+	return nil
 }
 
 func (c *Controller) runNode(config *c.Config) error {
