@@ -86,3 +86,36 @@ func TestNewConfig(t *testing.T) {
 		"ETCD_TRUSTED_CA_FILE=" + filepath.Join(baseTestPath, "ca-cert.pem"),
 	}, c.WriteEnv())
 }
+
+func TestGetLocalURL(t *testing.T) {
+	s, err := getLocalURL([]string{
+		"https://10.1.0.1:9080",
+		"https://127.0.0.1:9080",
+		"https://10.0.0.1:9080",
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, "https://127.0.0.1:9080", s)
+
+	s, err = getLocalURL([]string{
+		"https://10.1.0.1:9080",
+		"https://0.0.0.0:9080",
+		"https://10.0.0.1:9080",
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, "https://localhost:9080", s)
+
+	s, err = getLocalURL([]string{
+		"https://10.1.0.1:9080",
+		"https://localhost:9080",
+		"https://10.0.0.1:9080",
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, "https://localhost:9080", s)
+
+	s, err = getLocalURL([]string{
+		"https://10.1.0.1:9080",
+		"https://10.0.0.1:9080",
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, "https://10.0.0.1:9080", s)
+}

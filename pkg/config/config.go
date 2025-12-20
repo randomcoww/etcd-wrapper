@@ -112,30 +112,9 @@ func (config *Config) ParseEnvs() error {
 	reMap := regexp.MustCompile(`\s*=\s*`)
 
 	if v, ok := config.Env["ETCD_LISTEN_CLIENT_URLS"]; ok {
-		for _, s := range reList.Split(v, -1) { // try to get a localhost IP to use for hitting client
-			u, err := url.Parse(s)
-			if err != nil {
-				return err
-			}
-			host, port, err := net.SplitHostPort(u.Host)
-			if err != nil {
-				return err
-			}
-			config.LocalClientURL = s
-			if host == "localhost" {
-				break
-			}
-			ip := net.ParseIP(host)
-			if ip == nil {
-				return fmt.Errorf("IP not found in listen client URL: %s", s)
-			}
-			if ip.IsLoopback() {
-				break
-			}
-			if ip.IsUnspecified() {
-				config.LocalClientURL = fmt.Sprintf("%s://%s:%s", u.Scheme, "localhost", port)
-				break
-			}
+		config.LocalClientURL, err = getLocalURL(reList.Split(v, -1))
+		if err != nil {
+			return err
 		}
 	} else {
 		return fmt.Errorf("env ETCD_LISTEN_CLIENT_URLS not set")
@@ -214,4 +193,35 @@ func (config *Config) WriteEnv() []string {
 	}
 	sort.Strings(envs)
 	return envs
+}
+
+func getLocalURL(urls []string) (string, error) {
+	var s string
+	for _, s = range urls {
+		u, err := url.Parse(s)
+		if err != nil {
+			return "", err
+		}
+		host, port, err := net.SplitHostPort(u.Host)
+		if err != nil {
+			return "", err
+		}
+		if port == "" {
+			return "", fmt.Errorf("Port not found in listen client URL: %s", s)
+		}
+		if host == "localhost" {
+			return s, nil
+		}
+		ip := net.ParseIP(host)
+		if ip == nil {
+			return "", fmt.Errorf("IP not found in listen client URL: %s", s)
+		}
+		if ip.IsLoopback() {
+			return s, nil
+		}
+		if ip.IsUnspecified() {
+			return fmt.Sprintf("%s://%s:%s", u.Scheme, "localhost", port), nil
+		}
+	}
+	return s, nil
 }
