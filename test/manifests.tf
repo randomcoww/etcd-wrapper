@@ -1,134 +1,286 @@
 
 locals {
-  url_regex = "[a-z]+://(?<ip>[\\d.]+):(?<port>\\d+)"
-
+  url_regex     = "[a-z]+://(?<ip>[\\d.]+):(?<port>\\d+)"
+  data_path     = "/var/lib/etcd"
+  base_path     = "outputs"
   cluster_token = "test"
   members = {
     node0 = {
-      client_url = "https://127.0.0.1:8080"
-      peer_url   = "https://127.0.0.1:8090"
+      client_url            = "https://127.0.0.1:8080"
+      peer_url              = "https://127.0.0.1:8090"
+      initial_cluster_state = "existing"
     }
     node1 = {
-      client_url = "https://127.0.0.1:8081"
-      peer_url   = "https://127.0.0.1:8091"
+      client_url            = "https://127.0.0.1:8081"
+      peer_url              = "https://127.0.0.1:8091"
+      initial_cluster_state = "existing"
     }
     node2 = {
-      client_url = "https://127.0.0.1:8082"
-      peer_url   = "https://127.0.0.1:8092"
+      client_url            = "https://127.0.0.1:8082"
+      peer_url              = "https://127.0.0.1:8092"
+      initial_cluster_state = "existing"
     }
   }
-  base_path = abspath("output")
+  initial_startup_delay_seconds = 30
+
+  minio_username = "etcd"
+  minio_password = "password"
+  minio_port     = 9000
+  minio_bucket   = "etcd"
 }
 
 resource "local_file" "ca-cert" {
-  filename = "output/ca-cert.pem"
+  filename = "${local.base_path}/ca-cert.pem"
   content  = tls_self_signed_cert.etcd-ca.cert_pem
 }
 
 resource "local_file" "peer-ca-cert" {
-  filename = "output/peer-ca-cert.pem"
+  filename = "${local.base_path}/peer-ca-cert.pem"
   content  = tls_self_signed_cert.etcd-peer-ca.cert_pem
 }
 
 resource "local_file" "cert" {
   for_each = local.members
 
-  filename = "output/${each.key}/client/cert.pem"
+  filename = "${local.base_path}/${each.key}/client/cert.pem"
   content  = tls_locally_signed_cert.etcd[each.key].cert_pem
 }
 
 resource "local_file" "key" {
   for_each = local.members
 
-  filename = "output/${each.key}/client/key.pem"
+  filename = "${local.base_path}/${each.key}/client/key.pem"
   content  = tls_private_key.etcd[each.key].private_key_pem
 }
 
 resource "local_file" "peer-cert" {
   for_each = local.members
 
-  filename = "output/${each.key}/peer/cert.pem"
+  filename = "${local.base_path}/${each.key}/peer/cert.pem"
   content  = tls_locally_signed_cert.etcd-peer[each.key].cert_pem
 }
 
 resource "local_file" "peer-key" {
   for_each = local.members
 
-  filename = "output/${each.key}/peer/key.pem"
+  filename = "${local.base_path}/${each.key}/peer/key.pem"
   content  = tls_private_key.etcd-peer[each.key].private_key_pem
 }
 
-module "etcd" {
+resource "local_file" "miinio-ca-cert" {
+  filename = "${local.base_path}/minio/certs/CAs/ca.crt"
+  content  = tls_self_signed_cert.minio-ca.cert_pem
+}
+
+resource "local_file" "miinio-cert" {
+  filename = "${local.base_path}/minio/certs/public.crt"
+  content  = tls_locally_signed_cert.minio.cert_pem
+}
+
+resource "local_file" "miinio-key" {
+  filename = "${local.base_path}/minio/certs/private.key"
+  content  = tls_private_key.minio.private_key_pem
+}
+
+module "minio" {
   source = "./modules/static_pod"
-  name   = "etcd"
+  name   = "minio"
   spec = {
     hostNetwork = true
     containers = [
-      for name, m in local.members :
       {
-        name  = name
-        image = "gcr.io/etcd-development/etcd:v3.6.6"
+        name  = "minio"
+        image = "ghcr.io/randomcoww/minio:v20251015.172955"
         args = [
-          "etcd",
-          "--name=${name}",
-          "--trusted-ca-file=/etc/etcd/ca-cert.pem",
-          "--peer-trusted-ca-file=/etc/etcd/peer-ca-cert.pem",
-          "--cert-file=/etc/etcd/${name}/client/cert.pem",
-          "--key-file=/etc/etcd/${name}/client/key.pem",
-          "--peer-cert-file=/etc/etcd/${name}/peer/cert.pem",
-          "--peer-key-file=/etc/etcd/${name}/peer/key.pem",
-          "--initial-advertise-peer-urls=${m.peer_url}",
-          "--listen-peer-urls=${m.peer_url}",
-          "--advertise-client-urls=${m.client_url}",
-          "--listen-client-urls=${m.client_url}",
-          "--strict-reconfig-check",
-          "--initial-cluster-state=new",
-          "--initial-cluster-token=test",
-          "--initial-cluster=${join(",", [
-            for name, m in local.members :
-            "${name}=${m.peer_url}"
-            ]
-          )}",
+          "server",
+          "--certs-dir",
+          "/etc/minio/certs",
+          "--address",
+          "0.0.0.0:${local.minio_port}",
+          "/var/lib/minio",
         ]
-        /*
-        ports = [
+        env = [
           {
-            hostPort      = tonumber(regex(local.url_regex, m.client_url).port)
-            containerPort = tonumber(regex(local.url_regex, m.client_url).port)
+            name  = "MINIO_ROOT_USER"
+            value = local.minio_username
           },
           {
-            hostPort      = tonumber(regex(local.url_regex, m.peer_url).port)
-            containerPort = tonumber(regex(local.url_regex, m.peer_url).port)
+            name  = "MINIO_ROOT_PASSWORD"
+            value = local.minio_password
           },
         ]
-        */
         volumeMounts = [
           {
             name      = "data"
-            mountPath = "/var/lib/etcd"
-            subPath   = name
+            mountPath = "/etc/minio/certs"
+            subPath   = "minio/certs"
           },
           {
-            name      = "data"
-            mountPath = "/etc/etcd"
+            name      = "tempdata"
+            mountPath = "/var/lib/minio"
           },
         ]
-      }
+      },
+      {
+        name  = "mc"
+        image = "docker.io/minio/mc:latest"
+        command = [
+          "sh",
+          "-c",
+          <<-EOF
+          set -e
+          mc mb -p m/${local.minio_bucket}
+          exec mc watch m
+          EOF
+        ]
+        env = [
+          {
+            name  = "MC_HOST_m"
+            value = "https://${local.minio_username}:${local.minio_password}@127.0.0.1:${local.minio_port}"
+          },
+        ]
+        volumeMounts = [
+          {
+            name      = "data"
+            mountPath = "/root/.mc/certs/CAs"
+            subPath   = "minio/certs/CAs"
+          },
+        ]
+      },
     ]
     volumes = [
       {
         name = "data"
         hostPath = {
-          path = local.base_path
+          path = abspath(local.base_path)
+        }
+      },
+      {
+        name = "tempdata"
+        emptyDir = {
+          medium = "Memory"
         }
       },
     ]
   }
 }
 
-resource "local_file" "pod-manifest" {
-  filename             = "output/manifest.yaml"
-  content              = module.etcd.manifest
+module "etcd" {
+  for_each = local.members
+
+  source = "./modules/static_pod"
+  name   = each.key
+  spec = {
+    hostNetwork = true
+    containers = [
+      {
+        name  = "etcd"
+        image = "localhost/etcd-wrapper:latest"
+        args = [
+          "-local-client-url",
+          each.value.client_url,
+          "-etcd-binary-file",
+          "/etcd/usr/local/bin/etcd",
+          "-etcdutl-binary-file",
+          "/etcd/usr/local/bin/etcdutl",
+          "-s3-backup-resource",
+          "https://127.0.0.1:${local.minio_port}/${local.minio_bucket}/snapshot/etcd.db",
+          "-s3-backup-ca-file",
+          "/etc/etcd/minio/certs/CAs/ca.crt",
+          "-initial-cluster-timeout",
+          "${local.initial_startup_delay_seconds}s",
+          "-restore-snapshot-timeout",
+          "10s",
+          "-member-replace-timeout",
+          "10s",
+          "-backup-snapshot-timeout",
+          "10s",
+          "-status-timeout",
+          "10s",
+          "-node-run-interval",
+          "1m",
+        ]
+        env = [
+          for k, v in {
+            "ETCD_NAME"                        = each.key
+            "ETCD_DATA_DIR"                    = "${local.data_path}/data"
+            "ETCD_LISTEN_PEER_URLS"            = each.value.peer_url
+            "ETCD_LISTEN_CLIENT_URLS"          = "${each.value.client_url},unixs://${abspath("${local.data_path}/etcd.sock")}"
+            "ETCD_INITIAL_ADVERTISE_PEER_URLS" = each.value.peer_url
+            "ETCD_INITIAL_CLUSTER" = join(",", [
+              for name, m in local.members :
+              "${name}=${m.peer_url}"
+            ])
+            "ETCD_INITIAL_CLUSTER_TOKEN"     = "test"
+            "ETCD_ADVERTISE_CLIENT_URLS"     = each.value.client_url
+            "ETCD_TRUSTED_CA_FILE"           = "/etc/etcd/ca-cert.pem"
+            "ETCD_CERT_FILE"                 = "/etc/etcd/${each.key}/client/cert.pem"
+            "ETCD_KEY_FILE"                  = "/etc/etcd/${each.key}/client/key.pem"
+            "ETCD_PEER_TRUSTED_CA_FILE"      = "etc/etcd/peer-ca-cert.pem"
+            "ETCD_PEER_CERT_FILE"            = "/etc/etcd/${each.key}/peer/cert.pem"
+            "ETCD_PEER_KEY_FILE"             = "/etc/etcd/${each.key}/peer/key.pem"
+            "ETCD_STRICT_RECONFIG_CHECK"     = true
+            "ETCD_LOG_LEVEL"                 = "error"
+            "ETCD_AUTO_COMPACTION_RETENTION" = 1
+            "ETCD_AUTO_COMPACTION_MODE"      = "revision"
+            "ETCD_SOCKET_REUSE_ADDRESS"      = true
+            "AWS_ACCESS_KEY_ID"              = local.minio_username
+            "AWS_SECRET_ACCESS_KEY"          = local.minio_password
+          } :
+          {
+            name  = tostring(k)
+            value = tostring(v)
+          }
+        ]
+        volumeMounts = [
+          {
+            name      = "data"
+            mountPath = local.data_path
+            subPath   = each.key
+          },
+          {
+            name      = "data"
+            mountPath = "/etc/etcd"
+          },
+          {
+            name      = "etcd"
+            mountPath = "/etcd"
+          },
+        ]
+      },
+    ]
+    volumes = [
+      {
+        name = "data"
+        hostPath = {
+          path = abspath(local.base_path)
+        }
+      },
+      {
+        name = "etcd"
+        image = {
+          reference  = "gcr.io/etcd-development/etcd:v3.6.6"
+          pullPolicy = "IfNotPresent"
+        }
+      }
+    ]
+  }
+}
+
+resource "local_file" "minio-manifest" {
+  for_each = local.members
+
+  filename             = "${local.base_path}/minio.yaml"
+  content              = module.minio.manifest
+  directory_permission = "0700"
+  file_permission      = "0600"
+}
+
+resource "local_file" "etcd-manifest" {
+  for_each = local.members
+
+  filename             = "${local.base_path}/${each.key}.yaml"
+  content              = module.etcd[each.key].manifest
   directory_permission = "0700"
   file_permission      = "0600"
 }

@@ -11,7 +11,7 @@ resource "tls_cert_request" "etcd" {
   private_key_pem = tls_private_key.etcd[each.key].private_key_pem
 
   subject {
-    common_name = "kube-etcd"
+    common_name = "etcd"
   }
 
   ip_addresses = distinct([
@@ -33,5 +33,6 @@ resource "tls_locally_signed_cert" "etcd" {
     "key_encipherment",
     "digital_signature",
     "server_auth",
+    "client_auth",
   ]
 }

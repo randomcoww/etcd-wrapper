@@ -50,7 +50,7 @@ jobs:
   cleanup:
     needs:
     - build
-    runs-on: arc-runner-${{ github.event.repository.name }}
+    runs-on: builder-${{ github.event.repository.name }}
     container:
       image: docker.io/node:current-alpine@sha256:fd164609b5ab0c6d49bac138ae06c347e72261ec6ae1de32b6aa9f5ee2271110
     permissions:
