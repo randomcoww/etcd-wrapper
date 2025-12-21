@@ -43,6 +43,7 @@ func MockConfigs(dataPath string) []*Config {
 			UploadTimeout:     4 * time.Second,
 			StatusTimeout:     4 * time.Second,
 			NodeRunInterval:   1 * time.Minute,
+			LocalClientURL:    fmt.Sprintf("https://127.0.0.1:%d", clientPortBase+i),
 			Env: map[string]string{
 				"ETCD_DATA_DIR":                    filepath.Join(dataPath, member+".etcd"),
 				"ETCD_NAME":                        member,
@@ -62,6 +63,9 @@ func MockConfigs(dataPath string) []*Config {
 				"ETCD_INITIAL_CLUSTER":             strings.Join(initialCluster, ","),
 				"ETCD_INITIAL_CLUSTER_TOKEN":       "test",
 				"ETCD_LOG_LEVEL":                   "error",
+				"ETCD_AUTO_COMPACTION_RETENTION":   "1",
+				"ETCD_AUTO_COMPACTION_MODE":        "revision",
+				"ETCD_SOCKET_REUSE_ADDRESS":        "true",
 			},
 		}
 		config.ParseEnvs()

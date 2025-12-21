@@ -11,7 +11,7 @@ resource "tls_cert_request" "etcd-peer" {
   private_key_pem = tls_private_key.etcd-peer[each.key].private_key_pem
 
   subject {
-    common_name = "kube-etcd-peer"
+    common_name = "etcd-peer"
   }
 
   ip_addresses = distinct([

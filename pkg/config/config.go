@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"github.com/randomcoww/etcd-wrapper/pkg/tlsutil"
 	"go.uber.org/zap"
-	"net"
 	"net/url"
 	"os"
 	"regexp"
@@ -49,6 +48,7 @@ func NewConfig(args []string) (*Config, error) {
 	}
 	var s3resource, s3CAFile string
 	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
+	flags.StringVar(&config.LocalClientURL, "local-client-url", config.LocalClientURL, "URL of local etcd client")
 	flags.StringVar(&config.EtcdBinaryFile, "etcd-binary-file", config.EtcdBinaryFile, "Path to etcd binary")
 	flags.StringVar(&config.EtcdutlBinaryFile, "etcdutl-binary-file", config.EtcdutlBinaryFile, "Path to etcdutl binary")
 	flags.StringVar(&s3resource, "s3-backup-resource", s3resource, "S3 resource for backup")
@@ -110,15 +110,6 @@ func (config *Config) ParseEnvs() error {
 	var err error
 	reList := regexp.MustCompile(`\s*,\s*`)
 	reMap := regexp.MustCompile(`\s*=\s*`)
-
-	if v, ok := config.Env["ETCD_LISTEN_CLIENT_URLS"]; ok {
-		config.LocalClientURL, err = getLocalURL(reList.Split(v, -1))
-		if err != nil {
-			return err
-		}
-	} else {
-		return fmt.Errorf("env ETCD_LISTEN_CLIENT_URLS not set")
-	}
 
 	if v, ok := config.Env["ETCD_INITIAL_ADVERTISE_PEER_URLS"]; ok {
 		for _, u := range reList.Split(v, -1) {
@@ -193,35 +184,4 @@ func (config *Config) WriteEnv() []string {
 	}
 	sort.Strings(envs)
 	return envs
-}
-
-func getLocalURL(urls []string) (string, error) {
-	var s string
-	for _, s = range urls {
-		u, err := url.Parse(s)
-		if err != nil {
-			return "", err
-		}
-		host, port, err := net.SplitHostPort(u.Host)
-		if err != nil {
-			return "", err
-		}
-		if port == "" {
-			return "", fmt.Errorf("Port not found in listen client URL: %s", s)
-		}
-		if host == "localhost" {
-			return s, nil
-		}
-		ip := net.ParseIP(host)
-		if ip == nil {
-			return "", fmt.Errorf("IP not found in listen client URL: %s", s)
-		}
-		if ip.IsLoopback() {
-			return s, nil
-		}
-		if ip.IsUnspecified() {
-			return fmt.Sprintf("%s://%s:%s", u.Scheme, "localhost", port), nil
-		}
-	}
-	return s, nil
 }

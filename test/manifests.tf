@@ -9,19 +9,16 @@ locals {
       client_url            = "https://127.0.0.1:8080"
       peer_url              = "https://127.0.0.1:8090"
       initial_cluster_state = "existing"
-      etcd_metrics_port     = 9001
     }
     node1 = {
       client_url            = "https://127.0.0.1:8081"
       peer_url              = "https://127.0.0.1:8091"
       initial_cluster_state = "existing"
-      etcd_metrics_port     = 9002
     }
     node2 = {
       client_url            = "https://127.0.0.1:8082"
       peer_url              = "https://127.0.0.1:8092"
       initial_cluster_state = "existing"
-      etcd_metrics_port     = 9003
     }
   }
   initial_startup_delay_seconds = 30
@@ -180,6 +177,8 @@ module "etcd" {
         name  = "etcd"
         image = "localhost/etcd-wrapper:latest"
         args = [
+          "-local-client-url",
+          each.value.client_url,
           "-etcd-binary-file",
           "/etcd/usr/local/bin/etcd",
           "-etcdutl-binary-file",
@@ -206,7 +205,7 @@ module "etcd" {
             "ETCD_NAME"                        = each.key
             "ETCD_DATA_DIR"                    = "${local.data_path}/data"
             "ETCD_LISTEN_PEER_URLS"            = each.value.peer_url
-            "ETCD_LISTEN_CLIENT_URLS"          = each.value.client_url
+            "ETCD_LISTEN_CLIENT_URLS"          = "${each.value.client_url},unixs://${abspath("${local.data_path}/etcd.sock")}"
             "ETCD_INITIAL_ADVERTISE_PEER_URLS" = each.value.peer_url
             "ETCD_INITIAL_CLUSTER" = join(",", [
               for name, m in local.members :
@@ -224,7 +223,6 @@ module "etcd" {
             "ETCD_LOG_LEVEL"                 = "error"
             "ETCD_AUTO_COMPACTION_RETENTION" = 1
             "ETCD_AUTO_COMPACTION_MODE"      = "revision"
-            "ETCD_LISTEN_METRICS_URLS"       = "http://0.0.0.0:${each.value.etcd_metrics_port}"
             "ETCD_SOCKET_REUSE_ADDRESS"      = true
             "AWS_ACCESS_KEY_ID"              = local.minio_username
             "AWS_SECRET_ACCESS_KEY"          = local.minio_password
@@ -234,32 +232,6 @@ module "etcd" {
             value = tostring(v)
           }
         ]
-        livenessProbe = {
-          httpGet = {
-            scheme = "HTTP"
-            host   = "127.0.0.1"
-            port   = each.value.etcd_metrics_port
-            path   = "/livez"
-          }
-          initialDelaySeconds = 10
-          timeoutSeconds      = 15
-          periodSeconds       = 10
-          successThreshold    = 1
-          failureThreshold    = 2
-        }
-        startupProbe = {
-          httpGet = {
-            scheme = "HTTP"
-            host   = "127.0.0.1"
-            port   = each.value.etcd_metrics_port
-            path   = "/readyz"
-          }
-          initialDelaySeconds = local.initial_startup_delay_seconds
-          timeoutSeconds      = 15
-          periodSeconds       = 10
-          successThreshold    = 1
-          failureThreshold    = 2
-        }
         volumeMounts = [
           {
             name      = "data"
