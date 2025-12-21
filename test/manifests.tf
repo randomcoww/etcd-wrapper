@@ -9,18 +9,23 @@ locals {
       client_url            = "https://127.0.0.1:8080"
       peer_url              = "https://127.0.0.1:8090"
       initial_cluster_state = "existing"
+      etcd_metrics_port     = 9001
     }
     node1 = {
       client_url            = "https://127.0.0.1:8081"
       peer_url              = "https://127.0.0.1:8091"
       initial_cluster_state = "existing"
+      etcd_metrics_port     = 9002
     }
     node2 = {
       client_url            = "https://127.0.0.1:8082"
       peer_url              = "https://127.0.0.1:8092"
       initial_cluster_state = "existing"
+      etcd_metrics_port     = 9003
     }
   }
+  initial_startup_delay_seconds = 30
+
   minio_username = "etcd"
   minio_password = "password"
   minio_port     = 9000
@@ -184,7 +189,7 @@ module "etcd" {
           "-s3-backup-ca-file",
           "/etc/etcd/minio/certs/CAs/ca.crt",
           "-initial-cluster-timeout",
-          "30s",
+          "${local.initial_startup_delay_seconds}s",
           "-restore-snapshot-timeout",
           "10s",
           "-member-replace-timeout",
@@ -207,24 +212,54 @@ module "etcd" {
               for name, m in local.members :
               "${name}=${m.peer_url}"
             ])
-            "ETCD_INITIAL_CLUSTER_TOKEN" = "test"
-            "ETCD_ADVERTISE_CLIENT_URLS" = each.value.client_url
-            "ETCD_TRUSTED_CA_FILE"       = "/etc/etcd/ca-cert.pem"
-            "ETCD_CERT_FILE"             = "/etc/etcd/${each.key}/client/cert.pem"
-            "ETCD_KEY_FILE"              = "/etc/etcd/${each.key}/client/key.pem"
-            "ETCD_PEER_TRUSTED_CA_FILE"  = "etc/etcd/peer-ca-cert.pem"
-            "ETCD_PEER_CERT_FILE"        = "/etc/etcd/${each.key}/peer/cert.pem"
-            "ETCD_PEER_KEY_FILE"         = "/etc/etcd/${each.key}/peer/key.pem"
-            "ETCD_STRICT_RECONFIG_CHECK" = true
-            "ETCD_LOG_LEVEL"             = "error"
-            "AWS_ACCESS_KEY_ID"          = local.minio_username
-            "AWS_SECRET_ACCESS_KEY"      = local.minio_password
+            "ETCD_INITIAL_CLUSTER_TOKEN"     = "test"
+            "ETCD_ADVERTISE_CLIENT_URLS"     = each.value.client_url
+            "ETCD_TRUSTED_CA_FILE"           = "/etc/etcd/ca-cert.pem"
+            "ETCD_CERT_FILE"                 = "/etc/etcd/${each.key}/client/cert.pem"
+            "ETCD_KEY_FILE"                  = "/etc/etcd/${each.key}/client/key.pem"
+            "ETCD_PEER_TRUSTED_CA_FILE"      = "etc/etcd/peer-ca-cert.pem"
+            "ETCD_PEER_CERT_FILE"            = "/etc/etcd/${each.key}/peer/cert.pem"
+            "ETCD_PEER_KEY_FILE"             = "/etc/etcd/${each.key}/peer/key.pem"
+            "ETCD_STRICT_RECONFIG_CHECK"     = true
+            "ETCD_LOG_LEVEL"                 = "error"
+            "ETCD_AUTO_COMPACTION_RETENTION" = 1
+            "ETCD_AUTO_COMPACTION_MODE"      = "revision"
+            "ETCD_LISTEN_METRICS_URLS"       = "http://0.0.0.0:${each.value.etcd_metrics_port}"
+            "ETCD_SOCKET_REUSE_ADDRESS"      = true
+            "AWS_ACCESS_KEY_ID"              = local.minio_username
+            "AWS_SECRET_ACCESS_KEY"          = local.minio_password
           } :
           {
             name  = tostring(k)
             value = tostring(v)
           }
         ]
+        livenessProbe = {
+          httpGet = {
+            scheme = "HTTP"
+            host   = "127.0.0.1"
+            port   = each.value.etcd_metrics_port
+            path   = "/livez"
+          }
+          initialDelaySeconds = 10
+          timeoutSeconds      = 15
+          periodSeconds       = 10
+          successThreshold    = 1
+          failureThreshold    = 2
+        }
+        startupProbe = {
+          httpGet = {
+            scheme = "HTTP"
+            host   = "127.0.0.1"
+            port   = each.value.etcd_metrics_port
+            path   = "/readyz"
+          }
+          initialDelaySeconds = local.initial_startup_delay_seconds
+          timeoutSeconds      = 15
+          periodSeconds       = 10
+          successThreshold    = 1
+          failureThreshold    = 2
+        }
         volumeMounts = [
           {
             name      = "data"
