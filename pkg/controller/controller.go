@@ -158,7 +158,12 @@ func (c *Controller) runNode(config *c.Config) error {
 
 func (c *Controller) restoreSnapshot(config *c.Config) error {
 	ctx, _ := context.WithTimeout(context.Background(), time.Duration(config.RestoreTimeout))
-	snapshotFile, err := os.CreateTemp("", "snapshot*.db")
+	err := os.MkdirAll("/tmp/etcd-wrapper", 1777)
+	if err != nil {
+		config.Logger.Error("create path for snapshot failed", zap.Error(err))
+		return err
+	}
+	snapshotFile, err := os.CreateTemp("/tmp/etcd-wrapper", "snapshot*.db")
 	if err != nil {
 		config.Logger.Error("open file for snapshot failed", zap.Error(err))
 		return err
