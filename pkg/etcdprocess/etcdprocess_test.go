@@ -16,7 +16,7 @@ const (
 )
 
 func TestCreateNewCluster(t *testing.T) {
-	dataPath, _ := os.MkdirTemp("", "data")
+	dataPath, _ := os.MkdirTemp("", "etcd-test-*")
 	defer os.RemoveAll(dataPath)
 
 	configs := c.MockConfigs(dataPath)
@@ -42,7 +42,7 @@ func TestCreateNewCluster(t *testing.T) {
 }
 
 func TestExistingFromSnapshotRestore(t *testing.T) {
-	dataPath, _ := os.MkdirTemp("", "data")
+	dataPath, _ := os.MkdirTemp("", "etcd-test-*")
 	defer os.RemoveAll(dataPath)
 
 	configs := c.MockConfigs(dataPath)

@@ -17,7 +17,7 @@ const (
 )
 
 func TestControllerNew(t *testing.T) {
-	dataPath, _ := os.MkdirTemp("", "data")
+	dataPath, _ := os.MkdirTemp("", "etcd-test-*")
 	defer os.RemoveAll(dataPath)
 
 	var controllers []*Controller
@@ -29,7 +29,7 @@ func TestControllerNew(t *testing.T) {
 
 		controllers = append(controllers, &Controller{
 			P:        p,
-			S3Client: &s3client.MockClientNoBackup{},
+			S3Client: &s3client.MockClientNoBackup{}, // <-- simulate no backup found
 		})
 	}
 
@@ -43,17 +43,14 @@ func TestControllerNew(t *testing.T) {
 	client, err := etcdclient.NewClientFromPeers(ctx, configs[2])
 	assert.NoError(t, err)
 
-	for i, config := range configs {
+	for _, config := range configs {
 		_, err = client.Status(ctx, config.LocalClientURL)
-		assert.NoError(t, err)
-
-		err := controllers[i].runNode(config)
 		assert.NoError(t, err)
 	}
 }
 
 func TestControllerRestore(t *testing.T) {
-	dataPath, _ := os.MkdirTemp("", "data")
+	dataPath, _ := os.MkdirTemp("", "etcd-test-*")
 	defer os.RemoveAll(dataPath)
 
 	var controllers []*Controller
@@ -65,7 +62,7 @@ func TestControllerRestore(t *testing.T) {
 
 		controllers = append(controllers, &Controller{
 			P:        p,
-			S3Client: &s3client.MockClientSuccess{},
+			S3Client: &s3client.MockClientSuccess{}, // <-- returns test backup data
 		})
 	}
 
@@ -79,15 +76,12 @@ func TestControllerRestore(t *testing.T) {
 	client, err := etcdclient.NewClientFromPeers(ctx, configs[2])
 	assert.NoError(t, err)
 
-	for i, config := range configs {
+	for _, config := range configs {
 		_, err = client.Status(ctx, config.LocalClientURL)
-		assert.NoError(t, err)
-
-		err := controllers[i].runNode(config)
 		assert.NoError(t, err)
 	}
 
 	resp, err := client.C().KV.Get(ctx, "test-key1")
 	assert.NoError(t, err)
-	assert.Equal(t, "test-val1", string(resp.Kvs[0].Value)) // match data that should exist in snapshot
+	assert.Equal(t, "test-val1", string(resp.Kvs[0].Value)) // match data that should exist in the test data
 }

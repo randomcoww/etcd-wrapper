@@ -111,6 +111,10 @@ func (config *Config) ParseEnvs() error {
 	reList := regexp.MustCompile(`\s*,\s*`)
 	reMap := regexp.MustCompile(`\s*=\s*`)
 
+	if _, ok := config.Env["ETCD_NAME"]; !ok {
+		return fmt.Errorf("env ETCD_NAME is not set")
+	}
+
 	if v, ok := config.Env["ETCD_INITIAL_ADVERTISE_PEER_URLS"]; ok {
 		for _, u := range reList.Split(v, -1) {
 			config.InitialAdvertisePeerURLs = append(config.InitialAdvertisePeerURLs, u)

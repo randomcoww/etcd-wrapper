@@ -11,6 +11,7 @@ const (
 )
 
 func TestNewConfig(t *testing.T) {
+	t.Setenv("ETCD_NAME", "test")
 	t.Setenv("ETCD_LISTEN_CLIENT_URLS", "https://10.1.0.1:9080,https://127.0.0.1:9080,https://10.0.0.1:9080")
 	t.Setenv("ETCD_INITIAL_ADVERTISE_PEER_URLS", "https://10.0.0.1:8080")
 	t.Setenv("ETCD_INITIAL_CLUSTER", "node0=https://10.0.0.1:8080,node1=https://10.0.0.2:8080")
@@ -39,6 +40,7 @@ func TestNewConfig(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, map[string]string{
+		"ETCD_NAME":                        "test",
 		"ETCD_LISTEN_CLIENT_URLS":          "https://10.1.0.1:9080,https://127.0.0.1:9080,https://10.0.0.1:9080",
 		"ETCD_INITIAL_ADVERTISE_PEER_URLS": "https://10.0.0.1:8080",
 		"ETCD_INITIAL_CLUSTER":             "node0=https://10.0.0.1:8080,node1=https://10.0.0.2:8080",
@@ -80,6 +82,7 @@ func TestNewConfig(t *testing.T) {
 		"ETCD_KEY_FILE=" + filepath.Join(baseTestPath, member, "client", "key.pem"),
 		"ETCD_LISTEN_CLIENT_URLS=https://10.1.0.1:9080,https://127.0.0.1:9080,https://10.0.0.1:9080",
 		"ETCD_LOG_OUTPUTS=stdout",
+		"ETCD_NAME=test",
 		"ETCD_PEER_CERT_FILE=" + filepath.Join(baseTestPath, member, "peer", "cert.pem"),
 		"ETCD_PEER_CLIENT_CERT_AUTH=true",
 		"ETCD_PEER_KEY_FILE=" + filepath.Join(baseTestPath, member, "peer", "key.pem"),

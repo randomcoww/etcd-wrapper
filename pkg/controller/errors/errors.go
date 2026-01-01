@@ -14,4 +14,5 @@ var (
 	ErrDownloadSnapshot = errors.New("controller: failed to download snapshot")
 	ErrRestoreSnapshot  = errors.New("controller: failed to load snapshot")
 	ErrNoBackup         = errors.New("controller: no backup found")
+	ErrDataDir          = errors.New("controller: error accessing data dir")
 )
