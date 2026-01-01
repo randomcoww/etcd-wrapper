@@ -31,9 +31,6 @@ type Config struct {
 	ClusterTimeout           time.Duration
 	RestoreTimeout           time.Duration
 	ReplaceTimeout           time.Duration
-	UploadTimeout            time.Duration
-	StatusTimeout            time.Duration
-	NodeRunInterval          time.Duration
 }
 
 func NewConfig(args []string) (*Config, error) {
@@ -56,9 +53,6 @@ func NewConfig(args []string) (*Config, error) {
 	flags.DurationVar(&config.ClusterTimeout, "initial-cluster-timeout", 2*time.Minute, "Initial existing cluster lookup timeout")
 	flags.DurationVar(&config.RestoreTimeout, "restore-snapshot-timeout", 1*time.Minute, "Restore snapshot timeout")
 	flags.DurationVar(&config.ReplaceTimeout, "member-replace-timeout", 30*time.Second, "Member replace timeout")
-	flags.DurationVar(&config.UploadTimeout, "backup-snapshot-timeout", 1*time.Minute, "Backup snapshot timeout")
-	flags.DurationVar(&config.StatusTimeout, "status-timeout", 30*time.Second, "Local member status lookup timeout")
-	flags.DurationVar(&config.NodeRunInterval, "node-run-interval", 15*time.Minute, "Node status check and backup interval")
 	if err := flags.Parse(args[1:]); err != nil {
 		return nil, err
 	}

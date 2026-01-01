@@ -2,7 +2,6 @@ package controller
 
 import (
 	"context"
-	"fmt"
 	c "github.com/randomcoww/etcd-wrapper/pkg/config"
 	e "github.com/randomcoww/etcd-wrapper/pkg/controller/errors"
 	"github.com/randomcoww/etcd-wrapper/pkg/etcdclient"
@@ -69,7 +68,7 @@ func (c *Controller) runEtcd(config *c.Config) error {
 		listResp, err := client.MemberList(clientCtx)
 		if err != nil {
 			config.Logger.Error("list member failed", zap.Error(err))
-			return err
+			return e.ErrMemberList
 		}
 		localMember := findLocalMember(listResp, config)
 
@@ -79,7 +78,7 @@ func (c *Controller) runEtcd(config *c.Config) error {
 			listResp, err = client.MemberRemove(clientCtx, localMember.GetID())
 			if err != nil {
 				config.Logger.Error("remove member failed", zap.Error(err))
-				return err
+				return e.ErrMemberAdd
 			}
 			localMember = findLocalMember(listResp, config)
 			config.Logger.Info("removed local member")
@@ -89,7 +88,7 @@ func (c *Controller) runEtcd(config *c.Config) error {
 			listResp, err = client.MemberAdd(clientCtx, config.InitialAdvertisePeerURLs)
 			if err != nil {
 				config.Logger.Error("add member failed", zap.Error(err))
-				return err
+				return e.ErrMemberRemove
 			}
 			config.Logger.Info("added local member")
 		}
@@ -105,17 +104,18 @@ func (c *Controller) restoreSnapshot(config *c.Config) error {
 	dir, err := os.MkdirTemp("", "etcd-wrapper-*")
 	if err != nil {
 		config.Logger.Error("create path for snapshot failed", zap.Error(err))
-		return err
+		return e.ErrSnapshotDir
 	}
 	defer os.RemoveAll(dir)
 
 	snapshotFile, err := os.CreateTemp(dir, "snapshot-restore-*.db")
 	if err != nil {
 		config.Logger.Error("open file for snapshot failed", zap.Error(err))
-		return err
+		return e.ErrSnapshotDir
 	}
 	defer os.RemoveAll(snapshotFile.Name())
 	defer snapshotFile.Close()
+	config.Logger.Info("opened file for snapshot")
 
 	ok, err := c.S3Client.Download(ctx, config, func(ctx context.Context, reader io.Reader) (bool, error) {
 		b, err := io.Copy(snapshotFile, reader)
@@ -133,7 +133,7 @@ func (c *Controller) restoreSnapshot(config *c.Config) error {
 		return e.ErrNoBackup
 	}
 	if err := etcdprocess.RestoreV3Snapshot(ctx, config, snapshotFile.Name()); err != nil {
-		config.Logger.Error("restore snapshot filed", zap.Error(err))
+		config.Logger.Error("restore snapshot failed", zap.Error(err))
 		return e.ErrRestoreSnapshot
 	}
 	config.Logger.Info("restored backup")
@@ -153,18 +153,12 @@ func findLocalMember(listResp etcdclient.Members, config *c.Config) *etcdserverp
 }
 
 func removeDir(path string) error {
-	info, err := os.Stat(path)
+	_, err := os.Stat(path)
 	switch {
 	case os.IsNotExist(err):
 		return nil
 	case err != nil:
 		return err
 	}
-	switch {
-	case info.IsDir():
-		return os.RemoveAll(path)
-	default:
-		return fmt.Errorf("Path is not a directory")
-	}
-	return nil
+	return os.RemoveAll(path)
 }
