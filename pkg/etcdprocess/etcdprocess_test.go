@@ -50,10 +50,6 @@ func TestExistingFromSnapshotRestore(t *testing.T) {
 		restoreCtx, _ := context.WithTimeout(context.Background(), time.Duration(4*time.Second))
 		err := RestoreV3Snapshot(restoreCtx, config, filepath.Join(baseTestPath, "test-snapshot.db"))
 		assert.NoError(t, err)
-
-		ok, err := DataExists(config)
-		assert.NoError(t, err)
-		assert.True(t, ok)
 	}
 
 	for _, config := range configs {

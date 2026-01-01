@@ -52,7 +52,7 @@ type EtcdClient interface {
 	MemberList(context.Context) (Members, error)
 	MemberAdd(context.Context, []string) (Members, error)
 	MemberRemove(context.Context, uint64) (Members, error)
-	GetHealth(context.Context) error
+	GetQuorum(context.Context) error
 	Defragment(context.Context, string) error
 	Snapshot(context.Context) (io.Reader, error)
 	Close() error
@@ -78,7 +78,7 @@ func NewClientFromPeers(ctx context.Context, config *c.Config) (EtcdClient, erro
 		if err == nil {
 			client, err := NewClient(ctx, config, pcluster.ClientURLs())
 			if err == nil {
-				err = client.GetHealth(ctx)
+				err = client.GetQuorum(ctx)
 				if err == nil {
 					config.ClusterPeerURLs = pcluster.PeerURLs()
 					return client, nil
@@ -170,8 +170,8 @@ func (client *Client) MemberRemove(ctx context.Context, id uint64) (Members, err
 	}
 }
 
-func (client *Client) GetHealth(ctx context.Context) error {
-	_, err := client.Get(ctx, "health")
+func (client *Client) GetQuorum(ctx context.Context) error {
+	_, err := client.Get(ctx, "health-check-dummy", clientv3.WithCountOnly())
 	return err
 }
 

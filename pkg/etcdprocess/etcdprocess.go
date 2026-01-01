@@ -62,9 +62,6 @@ func (p *etcdProcess) Wait() error {
 }
 
 func RestoreV3Snapshot(ctx context.Context, config *c.Config, snapshotFile string) error {
-	if err := RemoveDataDir(config); err != nil {
-		return err
-	}
 	c := exec.CommandContext(ctx, config.EtcdutlBinaryFile)
 	c.Args = append(c.Args, "snapshot", "restore", snapshotFile)
 	c.Args = append(c.Args, "--name", config.Env["ETCD_NAME"])
@@ -72,6 +69,9 @@ func RestoreV3Snapshot(ctx context.Context, config *c.Config, snapshotFile strin
 	c.Args = append(c.Args, "--initial-cluster-token", config.Env["ETCD_INITIAL_CLUSTER_TOKEN"])
 	c.Args = append(c.Args, "--initial-advertise-peer-urls", config.Env["ETCD_INITIAL_ADVERTISE_PEER_URLS"])
 	c.Args = append(c.Args, "--data-dir", config.Env["ETCD_DATA_DIR"])
+	if d, ok := config.Env["ETCD_WAL_DIR"]; ok && d != "" {
+		c.Args = append(c.Args, "--wal-dir", d)
+	}
 	c.Env = config.WriteEnv()
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
@@ -84,39 +84,6 @@ func RestoreV3Snapshot(ctx context.Context, config *c.Config, snapshotFile strin
 	}
 	if !processState.Success() {
 		return fmt.Errorf("etcdutl snapshot restore returned a non-zero exit code")
-	}
-	return nil
-}
-
-func DataExists(config *c.Config) (bool, error) {
-	info, err := os.Stat(config.Env["ETCD_DATA_DIR"])
-	switch {
-	case os.IsNotExist(err):
-		return false, nil
-	case err != nil:
-		return false, err
-	}
-	switch {
-	case info.IsDir():
-		return true, nil
-	default:
-		return false, fmt.Errorf("ETCD_DATA_DIR is not a directory")
-	}
-}
-
-func RemoveDataDir(config *c.Config) error {
-	info, err := os.Stat(config.Env["ETCD_DATA_DIR"])
-	switch {
-	case os.IsNotExist(err):
-		return nil
-	case err != nil:
-		return err
-	}
-	switch {
-	case info.IsDir():
-		return os.RemoveAll(config.Env["ETCD_DATA_DIR"])
-	default:
-		return fmt.Errorf("ETCD_DATA_DIR is not a directory")
 	}
 	return nil
 }
