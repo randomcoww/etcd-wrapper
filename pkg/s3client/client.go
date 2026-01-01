@@ -3,6 +3,7 @@ package s3client
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	c "github.com/randomcoww/etcd-wrapper/pkg/config"
@@ -17,8 +18,8 @@ type client struct {
 }
 
 type Client interface {
-	Download(context.Context, *c.Config, func(context.Context, io.Reader) (bool, error)) (bool, error)
-	Upload(context.Context, *c.Config, io.Reader) (bool, error)
+	Download(context.Context, *c.Config, func(context.Context, io.Reader) error) (bool, error)
+	Upload(context.Context, *c.Config, io.Reader) error
 }
 
 func NewClient(config *c.Config) (*client, error) {
@@ -44,7 +45,7 @@ func NewClient(config *c.Config) (*client, error) {
 	}, nil
 }
 
-func (v *client) Download(ctx context.Context, config *c.Config, handler func(context.Context, io.Reader) (bool, error)) (bool, error) {
+func (v *client) Download(ctx context.Context, config *c.Config, handler func(context.Context, io.Reader) error) (bool, error) {
 	object, err := v.GetObject(ctx, config.S3BackupBucket, config.S3BackupKey, minio.GetObjectOptions{})
 	if err != nil {
 		switch minio.ToErrorResponse(err).StatusCode {
@@ -55,34 +56,22 @@ func (v *client) Download(ctx context.Context, config *c.Config, handler func(co
 		}
 	}
 	defer object.Close()
-	ok, err := handler(ctx, object)
-	if err != nil {
-		switch minio.ToErrorResponse(err).StatusCode {
-		case 404:
-			return false, nil
-		default:
-			return false, err
-		}
-	}
-	if !ok {
-		return false, nil
-	}
-	return true, nil
+	return true, handler(ctx, object)
 }
 
-func (v *client) Upload(ctx context.Context, config *c.Config, reader io.Reader) (bool, error) {
+func (v *client) Upload(ctx context.Context, config *c.Config, reader io.Reader) error {
 	buf := &bytes.Buffer{}
 	size, err := io.Copy(buf, reader)
 	if err != nil {
-		return false, err
+		return err
 	}
 	if size == 0 {
-		return false, nil
+		return fmt.Errorf("s3 upload size is 0")
 	}
 	if _, err = v.PutObject(ctx, config.S3BackupBucket, config.S3BackupKey, buf, size, minio.PutObjectOptions{
 		AutoChecksum: minio.ChecksumCRC32,
 	}); err != nil {
-		return false, err
+		return err
 	}
-	return true, nil
+	return nil
 }
