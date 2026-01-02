@@ -40,6 +40,8 @@ func MockRunConfigs(dataPath string) []*Config {
 			ClusterTimeout:    20 * time.Second,
 			RestoreTimeout:    4 * time.Second,
 			ReplaceTimeout:    20 * time.Second,
+			StatusTimeout:     4 * time.Second,
+			UploadTimeout:     4 * time.Second,
 			LocalClientURL:    fmt.Sprintf("https://127.0.0.1:%d", clientPortBase+i),
 			Env: map[string]string{
 				"ETCD_DATA_DIR":                    filepath.Join(dataPath, member+".etcd"),

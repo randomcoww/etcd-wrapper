@@ -1,4 +1,4 @@
-package controller
+package runner
 
 import (
 	"context"
@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-func RunEtcd(config *c.Config, p etcdprocess.EtcdProcess, s3 s3client.Client) error {
+func RunEtcd(ctx context.Context, config *c.Config, p etcdprocess.EtcdProcess, s3 s3client.Client) error {
 	defer config.Logger.Sync()
 
 	// always clean out data
@@ -35,25 +35,25 @@ func RunEtcd(config *c.Config, p etcdprocess.EtcdProcess, s3 s3client.Client) er
 	}
 
 	// wait for existing cluster (and quorum)
-	clusterCtx, _ := context.WithTimeout(context.Background(), time.Duration(config.ClusterTimeout))
+	clusterCtx, _ := context.WithTimeout(ctx, time.Duration(config.ClusterTimeout))
 	client, err := etcdclient.NewClientFromPeers(clusterCtx, config)
 	if err != nil {
 		// no cluster found, go through new cluster steps
-		ok, err := restoreSnapshot(config, s3)
+		ok, err := restoreSnapshot(ctx, config, s3)
 		if err != nil {
 			return err
 		}
 		if !ok {
 			// start etcd in new state
 			config.Logger.Info("start new cluster")
-			return p.StartEtcdNew(config)
+			return p.StartEtcdNew(ctx, config)
 		}
 
 		// cluster with quorum found
 	} else {
 		defer client.Close()
 
-		clientCtx, _ := context.WithTimeout(context.Background(), time.Duration(config.ReplaceTimeout))
+		clientCtx, _ := context.WithTimeout(ctx, time.Duration(config.ReplaceTimeout))
 		listResp, err := client.MemberList(clientCtx)
 		if err != nil {
 			config.Logger.Error("list member failed", zap.Error(err))
@@ -85,11 +85,12 @@ func RunEtcd(config *c.Config, p etcdprocess.EtcdProcess, s3 s3client.Client) er
 
 	// start etcd in existing state
 	config.Logger.Info("start existing cluster")
-	return p.StartEtcdExisting(config)
+	return p.StartEtcdExisting(ctx, config)
 }
 
-func restoreSnapshot(config *c.Config, s3 s3client.Client) (bool, error) {
-	ctx, _ := context.WithTimeout(context.Background(), time.Duration(config.RestoreTimeout))
+func restoreSnapshot(ctx context.Context, config *c.Config, s3 s3client.Client) (bool, error) {
+	ctx, _ = context.WithTimeout(ctx, time.Duration(config.RestoreTimeout))
+
 	dir, err := os.MkdirTemp("", "etcd-wrapper-*")
 	if err != nil {
 		config.Logger.Error("create path for snapshot failed", zap.Error(err))

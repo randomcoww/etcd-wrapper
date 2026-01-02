@@ -10,7 +10,7 @@ const (
 	member string = "node0"
 )
 
-func TestRunConfig(t *testing.T) {
+func TestConfig(t *testing.T) {
 	t.Setenv("ETCD_NAME", "test")
 	t.Setenv("ETCD_LISTEN_CLIENT_URLS", "https://10.1.0.1:9080,https://127.0.0.1:9080,https://10.0.0.1:9080")
 	t.Setenv("ETCD_INITIAL_ADVERTISE_PEER_URLS", "https://10.0.0.1:8080")
@@ -25,7 +25,7 @@ func TestRunConfig(t *testing.T) {
 	t.Setenv("ETCD_INITIAL_CLUSTER_STATE", "new")
 
 	c, err := NewConfig([]string{
-		"run",
+		"etcd-wrapper",
 		"-local-client-url",
 		"https://127.0.0.1:9080",
 		"-etcd-binary-file",
@@ -90,22 +90,4 @@ func TestRunConfig(t *testing.T) {
 		"ETCD_STRICT_RECONFIG_CHECK=true",
 		"ETCD_TRUSTED_CA_FILE=" + filepath.Join(baseTestPath, "ca-cert.pem"),
 	}, c.WriteEnv())
-}
-
-func TestBackupConfig(t *testing.T) {
-	c, err := NewConfig([]string{
-		"backup",
-		"-local-client-url",
-		"https://127.0.0.1:9080",
-		"-s3-backup-resource",
-		"https://test-1.internal:9000/bucket-1/path/etcd-0.db",
-		"-s3-backup-ca-file",
-		filepath.Join(baseTestPath, "minio", "certs", "CAs", "ca.crt"),
-	})
-	assert.NoError(t, err)
-
-	assert.Equal(t, "test-1.internal:9000", c.S3BackupHost)
-	assert.Equal(t, "bucket-1", c.S3BackupBucket)
-	assert.Equal(t, "path/etcd-0.db", c.S3BackupKey)
-	assert.Equal(t, "https://127.0.0.1:9080", c.LocalClientURL)
 }

@@ -15,13 +15,13 @@ import (
 )
 
 type Config struct {
+	Env                      map[string]string
+	Logger                   *zap.Logger
 	LocalClientURL           string
 	InitialAdvertisePeerURLs []string
 	ClusterPeerURLs          []string
-	Env                      map[string]string
 	ClientTLSConfig          *tls.Config
 	PeerTLSConfig            *tls.Config
-	Logger                   *zap.Logger
 	EtcdBinaryFile           string
 	EtcdutlBinaryFile        string
 	S3BackupHost             string
@@ -33,7 +33,7 @@ type Config struct {
 	ReplaceTimeout           time.Duration
 	StatusTimeout            time.Duration
 	UploadTimeout            time.Duration
-	Cmd                      string
+	BackupInterval           time.Duration
 }
 
 func NewConfig(args []string) (*Config, error) {
@@ -45,74 +45,42 @@ func NewConfig(args []string) (*Config, error) {
 		Env:    make(map[string]string),
 		Logger: logger,
 	}
-
-	flag.Usage = func() {
-		fmt.Printf(`Usage:
-
-	etcd-wrapper <command> [arguments]
-
-Commands:
-
-	run       Check existing cluster and run etcd as new or existing
-	backup    Run periodic backup
-`)
+	for _, e := range os.Environ() {
+		if strings.HasPrefix(e, "ETCD_") {
+			k := strings.SplitN(e, "=", 2)
+			config.Env[k[0]] = k[1]
+		}
 	}
 
-	if len(args) > 0 {
-		config.Cmd, args = args[0], args[1:]
+	if err := config.parseArgs(args); err != nil {
+		return nil, err
 	}
-
-	switch config.Cmd {
-	case "run":
-		fs := flag.NewFlagSet(config.Cmd, flag.ExitOnError)
-
-		fs.StringVar(&config.EtcdBinaryFile, "etcd-binary-file", config.EtcdBinaryFile, "Path to etcd binary")
-		fs.StringVar(&config.EtcdutlBinaryFile, "etcdutl-binary-file", config.EtcdutlBinaryFile, "Path to etcdutl binary")
-		fs.DurationVar(&config.RestoreTimeout, "restore-snapshot-timeout", 1*time.Minute, "Restore snapshot timeout")
-		fs.DurationVar(&config.ReplaceTimeout, "member-replace-timeout", 30*time.Second, "Member replace timeout")
-
-		if err := config.parseWithCommonArgs(fs, args); err != nil {
-			return nil, err
-		}
-		if config.EtcdBinaryFile == "" {
-			return nil, fmt.Errorf("etcd-binary-file not set")
-		}
-		if config.EtcdutlBinaryFile == "" {
-			return nil, fmt.Errorf("etcdutl-binary-file not set")
-		}
-
-		for _, e := range os.Environ() {
-			if strings.HasPrefix(e, "ETCD_") {
-				k := strings.SplitN(e, "=", 2)
-				config.Env[k[0]] = k[1]
-			}
-		}
-		if err := config.parseEnvs(); err != nil {
-			return nil, err
-		}
-
-	case "backup":
-		fs := flag.NewFlagSet(config.Cmd, flag.ExitOnError)
-
-		fs.DurationVar(&config.StatusTimeout, "status-timeout", 30*time.Second, "Member status timeout")
-		fs.DurationVar(&config.UploadTimeout, "upload-snapshot-timeout", 1*time.Minute, "Upload snapshot timeout")
-
-		if err := config.parseWithCommonArgs(fs, args); err != nil {
-			return nil, err
-		}
-
-	default:
-		flag.Usage()
+	if err := config.parseEnvs(); err != nil {
+		return nil, err
 	}
 	return config, nil
 }
 
-func (config *Config) parseWithCommonArgs(fs *flag.FlagSet, args []string) error {
+func (config *Config) parseArgs(args []string) error {
 	var s3resource, s3CAFile string
+	var cmd string
+	if len(args) > 0 {
+		cmd, args = args[0], args[1:]
+	}
+
+	fs := flag.NewFlagSet(cmd, flag.ExitOnError)
 	fs.StringVar(&config.LocalClientURL, "local-client-url", config.LocalClientURL, "URL of local etcd client")
 	fs.StringVar(&s3resource, "s3-backup-resource", s3resource, "S3 resource for backup")
 	fs.StringVar(&s3CAFile, "s3-backup-ca-file", s3CAFile, "CA file for S3 resource")
 	fs.DurationVar(&config.ClusterTimeout, "initial-cluster-timeout", 2*time.Minute, "Initial existing cluster lookup timeout")
+	fs.StringVar(&config.EtcdBinaryFile, "etcd-binary-file", config.EtcdBinaryFile, "Path to etcd binary")
+	fs.StringVar(&config.EtcdutlBinaryFile, "etcdutl-binary-file", config.EtcdutlBinaryFile, "Path to etcdutl binary")
+	fs.DurationVar(&config.RestoreTimeout, "restore-snapshot-timeout", 1*time.Minute, "Restore snapshot timeout")
+	fs.DurationVar(&config.ReplaceTimeout, "member-replace-timeout", 30*time.Second, "Member replace timeout")
+	// backup
+	fs.DurationVar(&config.StatusTimeout, "status-timeout", 30*time.Second, "Member status timeout")
+	fs.DurationVar(&config.UploadTimeout, "upload-snapshot-timeout", 1*time.Minute, "Upload snapshot timeout")
+	fs.DurationVar(&config.BackupInterval, "backup-interval", 10*time.Minute, "Backup interval")
 
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -140,13 +108,20 @@ func (config *Config) parseWithCommonArgs(fs *flag.FlagSet, args []string) error
 	if err != nil {
 		return err
 	}
+
+	if config.EtcdBinaryFile == "" {
+		return fmt.Errorf("etcd-binary-file not set")
+	}
+	if config.EtcdutlBinaryFile == "" {
+		return fmt.Errorf("etcdutl-binary-file not set")
+	}
 	return nil
 }
 
 func (config *Config) parseEnvs() error {
-	var err error
 	reList := regexp.MustCompile(`\s*,\s*`)
 	reMap := regexp.MustCompile(`\s*=\s*`)
+	var err error
 
 	if _, ok := config.Env["ETCD_NAME"]; !ok {
 		return fmt.Errorf("env ETCD_NAME is not set")
@@ -174,7 +149,6 @@ func (config *Config) parseEnvs() error {
 		return fmt.Errorf("env ETCD_DATA_DIR is not set")
 	}
 
-	config.Env["ETCD_CLIENT_CERT_AUTH"] = "true"
 	trustedCAFile, ok := config.Env["ETCD_TRUSTED_CA_FILE"]
 	if !ok {
 		return fmt.Errorf("env ETCD_TRUSTED_CA_FILE is required")
@@ -191,8 +165,6 @@ func (config *Config) parseEnvs() error {
 	if err != nil {
 		return err
 	}
-
-	config.Env["ETCD_PEER_CLIENT_CERT_AUTH"] = "true"
 	peerTrustedCAFile, ok := config.Env["ETCD_PEER_TRUSTED_CA_FILE"]
 	if !ok {
 		return fmt.Errorf("env ETCD_PEER_TRUSTED_CA_FILE is required")
@@ -215,6 +187,8 @@ func (config *Config) parseEnvs() error {
 	config.Env["ETCD_ENABLE_V2"] = "false"
 	config.Env["ETCD_STRICT_RECONFIG_CHECK"] = "true"
 	config.Env["ETCDCTL_API"] = "3" // used by etcdutl
+	config.Env["ETCD_CLIENT_CERT_AUTH"] = "true"
+	config.Env["ETCD_PEER_CLIENT_CERT_AUTH"] = "true"
 	return nil
 }
 

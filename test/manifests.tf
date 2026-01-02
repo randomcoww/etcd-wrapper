@@ -177,7 +177,6 @@ module "etcd" {
         name  = "etcd"
         image = "localhost/etcd-wrapper:latest"
         args = [
-          "run",
           "-local-client-url",
           each.value.client_url,
           "-etcd-binary-file",
@@ -191,9 +190,15 @@ module "etcd" {
           "-initial-cluster-timeout",
           "${local.initial_startup_delay_seconds}s",
           "-restore-snapshot-timeout",
-          "10s",
+          "4s",
           "-member-replace-timeout",
-          "10s",
+          "12s",
+          "-status-timeout",
+          "4s",
+          "-upload-snapshot-timeout",
+          "4s",
+          "-backup-interval",
+          "30s",
         ]
         env = [
           for k, v in {
