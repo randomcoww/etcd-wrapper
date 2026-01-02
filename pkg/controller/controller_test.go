@@ -20,21 +20,14 @@ func TestControllerNew(t *testing.T) {
 	dataPath, _ := os.MkdirTemp("", "etcd-test-*")
 	defer os.RemoveAll(dataPath)
 
-	var controllers []*Controller
 	configs := c.MockConfigs(dataPath)
 	for _, config := range configs {
-		p := etcdprocess.NewProcess(context.Background(), config)
+		p := etcdprocess.NewMockEtcdProcess()
 		defer p.Wait()
 		defer p.Stop()
+		s3 := s3client.NewMockNoBackupClient()
 
-		controllers = append(controllers, &Controller{
-			P:        p,
-			S3Client: &s3client.MockClientNoBackup{}, // <-- simulate no backup found
-		})
-	}
-
-	for i, config := range configs {
-		err := controllers[i].runEtcd(config)
+		err := RunEtcd(config, p, s3)
 		assert.NoError(t, err)
 		time.Sleep(4 * time.Second)
 	}
@@ -53,21 +46,14 @@ func TestControllerRestore(t *testing.T) {
 	dataPath, _ := os.MkdirTemp("", "etcd-test-*")
 	defer os.RemoveAll(dataPath)
 
-	var controllers []*Controller
 	configs := c.MockConfigs(dataPath)
 	for _, config := range configs {
-		p := etcdprocess.NewProcess(context.Background(), config)
+		p := etcdprocess.NewMockEtcdProcess()
 		defer p.Wait()
 		defer p.Stop()
+		s3 := s3client.NewMockSuccessClient()
 
-		controllers = append(controllers, &Controller{
-			P:        p,
-			S3Client: &s3client.MockClientSuccess{}, // <-- returns test backup data
-		})
-	}
-
-	for i, config := range configs {
-		err := controllers[i].runEtcd(config)
+		err := RunEtcd(config, p, s3)
 		assert.NoError(t, err)
 		time.Sleep(4 * time.Second)
 	}

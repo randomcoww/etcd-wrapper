@@ -21,8 +21,8 @@ func TestCreateNewCluster(t *testing.T) {
 
 	configs := c.MockConfigs(dataPath)
 	for _, config := range configs {
-		p := NewProcess(context.Background(), config)
-		err := p.StartNew()
+		p := NewMockEtcdProcess()
+		err := p.StartEtcdNew(config)
 		assert.NoError(t, err)
 
 		defer p.Wait()
@@ -53,8 +53,8 @@ func TestExistingFromSnapshotRestore(t *testing.T) {
 	}
 
 	for _, config := range configs {
-		p := NewProcess(context.Background(), config)
-		err := p.StartExisting()
+		p := NewMockEtcdProcess()
+		err := p.StartEtcdExisting(config)
 		assert.NoError(t, err)
 
 		defer p.Wait()

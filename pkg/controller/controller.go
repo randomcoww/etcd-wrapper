@@ -15,16 +15,7 @@ import (
 	"time"
 )
 
-type Controller struct {
-	P        etcdprocess.EtcdProcess
-	S3Client s3client.Client
-}
-
-func (c *Controller) RunEtcd(config *c.Config) error {
-	return c.runEtcd(config)
-}
-
-func (c *Controller) runEtcd(config *c.Config) error {
+func RunEtcd(config *c.Config, p etcdprocess.EtcdProcess, s3 s3client.Client) error {
 	defer config.Logger.Sync()
 
 	// always clean out data
@@ -48,14 +39,14 @@ func (c *Controller) runEtcd(config *c.Config) error {
 	client, err := etcdclient.NewClientFromPeers(clusterCtx, config)
 	if err != nil {
 		// no cluster found, go through new cluster steps
-		ok, err := c.restoreSnapshot(config)
+		ok, err := restoreSnapshot(config, s3)
 		if err != nil {
 			return err
 		}
 		if !ok {
 			// start etcd in new state
 			config.Logger.Info("start new cluster")
-			return c.P.StartNew()
+			return p.StartEtcdNew(config)
 		}
 
 		// cluster with quorum found
@@ -94,10 +85,10 @@ func (c *Controller) runEtcd(config *c.Config) error {
 
 	// start etcd in existing state
 	config.Logger.Info("start existing cluster")
-	return c.P.StartExisting()
+	return p.StartEtcdExisting(config)
 }
 
-func (c *Controller) restoreSnapshot(config *c.Config) (bool, error) {
+func restoreSnapshot(config *c.Config, s3 s3client.Client) (bool, error) {
 	ctx, _ := context.WithTimeout(context.Background(), time.Duration(config.RestoreTimeout))
 	dir, err := os.MkdirTemp("", "etcd-wrapper-*")
 	if err != nil {
@@ -115,7 +106,7 @@ func (c *Controller) restoreSnapshot(config *c.Config) (bool, error) {
 	defer snapshotFile.Close()
 	config.Logger.Info("opened file for snapshot")
 
-	ok, err := c.S3Client.Download(ctx, config, func(ctx context.Context, reader io.Reader) error {
+	ok, err := s3.Download(ctx, config, func(ctx context.Context, reader io.Reader) error {
 		b, err := io.Copy(snapshotFile, reader)
 		if err != nil {
 			return err

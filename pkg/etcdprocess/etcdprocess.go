@@ -6,58 +6,40 @@ import (
 	c "github.com/randomcoww/etcd-wrapper/pkg/config"
 	"os"
 	"os/exec"
+	"syscall"
 )
 
 type EtcdProcess interface {
-	StartNew() error
-	StartExisting() error
+	StartEtcdNew(*c.Config) error
+	StartEtcdExisting(*c.Config) error
 	Stop() error
 	Wait() error
 }
 
 type etcdProcess struct {
-	*exec.Cmd
 }
 
-func NewProcess(ctx context.Context, config *c.Config) EtcdProcess {
-	cmd := exec.CommandContext(ctx, config.EtcdBinaryFile)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Env = config.WriteEnv()
-
-	return &etcdProcess{
-		Cmd: cmd,
-	}
+func NewEtcdProcess() *etcdProcess {
+	return &etcdProcess{}
 }
 
-func (p *etcdProcess) StartNew() error {
-	if p.Cmd.Process == nil {
-		p.Cmd.Args = append(p.Cmd.Args, "--initial-cluster-state", "new")
-		return p.Cmd.Start()
-	}
+func (*etcdProcess) StartEtcdNew(config *c.Config) error {
+	return syscall.Exec(config.EtcdBinaryFile, []string{
+		"--initial-cluster-state", "new",
+	}, config.WriteEnv())
+}
+
+func (*etcdProcess) StartEtcdExisting(config *c.Config) error {
+	return syscall.Exec(config.EtcdBinaryFile, []string{
+		"--initial-cluster-state", "existing",
+	}, config.WriteEnv())
+}
+
+func (*etcdProcess) Stop() error {
 	return nil
 }
 
-func (p *etcdProcess) StartExisting() error {
-	if p.Cmd.Process == nil {
-		p.Cmd.Args = append(p.Cmd.Args, "--initial-cluster-state", "existing")
-		return p.Cmd.Start()
-	}
-	return nil
-}
-
-func (p *etcdProcess) Stop() error {
-	if p.Cmd.Process != nil {
-		return p.Cmd.Process.Kill()
-	}
-	return nil
-}
-
-func (p *etcdProcess) Wait() error {
-	if p.Cmd.Process != nil {
-		_, err := p.Cmd.Process.Wait()
-		return err
-	}
+func (*etcdProcess) Wait() error {
 	return nil
 }
 

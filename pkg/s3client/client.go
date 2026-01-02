@@ -45,8 +45,8 @@ func NewClient(config *c.Config) (*client, error) {
 	}, nil
 }
 
-func (v *client) Download(ctx context.Context, config *c.Config, handler func(context.Context, io.Reader) error) (bool, error) {
-	object, err := v.GetObject(ctx, config.S3BackupBucket, config.S3BackupKey, minio.GetObjectOptions{})
+func (c *client) Download(ctx context.Context, config *c.Config, handler func(context.Context, io.Reader) error) (bool, error) {
+	object, err := c.GetObject(ctx, config.S3BackupBucket, config.S3BackupKey, minio.GetObjectOptions{})
 	if err != nil {
 		switch minio.ToErrorResponse(err).StatusCode {
 		case 404:
@@ -59,7 +59,7 @@ func (v *client) Download(ctx context.Context, config *c.Config, handler func(co
 	return true, handler(ctx, object)
 }
 
-func (v *client) Upload(ctx context.Context, config *c.Config, reader io.Reader) error {
+func (c *client) Upload(ctx context.Context, config *c.Config, reader io.Reader) error {
 	buf := &bytes.Buffer{}
 	size, err := io.Copy(buf, reader)
 	if err != nil {
@@ -68,7 +68,7 @@ func (v *client) Upload(ctx context.Context, config *c.Config, reader io.Reader)
 	if size == 0 {
 		return fmt.Errorf("s3 upload size is 0")
 	}
-	if _, err = v.PutObject(ctx, config.S3BackupBucket, config.S3BackupKey, buf, size, minio.PutObjectOptions{
+	if _, err = c.PutObject(ctx, config.S3BackupBucket, config.S3BackupKey, buf, size, minio.PutObjectOptions{
 		AutoChecksum: minio.ChecksumCRC32,
 	}); err != nil {
 		return err

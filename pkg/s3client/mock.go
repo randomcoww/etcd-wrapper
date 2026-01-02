@@ -12,10 +12,23 @@ const (
 	baseTestPath string = "../../test"
 )
 
-type MockClientSuccess struct {
+type mockClientSuccess struct {
+	*client
 }
 
-func (client *MockClientSuccess) Download(ctx context.Context, config *c.Config, handler func(context.Context, io.Reader) error) (bool, error) {
+type mockClientNoBackup struct {
+	*client
+}
+
+func NewMockSuccessClient() *mockClientSuccess {
+	return &mockClientSuccess{}
+}
+
+func NewMockNoBackupClient() *mockClientNoBackup {
+	return &mockClientNoBackup{}
+}
+
+func (c *mockClientSuccess) Download(ctx context.Context, config *c.Config, handler func(context.Context, io.Reader) error) (bool, error) {
 	file, err := os.Open(filepath.Join(baseTestPath, "test-snapshot.db"))
 	if err != nil {
 		return false, err
@@ -24,17 +37,14 @@ func (client *MockClientSuccess) Download(ctx context.Context, config *c.Config,
 	return true, handler(ctx, file)
 }
 
-func (client *MockClientSuccess) Upload(ctx context.Context, config *c.Config, reader io.Reader) error {
+func (c *mockClientSuccess) Upload(ctx context.Context, config *c.Config, reader io.Reader) error {
 	return nil
 }
 
-type MockClientNoBackup struct {
-}
-
-func (client *MockClientNoBackup) Download(ctx context.Context, config *c.Config, handler func(context.Context, io.Reader) error) (bool, error) {
+func (c *mockClientNoBackup) Download(ctx context.Context, config *c.Config, handler func(context.Context, io.Reader) error) (bool, error) {
 	return false, nil
 }
 
-func (client *MockClientNoBackup) Upload(ctx context.Context, config *c.Config, reader io.Reader) error {
+func (c *mockClientNoBackup) Upload(ctx context.Context, config *c.Config, reader io.Reader) error {
 	return nil
 }
