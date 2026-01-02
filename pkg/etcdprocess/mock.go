@@ -16,14 +16,22 @@ func NewMockEtcdProcess() *mockEtcdProcess {
 func (m *mockEtcdProcess) StartEtcdNew(config *c.Config) error {
 	m.Cmd = exec.Command(config.EtcdBinaryFile)
 	m.Cmd.Env = config.WriteEnv()
-	m.Cmd.Args = append(m.Cmd.Args, "--initial-cluster-state", "new")
+	m.Cmd.Args = []string{
+		config.EtcdBinaryFile,
+		"--initial-cluster-state",
+		"new",
+	}
 	return m.Cmd.Start()
 }
 
 func (m *mockEtcdProcess) StartEtcdExisting(config *c.Config) error {
 	m.Cmd = exec.Command(config.EtcdBinaryFile)
 	m.Cmd.Env = config.WriteEnv()
-	m.Cmd.Args = append(m.Cmd.Args, "--initial-cluster-state", "existing")
+	m.Cmd.Args = []string{
+		config.EtcdBinaryFile,
+		"--initial-cluster-state",
+		"existing",
+	}
 	return m.Cmd.Start()
 }
 

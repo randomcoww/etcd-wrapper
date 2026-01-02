@@ -25,13 +25,17 @@ func NewEtcdProcess() *etcdProcess {
 
 func (*etcdProcess) StartEtcdNew(config *c.Config) error {
 	return syscall.Exec(config.EtcdBinaryFile, []string{
-		"--initial-cluster-state", "new",
+		config.EtcdBinaryFile,
+		"--initial-cluster-state",
+		"new",
 	}, config.WriteEnv())
 }
 
 func (*etcdProcess) StartEtcdExisting(config *c.Config) error {
 	return syscall.Exec(config.EtcdBinaryFile, []string{
-		"--initial-cluster-state", "existing",
+		config.EtcdBinaryFile,
+		"--initial-cluster-state",
+		"existing",
 	}, config.WriteEnv())
 }
 

@@ -193,12 +193,6 @@ module "etcd" {
           "10s",
           "-member-replace-timeout",
           "10s",
-          "-backup-snapshot-timeout",
-          "10s",
-          "-status-timeout",
-          "10s",
-          "-node-run-interval",
-          "1m",
         ]
         env = [
           for k, v in {
@@ -220,7 +214,7 @@ module "etcd" {
             "ETCD_PEER_CERT_FILE"            = "/etc/etcd/${each.key}/peer/cert.pem"
             "ETCD_PEER_KEY_FILE"             = "/etc/etcd/${each.key}/peer/key.pem"
             "ETCD_STRICT_RECONFIG_CHECK"     = true
-            "ETCD_LOG_LEVEL"                 = "error"
+            "ETCD_LOG_LEVEL"                 = "warn"
             "ETCD_AUTO_COMPACTION_RETENTION" = 1
             "ETCD_AUTO_COMPACTION_MODE"      = "revision"
             "ETCD_SOCKET_REUSE_ADDRESS"      = true
