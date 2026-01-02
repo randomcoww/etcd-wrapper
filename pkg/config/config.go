@@ -31,6 +31,9 @@ type Config struct {
 	ClusterTimeout           time.Duration
 	RestoreTimeout           time.Duration
 	ReplaceTimeout           time.Duration
+	StatusTimeout            time.Duration
+	UploadTimeout            time.Duration
+	Cmd                      string
 }
 
 func NewConfig(args []string) (*Config, error) {
@@ -38,42 +41,93 @@ func NewConfig(args []string) (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-
 	config := &Config{
 		Env:    make(map[string]string),
 		Logger: logger,
 	}
-	var s3resource, s3CAFile string
-	flags := flag.NewFlagSet(args[0], flag.ContinueOnError)
-	flags.StringVar(&config.LocalClientURL, "local-client-url", config.LocalClientURL, "URL of local etcd client")
-	flags.StringVar(&config.EtcdBinaryFile, "etcd-binary-file", config.EtcdBinaryFile, "Path to etcd binary")
-	flags.StringVar(&config.EtcdutlBinaryFile, "etcdutl-binary-file", config.EtcdutlBinaryFile, "Path to etcdutl binary")
-	flags.StringVar(&s3resource, "s3-backup-resource", s3resource, "S3 resource for backup")
-	flags.StringVar(&s3CAFile, "s3-backup-ca-file", s3CAFile, "CA file for S3 resource")
-	flags.DurationVar(&config.ClusterTimeout, "initial-cluster-timeout", 2*time.Minute, "Initial existing cluster lookup timeout")
-	flags.DurationVar(&config.RestoreTimeout, "restore-snapshot-timeout", 1*time.Minute, "Restore snapshot timeout")
-	flags.DurationVar(&config.ReplaceTimeout, "member-replace-timeout", 30*time.Second, "Member replace timeout")
-	if err := flags.Parse(args[1:]); err != nil {
-		return nil, err
-	}
-	if config.EtcdBinaryFile == "" {
-		return nil, fmt.Errorf("etcd-binary-file not set")
-	}
-	if config.EtcdutlBinaryFile == "" {
-		return nil, fmt.Errorf("etcdutl-binary-file not set")
+
+	flag.Usage = func() {
+		fmt.Printf(`Usage:
+
+	etcd-wrapper <command> [arguments]
+
+Commands:
+
+	run       Check existing cluster and run etcd as new or existing
+	backup    Run periodic backup
+`)
 	}
 
+	if len(args) > 0 {
+		config.Cmd, args = args[0], args[1:]
+	}
+
+	switch config.Cmd {
+	case "run":
+		fs := flag.NewFlagSet(config.Cmd, flag.ExitOnError)
+
+		fs.StringVar(&config.EtcdBinaryFile, "etcd-binary-file", config.EtcdBinaryFile, "Path to etcd binary")
+		fs.StringVar(&config.EtcdutlBinaryFile, "etcdutl-binary-file", config.EtcdutlBinaryFile, "Path to etcdutl binary")
+		fs.DurationVar(&config.RestoreTimeout, "restore-snapshot-timeout", 1*time.Minute, "Restore snapshot timeout")
+		fs.DurationVar(&config.ReplaceTimeout, "member-replace-timeout", 30*time.Second, "Member replace timeout")
+
+		if err := config.parseWithCommonArgs(fs, args); err != nil {
+			return nil, err
+		}
+		if config.EtcdBinaryFile == "" {
+			return nil, fmt.Errorf("etcd-binary-file not set")
+		}
+		if config.EtcdutlBinaryFile == "" {
+			return nil, fmt.Errorf("etcdutl-binary-file not set")
+		}
+
+		for _, e := range os.Environ() {
+			if strings.HasPrefix(e, "ETCD_") {
+				k := strings.SplitN(e, "=", 2)
+				config.Env[k[0]] = k[1]
+			}
+		}
+		if err := config.parseEnvs(); err != nil {
+			return nil, err
+		}
+
+	case "backup":
+		fs := flag.NewFlagSet(config.Cmd, flag.ExitOnError)
+
+		fs.DurationVar(&config.StatusTimeout, "status-timeout", 30*time.Second, "Member status timeout")
+		fs.DurationVar(&config.UploadTimeout, "upload-snapshot-timeout", 1*time.Minute, "Upload snapshot timeout")
+
+		if err := config.parseWithCommonArgs(fs, args); err != nil {
+			return nil, err
+		}
+
+	default:
+		flag.Usage()
+	}
+	return config, nil
+}
+
+func (config *Config) parseWithCommonArgs(fs *flag.FlagSet, args []string) error {
+	var s3resource, s3CAFile string
+	fs.StringVar(&config.LocalClientURL, "local-client-url", config.LocalClientURL, "URL of local etcd client")
+	fs.StringVar(&s3resource, "s3-backup-resource", s3resource, "S3 resource for backup")
+	fs.StringVar(&s3CAFile, "s3-backup-ca-file", s3CAFile, "CA file for S3 resource")
+	fs.DurationVar(&config.ClusterTimeout, "initial-cluster-timeout", 2*time.Minute, "Initial existing cluster lookup timeout")
+
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
 	u, err := url.Parse(s3resource)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if u.Host == "" {
-		return nil, fmt.Errorf("host not found in s3-backup-resource")
+		return fmt.Errorf("host not found in s3-backup-resource")
 	}
 	config.S3BackupHost = u.Host
 	parts := strings.Split(u.Path, "/")
 	if len(parts) < 3 { // path always starts with / so first element should be blank
-		return nil, fmt.Errorf("bucket and key not found in s3-backup-resource")
+		return fmt.Errorf("bucket and key not found in s3-backup-resource")
 	}
 	config.S3BackupBucket = parts[1]
 	config.S3BackupKey = strings.Join(parts[2:], "/")
@@ -84,23 +138,12 @@ func NewConfig(args []string) (*Config, error) {
 	}
 	config.S3TLSConfig, err = tlsutil.TLSCAConfig(s3CAFiles)
 	if err != nil {
-		return nil, err
+		return err
 	}
-
-	for _, e := range os.Environ() {
-		if strings.HasPrefix(e, "ETCD_") {
-			k := strings.SplitN(e, "=", 2)
-			config.Env[k[0]] = k[1]
-		}
-	}
-	if err := config.ParseEnvs(); err != nil {
-		return nil, err
-	}
-
-	return config, nil
+	return nil
 }
 
-func (config *Config) ParseEnvs() error {
+func (config *Config) parseEnvs() error {
 	var err error
 	reList := regexp.MustCompile(`\s*,\s*`)
 	reMap := regexp.MustCompile(`\s*=\s*`)

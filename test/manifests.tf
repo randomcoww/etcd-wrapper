@@ -177,6 +177,7 @@ module "etcd" {
         name  = "etcd"
         image = "localhost/etcd-wrapper:latest"
         args = [
+          "run",
           "-local-client-url",
           each.value.client_url,
           "-etcd-binary-file",

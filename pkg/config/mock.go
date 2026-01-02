@@ -16,7 +16,7 @@ const (
 	baseTestPath      string = "../../test/outputs"
 )
 
-func MockConfigs(dataPath string) []*Config {
+func MockRunConfigs(dataPath string) []*Config {
 	members := []string{
 		"node0",
 		"node1",
@@ -65,7 +65,7 @@ func MockConfigs(dataPath string) []*Config {
 				"ETCD_SOCKET_REUSE_ADDRESS":        "true",
 			},
 		}
-		config.ParseEnvs()
+		config.parseEnvs()
 		configs = append(configs, config)
 	}
 	return configs

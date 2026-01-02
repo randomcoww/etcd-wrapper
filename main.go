@@ -1,39 +1,35 @@
 package main
 
 import (
-	"context"
-	"github.com/randomcoww/etcd-wrapper/pkg/config"
-	"github.com/randomcoww/etcd-wrapper/pkg/controller"
+	c "github.com/randomcoww/etcd-wrapper/pkg/config"
 	"github.com/randomcoww/etcd-wrapper/pkg/etcdprocess"
+	"github.com/randomcoww/etcd-wrapper/pkg/runner"
 	"github.com/randomcoww/etcd-wrapper/pkg/s3client"
 	"os"
 )
 
 func main() {
-	processCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	c, err := config.NewConfig(os.Args)
+	config, err := c.NewConfig(os.Args[1:])
 	if err != nil {
 		panic(err)
 	}
-	etcdProcess := etcdprocess.NewProcess(processCtx, c)
-	s3Client, err := s3client.NewClient(c)
-	if err != nil {
-		panic(err)
-	}
-	ctrl := &controller.Controller{
-		P:        etcdProcess,
-		S3Client: s3Client,
-	}
 
-	if err := ctrl.RunEtcd(c); err != nil {
-		panic(err)
-	}
-	defer ctrl.P.Wait()
-	defer ctrl.P.Stop()
+	switch config.Cmd {
+	case "run":
+		p := etcdprocess.NewEtcdProcess()
+		s3, err := s3client.NewClient(config)
+		if err != nil {
+			panic(err)
+		}
 
-	if err := ctrl.RunNode(processCtx, c); err != nil {
-		panic(err)
+		if err := runner.RunEtcd(config, p, s3); err != nil {
+			panic(err)
+		}
+
+	case "backup":
+		os.Exit(1)
+
+	default:
+		os.Exit(1)
 	}
 }
