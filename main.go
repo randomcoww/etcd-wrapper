@@ -8,6 +8,9 @@ import (
 	"github.com/randomcoww/etcd-wrapper/pkg/s3client"
 	"os"
 	"time"
+	"os/signal"
+	"syscall"
+	"sync"
 )
 
 func main() {
@@ -16,21 +19,27 @@ func main() {
 		os.Exit(1)
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	p := etcdprocess.NewEtcdProcess()
+	defer p.Wait()
 	defer p.Stop()
 
 	s3, err := s3client.NewClient(config)
 	if err != nil {
 		os.Exit(1)
 	}
+
+	var wg sync.WaitGroup
+	defer wg.Wait()
+
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
 	if err := runner.RunEtcd(ctx, config, p, s3); err != nil {
 		os.Exit(1)
 	}
 
 	go func() {
+		wg.Add(1)
 		for {
 			timer := time.NewTimer(config.BackupInterval)
 			select {

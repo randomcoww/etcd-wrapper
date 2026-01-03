@@ -34,14 +34,14 @@ func RunBackup(ctx context.Context, config *c.Config, s3 s3client.Client) error 
 	}
 	config.Logger.Info("local node responds to status")
 
-	config.Logger.Info("node", zap.Int64("ID", int64(status.GetHeader().GetMemberId())))
-	config.Logger.Info("leader", zap.Int64("ID", int64(status.GetLeader())))
-
 	if err := client.Defragment(statusCtx, config.LocalClientURL); err != nil {
 		config.Logger.Error("run defragment failed", zap.Error(err))
 		return err
 	}
 	config.Logger.Info("defragment success")
+
+	config.Logger.Info("node", zap.Int64("ID", int64(status.GetHeader().GetMemberId())))
+	config.Logger.Info("leader", zap.Int64("ID", int64(status.GetLeader())))
 
 	if status.GetHeader().GetMemberId() != status.GetLeader() {
 		config.Logger.Info("skipping backup on non leader")
