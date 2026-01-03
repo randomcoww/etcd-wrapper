@@ -78,11 +78,7 @@ func NewClientFromPeers(ctx context.Context, config *c.Config) (EtcdClient, erro
 		if err == nil {
 			client, err := NewClient(ctx, config, pcluster.ClientURLs())
 			if err == nil {
-				err = client.GetQuorum(ctx)
-				if err == nil {
-					config.ClusterPeerURLs = pcluster.PeerURLs()
-					return client, nil
-				}
+				return client, nil
 			}
 		}
 
@@ -171,8 +167,23 @@ func (client *Client) MemberRemove(ctx context.Context, id uint64) (Members, err
 }
 
 func (client *Client) GetQuorum(ctx context.Context) error {
-	_, err := client.Get(ctx, "health-check-dummy", clientv3.WithCountOnly())
-	return err
+	for {
+		_, err := client.Get(ctx, "health-check-dummy", clientv3.WithCountOnly())
+		switch {
+		case err == nil:
+			return nil
+		default:
+		}
+
+		timer := time.NewTimer(backoffWaitBetween)
+		select {
+		case <-ctx.Done():
+			return err
+
+		case <-timer.C:
+			continue
+		}
+	}
 }
 
 func (client *Client) Defragment(ctx context.Context, endpoint string) error {

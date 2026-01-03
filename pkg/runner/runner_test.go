@@ -16,7 +16,7 @@ const (
 	baseTestPath string = "../../test"
 )
 
-func TestRunnerNew(t *testing.T) {
+func TestRunnerFreshCluster(t *testing.T) {
 	dataPath, _ := os.MkdirTemp("", "etcd-test-*")
 	defer os.RemoveAll(dataPath)
 
@@ -32,7 +32,7 @@ func TestRunnerNew(t *testing.T) {
 
 		err := RunEtcd(ctx, config, p, s3)
 		assert.NoError(t, err)
-		time.Sleep(4 * time.Second)
+		time.Sleep(4 * time.Second) // <- greater than cluster wait
 	}
 
 	for _, config := range configs {
@@ -41,7 +41,7 @@ func TestRunnerNew(t *testing.T) {
 	}
 }
 
-func TestRunnerRestore(t *testing.T) {
+func TestRunnerWithRestore(t *testing.T) {
 	dataPath, _ := os.MkdirTemp("", "etcd-test-*")
 	defer os.RemoveAll(dataPath)
 
@@ -57,7 +57,7 @@ func TestRunnerRestore(t *testing.T) {
 
 		err := RunEtcd(ctx, config, p, s3)
 		assert.NoError(t, err)
-		time.Sleep(4 * time.Second)
+		time.Sleep(6 * time.Second) // <- greater than cluster wait
 	}
 
 	for _, config := range configs {
@@ -67,6 +67,9 @@ func TestRunnerRestore(t *testing.T) {
 
 	clientCtx, _ := context.WithTimeout(ctx, time.Duration(20*time.Second))
 	client, err := etcdclient.NewClientFromPeers(clientCtx, configs[2])
+	assert.NoError(t, err)
+
+	err = client.GetQuorum(clientCtx)
 	assert.NoError(t, err)
 
 	resp, err := client.C().KV.Get(clientCtx, "test-key1")

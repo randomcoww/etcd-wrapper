@@ -16,10 +16,15 @@ func RunBackup(ctx context.Context, config *c.Config, s3 s3client.Client) error 
 	clusterCtx, _ := context.WithTimeout(ctx, time.Duration(config.ClusterTimeout))
 	client, err := etcdclient.NewClientFromPeers(clusterCtx, config)
 	if err != nil {
-		config.Logger.Error("get cluster failed", zap.Error(err))
+		config.Logger.Error("get client failed", zap.Error(err))
 		return err
 	}
 	defer client.Close()
+
+	if err := client.GetQuorum(clusterCtx); err != nil {
+		config.Logger.Error("get cluster failed", zap.Error(err))
+		return err
+	}
 
 	statusCtx, _ := context.WithTimeout(ctx, time.Duration(config.StatusTimeout))
 	status, err := client.Status(statusCtx, config.LocalClientURL)

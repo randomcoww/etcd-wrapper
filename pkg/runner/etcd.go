@@ -38,57 +38,69 @@ func RunEtcd(ctx context.Context, config *c.Config, p etcdprocess.EtcdProcess, s
 	clusterCtx, _ := context.WithTimeout(ctx, time.Duration(config.ClusterTimeout))
 	client, err := etcdclient.NewClientFromPeers(clusterCtx, config)
 	if err != nil {
-		// no cluster found, go through new cluster steps
-		ok, err := restoreSnapshot(ctx, config, s3)
+		// no members found
+		config.Logger.Info("no members found")
+
+		ok, err := restoreSnapshot(ctx, config, s3, 1000000000)
 		if err != nil {
 			return err
 		}
 		if !ok {
-			// start etcd in new state
-			config.Logger.Info("start new cluster")
+			config.Logger.Info("starting member new fresh")
 			return p.StartEtcdNew(ctx, config)
 		}
 
-		// cluster with quorum found
-	} else {
-		defer client.Close()
+		config.Logger.Info("starting member existing with backup data")
+		return p.StartEtcdExisting(ctx, config)
+	}
+	defer client.Close()
 
-		clientCtx, _ := context.WithTimeout(ctx, time.Duration(config.ReplaceTimeout))
-		listResp, err := client.MemberList(clientCtx)
-		if err != nil {
-			config.Logger.Error("list member failed", zap.Error(err))
-			return err
-		}
-		localMember := findLocalMember(listResp, config)
+	config.Logger.Info("existing members found")
+	// found members - check if quorum is established
+	if err := client.GetQuorum(clusterCtx); err != nil {
+		config.Logger.Info("no quorum found")
 
-		// join cluster
-		// if my node already exists, it needs to be replaced
-		if localMember != nil && len(listResp.GetMembers()) >= len(config.ClusterPeerURLs) {
-			listResp, err = client.MemberRemove(clientCtx, localMember.GetID())
-			if err != nil {
-				config.Logger.Error("remove member failed", zap.Error(err))
-				return err
-			}
-			localMember = findLocalMember(listResp, config)
-			config.Logger.Info("removed local member")
-		}
-
-		if localMember == nil && len(listResp.GetMembers()) < len(config.ClusterPeerURLs) {
-			listResp, err = client.MemberAdd(clientCtx, config.InitialAdvertisePeerURLs)
-			if err != nil {
-				config.Logger.Error("add member failed", zap.Error(err))
-				return err
-			}
-			config.Logger.Info("added local member")
-		}
+		config.Logger.Info("starting member existing")
+		return p.StartEtcdExisting(ctx, config)
 	}
 
-	// start etcd in existing state
-	config.Logger.Info("start existing cluster")
+	config.Logger.Info("quorum found")
+	// cluster with quorum found - this is the most common scenario
+	clientCtx, _ := context.WithTimeout(ctx, time.Duration(config.ReplaceTimeout))
+	listResp, err := client.MemberList(clientCtx)
+	if err != nil {
+		config.Logger.Error("list member failed", zap.Error(err))
+		return err
+	}
+	localMember := findLocalMember(listResp, config)
+
+	// replace my node to join cluster
+	// if my node already exists, it needs to be replaced
+	if localMember != nil && len(listResp.GetMembers()) >= len(config.ClusterPeerURLs) {
+		listResp, err = client.MemberRemove(clientCtx, localMember.GetID())
+		if err != nil {
+			config.Logger.Error("remove member failed", zap.Error(err))
+			return err
+		}
+		localMember = findLocalMember(listResp, config)
+		config.Logger.Info("removed local member")
+	}
+
+	if localMember == nil && len(listResp.GetMembers()) < len(config.ClusterPeerURLs) {
+		listResp, err = client.MemberAdd(clientCtx, config.InitialAdvertisePeerURLs)
+		if err != nil {
+			config.Logger.Error("add member failed", zap.Error(err))
+			return err
+		}
+		config.Logger.Info("added local member")
+	}
+
+	config.Logger.Info("starting member existing")
 	return p.StartEtcdExisting(ctx, config)
 }
 
-func restoreSnapshot(ctx context.Context, config *c.Config, s3 s3client.Client) (bool, error) {
+func restoreSnapshot(ctx context.Context, config *c.Config, s3 s3client.Client, versionBump uint64) (bool, error) {
+	config.Logger.Info("attempting snapshot restore")
 	ctx, _ = context.WithTimeout(ctx, time.Duration(config.RestoreTimeout))
 
 	dir, err := os.MkdirTemp("", "etcd-wrapper-*")
@@ -113,7 +125,7 @@ func restoreSnapshot(ctx context.Context, config *c.Config, s3 s3client.Client) 
 			return err
 		}
 		if b == 0 {
-			return fmt.Errorf("download size was 0")
+			return fmt.Errorf("snapshot file download size was 0")
 		}
 		return nil
 	})
@@ -122,14 +134,14 @@ func restoreSnapshot(ctx context.Context, config *c.Config, s3 s3client.Client) 
 		return false, err
 	}
 	if !ok {
-		config.Logger.Info("backup not found")
+		config.Logger.Info("no snapshots found")
 		return false, nil
 	}
-	if err := etcdprocess.RestoreV3Snapshot(ctx, config, snapshotFile.Name()); err != nil {
+	if err := etcdprocess.RestoreV3Snapshot(ctx, config, snapshotFile.Name(), versionBump); err != nil {
 		config.Logger.Error("restore snapshot failed", zap.Error(err))
 		return false, err
 	}
-	config.Logger.Info("restored backup")
+	config.Logger.Info("finished restoring snapshot")
 	return true, nil
 }
 

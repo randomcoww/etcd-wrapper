@@ -64,16 +64,23 @@ func (m *etcdProcess) Wait() error {
 	return nil
 }
 
-func RestoreV3Snapshot(ctx context.Context, config *c.Config, snapshotFile string) error {
+func RestoreV3Snapshot(ctx context.Context, config *c.Config, snapshotFile string, versionBump uint64) error {
 	c := exec.CommandContext(ctx, config.EtcdutlBinaryFile)
-	c.Args = append(c.Args, "snapshot", "restore", snapshotFile)
-	c.Args = append(c.Args, "--name", config.Env["ETCD_NAME"])
-	c.Args = append(c.Args, "--initial-cluster", config.Env["ETCD_INITIAL_CLUSTER"])
-	c.Args = append(c.Args, "--initial-cluster-token", config.Env["ETCD_INITIAL_CLUSTER_TOKEN"])
-	c.Args = append(c.Args, "--initial-advertise-peer-urls", config.Env["ETCD_INITIAL_ADVERTISE_PEER_URLS"])
-	c.Args = append(c.Args, "--data-dir", config.Env["ETCD_DATA_DIR"])
+	c.Args = []string{
+		config.EtcdutlBinaryFile,
+		"snapshot", "restore", snapshotFile,
+		"--name", config.Env["ETCD_NAME"],
+		"--initial-cluster", config.Env["ETCD_INITIAL_CLUSTER"],
+		"--initial-cluster-token", config.Env["ETCD_INITIAL_CLUSTER_TOKEN"],
+		"--initial-advertise-peer-urls", config.Env["ETCD_INITIAL_ADVERTISE_PEER_URLS"],
+		"--data-dir", config.Env["ETCD_DATA_DIR"],
+		"--bump-revision", fmt.Sprintf("%d", versionBump),
+	}
 	if d, ok := config.Env["ETCD_WAL_DIR"]; ok && d != "" {
 		c.Args = append(c.Args, "--wal-dir", d)
+	}
+	if versionBump > 0 {
+		c.Args = append(c.Args, "--mark-compacted")
 	}
 	c.Env = config.WriteEnv()
 	c.Stdout = os.Stdout
