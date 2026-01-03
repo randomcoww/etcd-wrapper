@@ -72,13 +72,15 @@ func TestRunnerWithRestore(t *testing.T) {
 
 	// -- test replacing one node --- //
 
-	for i, config := range configs[:1] {
+	for i := range configs[:1] {
 		ps[i].Stop()
 		ps[i].Wait()
+	}
 
+	for i, config := range configs[:1] {
+		time.Sleep(config.ClusterTimeout + 2*time.Second)
 		err := RunEtcd(ctx, config, ps[i], s3)
 		assert.NoError(t, err)
-		time.Sleep(config.ClusterTimeout + 2*time.Second)
 	}
 
 	// verify quorum, nodes, and backup
@@ -89,13 +91,15 @@ func TestRunnerWithRestore(t *testing.T) {
 
 	// --- test replacing two nodes (break quorum) --- //
 
-	for i, config := range configs[:2] {
+	for i := range configs[:2] {
 		ps[i].Stop()
 		ps[i].Wait()
+	}
 
+	for i, config := range configs[:2] {
+		time.Sleep(config.ClusterTimeout + 2*time.Second)
 		err := RunEtcd(ctx, config, ps[i], s3)
 		assert.NoError(t, err)
-		time.Sleep(config.ClusterTimeout + 2*time.Second)
 	}
 
 	// verify quorum, nodes, and backup
