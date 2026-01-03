@@ -48,14 +48,18 @@ func NewClient(config *c.Config) (*client, error) {
 func (c *client) Download(ctx context.Context, config *c.Config, handler func(context.Context, io.Reader) error) (bool, error) {
 	object, err := c.GetObject(ctx, config.S3BackupBucket, config.S3BackupKey, minio.GetObjectOptions{})
 	if err != nil {
-		switch minio.ToErrorResponse(err).StatusCode {
-		case 404:
-			return false, nil
-		default:
-			return false, fmt.Errorf("download: %w", err)
-		}
+		return false, err
 	}
 	defer object.Close()
+	_, err = object.Stat()
+	if err != nil {
+		switch minio.ToErrorResponse(err).Code {
+		case minio.NoSuchKey, minio.NoSuchBucket:
+			return false, nil
+		default:
+			return false, err
+		}
+	}
 	return true, handler(ctx, object)
 }
 
