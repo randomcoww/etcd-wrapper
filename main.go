@@ -7,10 +7,10 @@ import (
 	"github.com/randomcoww/etcd-wrapper/pkg/runner"
 	"github.com/randomcoww/etcd-wrapper/pkg/s3client"
 	"os"
-	"time"
 	"os/signal"
-	"syscall"
 	"sync"
+	"syscall"
+	"time"
 )
 
 func main() {
