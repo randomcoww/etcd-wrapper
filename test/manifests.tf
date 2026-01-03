@@ -180,9 +180,9 @@ module "etcd" {
           "-local-client-url",
           each.value.client_url,
           "-etcd-binary-file",
-          "/etcd/usr/local/bin/etcd",
+          "/bin/etcd",
           "-etcdutl-binary-file",
-          "/etcd/usr/local/bin/etcdutl",
+          "/bin/etcdutl",
           "-s3-backup-resource",
           "https://127.0.0.1:${local.minio_port}/${local.minio_bucket}/snapshot/etcd.db",
           "-s3-backup-ca-file",
@@ -242,10 +242,11 @@ module "etcd" {
             name      = "data"
             mountPath = "/etc/etcd"
           },
-          {
-            name      = "etcd"
-            mountPath = "/etcd"
-          },
+          # TODO: enable once this works better on kubernetes
+          # {
+          #   name      = "etcd"
+          #   mountPath = "/etcd"
+          # },
         ]
       },
     ]
@@ -256,13 +257,14 @@ module "etcd" {
           path = abspath(local.base_path)
         }
       },
-      {
-        name = "etcd"
-        image = {
-          reference  = "gcr.io/etcd-development/etcd:v3.6.6"
-          pullPolicy = "IfNotPresent"
-        }
-      }
+      # TODO: enable once this works better on kubernetes
+      # {
+      #   name = "etcd"
+      #   image = {
+      #     reference  = "gcr.io/etcd-development/etcd:v3.6.6"
+      #     pullPolicy = "IfNotPresent"
+      #   }
+      # }
     ]
   }
 }
