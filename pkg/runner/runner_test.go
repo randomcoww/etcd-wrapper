@@ -24,17 +24,20 @@ func TestRunnerFreshCluster(t *testing.T) {
 	defer cancel()
 	s3 := s3client.NewMockNoBackupClient() // <-- simulate no backup found
 
+	var ps []etcdprocess.EtcdProcess
 	configs := c.MockRunConfigs(dataPath)
 	for _, config := range configs {
 		p := etcdprocess.NewEtcdProcess()
 		defer p.Wait()
 		defer p.Stop()
+		ps = append(ps, p)
 
 		err := RunEtcd(ctx, config, p, s3)
 		assert.NoError(t, err)
-		time.Sleep(4 * time.Second) // <- greater than cluster wait
+		time.Sleep(config.ClusterTimeout + 2*time.Second)
 	}
 
+	// verify quorum, nodes, and backup
 	for _, config := range configs {
 		err := RunBackup(ctx, config, s3)
 		assert.NoError(t, err)
@@ -49,15 +52,17 @@ func TestRunnerWithRestore(t *testing.T) {
 	defer cancel()
 	s3 := s3client.NewMockSuccessClient() // <-- simulate backup restored
 
+	var ps []etcdprocess.EtcdProcess
 	configs := c.MockRunConfigs(dataPath)
 	for _, config := range configs {
 		p := etcdprocess.NewEtcdProcess()
 		defer p.Wait()
 		defer p.Stop()
+		ps = append(ps, p)
 
 		err := RunEtcd(ctx, config, p, s3)
 		assert.NoError(t, err)
-		time.Sleep(6 * time.Second) // <- greater than cluster wait
+		time.Sleep(config.ClusterTimeout + 2*time.Second)
 	}
 
 	for _, config := range configs {
@@ -65,6 +70,41 @@ func TestRunnerWithRestore(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
+	// -- test replacing one node --- //
+
+	for i, config := range configs[:1] {
+		ps[i].Stop()
+		ps[i].Wait()
+
+		err := RunEtcd(ctx, config, ps[i], s3)
+		assert.NoError(t, err)
+		time.Sleep(config.ClusterTimeout + 2*time.Second)
+	}
+
+	// verify quorum, nodes, and backup
+	for _, config := range configs {
+		err := RunBackup(ctx, config, s3)
+		assert.NoError(t, err)
+	}
+
+	// --- test replacing two nodes (break quorum) --- //
+
+	for i, config := range configs[:2] {
+		ps[i].Stop()
+		ps[i].Wait()
+
+		err := RunEtcd(ctx, config, ps[i], s3)
+		assert.NoError(t, err)
+		time.Sleep(config.ClusterTimeout + 2*time.Second)
+	}
+
+	// verify quorum, nodes, and backup
+	for _, config := range configs {
+		err := RunBackup(ctx, config, s3)
+		assert.NoError(t, err)
+	}
+
+	// verify that test data is readable
 	clientCtx, _ := context.WithTimeout(ctx, time.Duration(20*time.Second))
 	client, err := etcdclient.NewClientFromPeers(clientCtx, configs[2])
 	assert.NoError(t, err)
