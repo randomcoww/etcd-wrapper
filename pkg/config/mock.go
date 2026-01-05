@@ -5,18 +5,18 @@ import (
 	"go.uber.org/zap"
 	"path/filepath"
 	"strings"
-	"time"
-)
-
-const (
-	clientPortBase    int    = 8080
-	peerPortBase      int    = 8090
-	etcdBinaryFile    string = "/etcd/usr/local/bin/etcd"
-	etcdutlBinaryFile string = "/etcd/usr/local/bin/etcdutl"
-	baseTestPath      string = "../../test/outputs"
 )
 
 func MockRunConfigs(dataPath string) []*Config {
+	var (
+		clientPortBase    int    = 8080
+		peerPortBase      int    = 8090
+		minioPort int = 9000
+		etcdBinaryFile    string = "/etcd/usr/local/bin/etcd"
+		etcdutlBinaryFile string = "/etcd/usr/local/bin/etcdutl"
+		baseTestPath      string = "../../test/outputs"
+	)
+
 	members := []string{
 		"node0",
 		"node1",
@@ -28,21 +28,24 @@ func MockRunConfigs(dataPath string) []*Config {
 	}
 	logger, _ := zap.NewProduction()
 
+	commonArgs := []string{
+		"etcd-wrapper",
+		"-etcd-binary-file", etcdBinaryFile,
+		"-etcdutl-binary-file", etcdutlBinaryFile,
+		"-s3-backup-resource", fmt.Sprintf("127.0.0.1:%d/test-bucket/test-key/etcd-wrapper", minioPort),
+		"-s3-backup-ca-file", filepath.Join(baseTestPath, "minio", "certs", "CAs", "ca.crt"),
+		"-initial-cluster-timeout", "2s",
+		"-restore-snapshot-timeout", "2s",
+		"-member-replace-timeout", "8s",
+		"-status-timeout", "8s",
+		"-upload-snapshot-timeout", "8s",
+		"-backup-interval", "8s",
+	}
+
 	var configs []*Config
 	for i, member := range members {
 		config := &Config{
-			EtcdBinaryFile:    etcdBinaryFile,
-			EtcdutlBinaryFile: etcdutlBinaryFile,
-			S3BackupHost:      "https://test.internal",
-			S3BackupBucket:    "bucket",
-			S3BackupKey:       "path/key",
-			Logger:            logger,
-			ClusterTimeout:    2 * time.Second,
-			RestoreTimeout:    2 * time.Second,
-			ReplaceTimeout:    8 * time.Second,
-			StatusTimeout:     8 * time.Second,
-			UploadTimeout:     8 * time.Second,
-			LocalClientURL:    fmt.Sprintf("https://127.0.0.1:%d", clientPortBase+i),
+			Logger: logger,
 			Env: map[string]string{
 				"ETCD_DATA_DIR":                    filepath.Join(dataPath, member+".etcd"),
 				"ETCD_NAME":                        member,
@@ -65,8 +68,11 @@ func MockRunConfigs(dataPath string) []*Config {
 				"ETCD_AUTO_COMPACTION_RETENTION":   "1",
 				"ETCD_AUTO_COMPACTION_MODE":        "revision",
 				"ETCD_SOCKET_REUSE_ADDRESS":        "true",
+				"AWS_ACCESS_KEY_ID": "rootUser",
+				"AWS_SECRET_ACCESS_KEY": "rootPassword",
 			},
 		}
+		config.parseArgs(append(commonArgs, "-local-client-url", fmt.Sprintf("https://127.0.0.1:%d", clientPortBase+i)))
 		config.parseEnvs()
 		configs = append(configs, config)
 	}

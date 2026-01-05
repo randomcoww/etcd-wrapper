@@ -6,11 +6,11 @@ import (
 	"testing"
 )
 
-const (
-	member string = "node0"
-)
-
 func TestConfig(t *testing.T) {
+	var (
+		member string = "node0"
+	)
+
 	t.Setenv("ETCD_NAME", "test")
 	t.Setenv("ETCD_LISTEN_CLIENT_URLS", "https://10.1.0.1:9080,https://127.0.0.1:9080,https://10.0.0.1:9080")
 	t.Setenv("ETCD_INITIAL_ADVERTISE_PEER_URLS", "https://10.0.0.1:8080")

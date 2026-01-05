@@ -12,10 +12,6 @@ import (
 	"time"
 )
 
-const (
-	baseTestPath string = "../../test"
-)
-
 func TestRunnerFreshCluster(t *testing.T) {
 	dataPath, _ := os.MkdirTemp("", "etcd-test-*")
 	defer os.RemoveAll(dataPath)

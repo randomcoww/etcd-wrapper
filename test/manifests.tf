@@ -3,6 +3,7 @@ locals {
   url_regex     = "[a-z]+://(?<ip>[\\d.]+):(?<port>\\d+)"
   data_path     = "/var/lib/etcd"
   base_path     = "outputs"
+  etcd_mount_path = "/etcd"
   cluster_token = "test"
   members = {
     node0 = {
@@ -180,9 +181,9 @@ module "etcd" {
           "-local-client-url",
           each.value.client_url,
           "-etcd-binary-file",
-          "/bin/etcd",
+          "${local.etcd_mount_path}/usr/local/bin/etcd",
           "-etcdutl-binary-file",
-          "/bin/etcdutl",
+          "${local.etcd_mount_path}/usr/local/bin/etcdutl",
           "-s3-backup-resource",
           "https://127.0.0.1:${local.minio_port}/${local.minio_bucket}/snapshot/etcd.db",
           "-s3-backup-ca-file",
@@ -242,11 +243,10 @@ module "etcd" {
             name      = "data"
             mountPath = "/etc/etcd"
           },
-          # TODO: enable once this works better on kubernetes
-          # {
-          #   name      = "etcd"
-          #   mountPath = "/etcd"
-          # },
+          {
+            name      = "etcd"
+            mountPath = local.etcd_mount_path
+          },
         ]
       },
     ]
@@ -257,14 +257,13 @@ module "etcd" {
           path = abspath(local.base_path)
         }
       },
-      # TODO: enable once this works better on kubernetes
-      # {
-      #   name = "etcd"
-      #   image = {
-      #     reference  = "gcr.io/etcd-development/etcd:v3.6.6"
-      #     pullPolicy = "IfNotPresent"
-      #   }
-      # }
+      {
+        name = "etcd"
+        image = {
+          reference  = "gcr.io/etcd-development/etcd:v3.6.6"
+          pullPolicy = "IfNotPresent"
+        }
+      }
     ]
   }
 }
