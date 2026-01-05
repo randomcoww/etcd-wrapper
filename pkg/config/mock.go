@@ -11,7 +11,7 @@ func MockRunConfigs(dataPath string) []*Config {
 	var (
 		clientPortBase    int    = 8080
 		peerPortBase      int    = 8090
-		minioPort int = 9000
+		minioPort         int    = 9000
 		etcdBinaryFile    string = "/etcd/usr/local/bin/etcd"
 		etcdutlBinaryFile string = "/etcd/usr/local/bin/etcdutl"
 		baseTestPath      string = "../../test/outputs"
@@ -68,8 +68,8 @@ func MockRunConfigs(dataPath string) []*Config {
 				"ETCD_AUTO_COMPACTION_RETENTION":   "1",
 				"ETCD_AUTO_COMPACTION_MODE":        "revision",
 				"ETCD_SOCKET_REUSE_ADDRESS":        "true",
-				"AWS_ACCESS_KEY_ID": "rootUser",
-				"AWS_SECRET_ACCESS_KEY": "rootPassword",
+				"AWS_ACCESS_KEY_ID":                "rootUser",
+				"AWS_SECRET_ACCESS_KEY":            "rootPassword",
 			},
 		}
 		config.parseArgs(append(commonArgs, "-local-client-url", fmt.Sprintf("https://127.0.0.1:%d", clientPortBase+i)))

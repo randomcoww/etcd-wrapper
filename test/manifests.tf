@@ -1,10 +1,10 @@
 
 locals {
-  url_regex     = "[a-z]+://(?<ip>[\\d.]+):(?<port>\\d+)"
-  data_path     = "/var/lib/etcd"
-  base_path     = "outputs"
+  url_regex       = "[a-z]+://(?<ip>[\\d.]+):(?<port>\\d+)"
+  data_path       = "/var/lib/etcd"
+  base_path       = "outputs"
   etcd_mount_path = "/etcd"
-  cluster_token = "test"
+  cluster_token   = "test"
   members = {
     node0 = {
       client_url            = "https://127.0.0.1:8080"
