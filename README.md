@@ -23,7 +23,7 @@ Go build and test
 ```bash
 podman volume create \
   --driver image \
-  --opt image="gcr.io/etcd-development/etcd:v3.6.6" etcdvolume
+  --opt image="registry.k8s.io/etcd:v3.6.7" etcdvolume
 
 podman run -it --rm \
   -v $(pwd):/go/src \

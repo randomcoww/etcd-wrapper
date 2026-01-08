@@ -9,7 +9,8 @@ import (
 )
 
 const (
-	baseTestPath string = "../../test"
+	baseTestPath    string = "../../test"
+	minioBinaryFile string = "/minio/usr/bin/minio"
 )
 
 type mockClientSuccess struct {
@@ -28,6 +29,10 @@ func NewMockNoBackupClient() *mockClientNoBackup {
 	return &mockClientNoBackup{}
 }
 
+func (c *mockClientSuccess) Verify(ctx context.Context, config *c.Config) error {
+	return nil
+}
+
 func (c *mockClientSuccess) Download(ctx context.Context, config *c.Config, handler func(context.Context, io.Reader) error) (bool, error) {
 	file, err := os.Open(filepath.Join(baseTestPath, "test-snapshot.db"))
 	if err != nil {
@@ -38,6 +43,10 @@ func (c *mockClientSuccess) Download(ctx context.Context, config *c.Config, hand
 }
 
 func (c *mockClientSuccess) Upload(ctx context.Context, config *c.Config, reader io.Reader) error {
+	return nil
+}
+
+func (c *mockClientNoBackup) Verify(ctx context.Context, config *c.Config) error {
 	return nil
 }
 

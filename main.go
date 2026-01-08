@@ -6,6 +6,7 @@ import (
 	"github.com/randomcoww/etcd-wrapper/pkg/etcdprocess"
 	"github.com/randomcoww/etcd-wrapper/pkg/runner"
 	"github.com/randomcoww/etcd-wrapper/pkg/s3client"
+	"go.uber.org/zap"
 	"os"
 	"os/signal"
 	"sync"
@@ -16,6 +17,7 @@ import (
 func main() {
 	config, err := c.NewConfig(os.Args)
 	if err != nil {
+		config.Logger.Error("parse config", zap.Error(err))
 		os.Exit(1)
 	}
 
@@ -23,18 +25,26 @@ func main() {
 	defer p.Wait()
 	defer p.Stop()
 
-	s3, err := s3client.NewClient(config)
-	if err != nil {
-		os.Exit(1)
-	}
-
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
+	s3, err := s3client.NewClient(config)
+	if err != nil {
+		config.Logger.Error("create s3 backup client", zap.Error(err))
+		os.Exit(1)
+	}
+	verifyCtx, _ := context.WithTimeout(ctx, 4*time.Second)
+	err = s3.Verify(verifyCtx, config)
+	if err != nil {
+		config.Logger.Error("verify backup bucket", zap.Error(err))
+		os.Exit(1)
+	}
+
 	if err := runner.RunEtcd(ctx, config, p, s3); err != nil {
+		config.Logger.Error("start etcd", zap.Error(err))
 		os.Exit(1)
 	}
 

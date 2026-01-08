@@ -7,14 +7,20 @@ import (
 	"strings"
 )
 
+const (
+	baseTestPath string = "../../test/outputs"
+)
+
 func MockRunConfigs(dataPath string) []*Config {
 	var (
 		clientPortBase    int    = 8080
 		peerPortBase      int    = 8090
 		minioPort         int    = 9000
+		minioBucket       string = "etcd"
+		minioUser         string = "rootUser"
+		minioPassword     string = "rootPassword"
 		etcdBinaryFile    string = "/etcd/usr/local/bin/etcd"
 		etcdutlBinaryFile string = "/etcd/usr/local/bin/etcdutl"
-		baseTestPath      string = "../../test/outputs"
 	)
 
 	members := []string{
@@ -32,7 +38,7 @@ func MockRunConfigs(dataPath string) []*Config {
 		"etcd-wrapper",
 		"-etcd-binary-file", etcdBinaryFile,
 		"-etcdutl-binary-file", etcdutlBinaryFile,
-		"-s3-backup-resource", fmt.Sprintf("127.0.0.1:%d/test-bucket/test-key/etcd-wrapper", minioPort),
+		"-s3-backup-resource", fmt.Sprintf("https://127.0.0.1:%d/%s/test-key/etcd-wrapper", minioPort, minioBucket),
 		"-s3-backup-ca-file", filepath.Join(baseTestPath, "minio", "certs", "CAs", "ca.crt"),
 		"-initial-cluster-timeout", "2s",
 		"-restore-snapshot-timeout", "2s",
@@ -68,8 +74,8 @@ func MockRunConfigs(dataPath string) []*Config {
 				"ETCD_AUTO_COMPACTION_RETENTION":   "1",
 				"ETCD_AUTO_COMPACTION_MODE":        "revision",
 				"ETCD_SOCKET_REUSE_ADDRESS":        "true",
-				"AWS_ACCESS_KEY_ID":                "rootUser",
-				"AWS_SECRET_ACCESS_KEY":            "rootPassword",
+				"AWS_ACCESS_KEY_ID":                minioUser,
+				"AWS_SECRET_ACCESS_KEY":            minioPassword,
 			},
 		}
 		config.parseArgs(append(commonArgs, "-local-client-url", fmt.Sprintf("https://127.0.0.1:%d", clientPortBase+i)))

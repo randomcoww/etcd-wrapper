@@ -24,8 +24,8 @@ locals {
   }
   initial_startup_delay_seconds = 30
 
-  minio_username = "etcd"
-  minio_password = "password"
+  minio_username = "rootUser"
+  minio_password = "rootPassword"
   minio_port     = 9000
   minio_bucket   = "etcd"
 }

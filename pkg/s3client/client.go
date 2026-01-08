@@ -18,6 +18,7 @@ type client struct {
 }
 
 type Client interface {
+	Verify(context.Context, *c.Config) error
 	Download(context.Context, *c.Config, func(context.Context, io.Reader) error) (bool, error)
 	Upload(context.Context, *c.Config, io.Reader) error
 }
@@ -43,6 +44,17 @@ func NewClient(config *c.Config) (*client, error) {
 	return &client{
 		minioClient,
 	}, nil
+}
+
+func (c *client) Verify(ctx context.Context, config *c.Config) error {
+	ok, err := c.BucketExists(ctx, config.S3BackupBucket)
+	if err != nil {
+		return fmt.Errorf("failed to validate backup bucket: %w", err)
+	}
+	if !ok {
+		return fmt.Errorf("backup bucket not found")
+	}
+	return nil
 }
 
 func (c *client) Download(ctx context.Context, config *c.Config, handler func(context.Context, io.Reader) error) (bool, error) {
