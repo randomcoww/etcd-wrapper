@@ -63,7 +63,7 @@ func NewConfig(args []string) (*Config, error) {
 }
 
 func (config *Config) parseArgs(args []string) error {
-	var s3resource, s3CAFile string
+	var s3Resource, s3CAFile string
 	var cmd string
 	if len(args) > 0 {
 		cmd, args = args[0], args[1:]
@@ -71,7 +71,7 @@ func (config *Config) parseArgs(args []string) error {
 
 	fs := flag.NewFlagSet(cmd, flag.ExitOnError)
 	fs.StringVar(&config.LocalClientURL, "local-client-url", config.LocalClientURL, "URL of local etcd client")
-	fs.StringVar(&s3resource, "s3-backup-resource-prefix", s3resource, "S3 resource prefix for backup")
+	fs.StringVar(&s3Resource, "s3-backup-resource-prefix", s3Resource, "S3 resource prefix for backup")
 	fs.StringVar(&s3CAFile, "s3-backup-ca-file", s3CAFile, "CA file for S3 resource")
 	fs.IntVar(&config.S3BackupCount, "s3-backup-count", 4, "count of snapshots to retain")
 	fs.DurationVar(&config.ClusterTimeout, "initial-cluster-timeout", 2*time.Minute, "Initial existing cluster lookup timeout")
@@ -87,7 +87,7 @@ func (config *Config) parseArgs(args []string) error {
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	u, err := url.Parse(s3resource)
+	u, err := url.Parse(s3Resource)
 	if err != nil {
 		return err
 	}
