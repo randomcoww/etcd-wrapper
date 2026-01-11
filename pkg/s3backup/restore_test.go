@@ -15,7 +15,7 @@ func TestRestoreSnapshot(t *testing.T) {
 	dataPath, _ := os.MkdirTemp("", "etcd-test-*")
 	defer os.RemoveAll(dataPath)
 
-	configs := c.MockRunConfigs(dataPath, "restore-test")
+	configs := c.MockRunConfigs(dataPath, "restore-test-")
 	config := configs[0]
 
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
@@ -51,10 +51,10 @@ func TestRestore(t *testing.T) {
 
 	// --- test data --- //
 
-	err = minioClient.upload(clientCtx, config, config.S3BackupKeyPrefix+"-1.db", file)
+	err = minioClient.upload(clientCtx, config, config.S3BackupKeyPrefix+"1.db", file)
 	assert.NoError(t, err)
 
-	err = minioClient.upload(clientCtx, config, config.S3BackupKeyPrefix+"-2.db", bytes.NewBufferString("random-bad-data"))
+	err = minioClient.upload(clientCtx, config, config.S3BackupKeyPrefix+"2.db", bytes.NewBufferString("random-bad-data"))
 	assert.NoError(t, err)
 
 	// -- test restore -- //
@@ -66,8 +66,8 @@ func TestRestore(t *testing.T) {
 	// --- cleanup --- //
 
 	err = minioClient.remove(clientCtx, config, []string{
-		config.S3BackupKeyPrefix + "-1.db",
-		config.S3BackupKeyPrefix + "-2.db",
+		config.S3BackupKeyPrefix + "1.db",
+		config.S3BackupKeyPrefix + "2.db",
 	})
 	assert.NoError(t, err)
 }

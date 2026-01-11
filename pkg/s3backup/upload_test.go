@@ -14,7 +14,7 @@ func TestUploadSnapshot(t *testing.T) {
 	dataPath, _ := os.MkdirTemp("", "etcd-test-*")
 	defer os.RemoveAll(dataPath)
 
-	configs := c.MockRunConfigs(dataPath, "restore-test")
+	configs := c.MockRunConfigs(dataPath, "upload-test-")
 	config := configs[0]
 
 	t.Setenv("AWS_ACCESS_KEY_ID", config.Env["AWS_ACCESS_KEY_ID"])
@@ -55,15 +55,15 @@ func TestUploadSnapshot(t *testing.T) {
 		keysFound = append(keysFound, obj.Key)
 	}
 	assert.Equal(t, []string{
-		"restore-test-20000101-000200",
-		"restore-test-20000101-000300",
+		config.S3BackupKeyPrefix + "20000101-000200",
+		config.S3BackupKeyPrefix + "20000101-000300",
 	}, keysFound)
 
 	// --- cleanup --- //
 
 	err = minioClient.remove(clientCtx, config, []string{
-		"restore-test-20000101-000200",
-		"restore-test-20000101-000300",
+		config.S3BackupKeyPrefix + "20000101-000200",
+		config.S3BackupKeyPrefix + "20000101-000300",
 	})
 	assert.NoError(t, err)
 }
