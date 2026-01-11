@@ -5,7 +5,7 @@ import (
 	c "github.com/randomcoww/etcd-wrapper/pkg/config"
 	"github.com/randomcoww/etcd-wrapper/pkg/etcdprocess"
 	"github.com/randomcoww/etcd-wrapper/pkg/runner"
-	"github.com/randomcoww/etcd-wrapper/pkg/s3client"
+	"github.com/randomcoww/etcd-wrapper/pkg/s3backup"
 	"go.uber.org/zap"
 	"os"
 	"os/signal"
@@ -31,7 +31,7 @@ func main() {
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
-	s3, err := s3client.NewClient(config)
+	s3, err := s3backup.NewClient(config)
 	if err != nil {
 		config.Logger.Error("create s3 backup client", zap.Error(err))
 		os.Exit(1)

@@ -32,10 +32,12 @@ func TestConfig(t *testing.T) {
 		"/path/etcd",
 		"-etcdutl-binary-file",
 		"/path/etcdutl",
-		"-s3-backup-resource",
+		"-s3-backup-resource-prefix",
 		"https://test-1.internal:9000/bucket-1/path/etcd-0.db",
 		"-s3-backup-ca-file",
 		filepath.Join(baseTestPath, "minio", "certs", "CAs", "ca.crt"),
+		"-s3-backup-count",
+		"3",
 	})
 	assert.NoError(t, err)
 
@@ -62,7 +64,8 @@ func TestConfig(t *testing.T) {
 	assert.Equal(t, "/path/etcdutl", c.EtcdutlBinaryFile)
 	assert.Equal(t, "test-1.internal:9000", c.S3BackupHost)
 	assert.Equal(t, "bucket-1", c.S3BackupBucket)
-	assert.Equal(t, "path/etcd-0.db", c.S3BackupKey)
+	assert.Equal(t, "path/etcd-0.db", c.S3BackupKeyPrefix)
+	assert.Equal(t, 3, c.S3BackupCount)
 	assert.Equal(t, "https://127.0.0.1:9080", c.LocalClientURL)
 	assert.Equal(t, []string{
 		"https://10.0.0.1:8080",

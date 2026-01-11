@@ -1,4 +1,4 @@
-package s3client
+package s3backup
 
 import (
 	"context"
@@ -16,7 +16,7 @@ func TestClient(t *testing.T) {
 	dataPath, _ := os.MkdirTemp("", "etcd-test-*")
 	defer os.RemoveAll(dataPath)
 
-	configs := c.MockRunConfigs(dataPath)
+	configs := c.MockRunConfigs(dataPath, "test-client")
 	config := configs[0]
 
 	t.Setenv("AWS_ACCESS_KEY_ID", config.Env["AWS_ACCESS_KEY_ID"])
@@ -34,8 +34,25 @@ func TestClient(t *testing.T) {
 	file, _ := os.Open(filepath.Join(baseTestPath, "test-snapshot.db"))
 	defer file.Close()
 
-	err = minioClient.Upload(clientCtx, config, file)
+	// --- upload --- //
+
+	err = minioClient.upload(clientCtx, config, config.S3BackupKeyPrefix+"-1.db", file)
 	assert.NoError(t, err)
+
+	// --- list --- //
+
+	var keysFound []string
+	objects, err := minioClient.list(clientCtx, config)
+	assert.NoError(t, err)
+	for _, obj := range objects {
+		assert.NoError(t, obj.Err)
+		keysFound = append(keysFound, obj.Key)
+	}
+	assert.Equal(t, []string{
+		config.S3BackupKeyPrefix + "-1.db",
+	}, keysFound)
+
+	// --- download --- //
 
 	dir, _ := os.MkdirTemp("", "etcd-wrapper-*")
 	defer os.RemoveAll(dir)
@@ -44,7 +61,7 @@ func TestClient(t *testing.T) {
 	defer os.RemoveAll(snapshotFile.Name())
 	defer snapshotFile.Close()
 
-	ok, err := minioClient.Download(clientCtx, config, func(ctx context.Context, reader io.Reader) error {
+	ok, err := minioClient.download(clientCtx, config, config.S3BackupKeyPrefix+"-1.db", func(ctx context.Context, reader io.Reader) error {
 		b, err := io.Copy(snapshotFile, reader)
 		if err != nil {
 			return err
@@ -56,4 +73,24 @@ func TestClient(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.True(t, ok)
+
+	// --- delete --- //
+
+	err = minioClient.remove(clientCtx, config, []string{config.S3BackupKeyPrefix + "-1.db"})
+	assert.NoError(t, err)
+
+	// --- check deleted and no ley exists response --- //
+
+	ok, err = minioClient.download(clientCtx, config, config.S3BackupKeyPrefix+"-1.db", func(ctx context.Context, reader io.Reader) error {
+		b, err := io.Copy(snapshotFile, reader)
+		if err != nil {
+			return err
+		}
+		if b == 0 {
+			return fmt.Errorf("snapshot file download size was 0")
+		}
+		return nil
+	})
+	assert.NoError(t, err)
+	assert.False(t, ok)
 }

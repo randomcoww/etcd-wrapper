@@ -1,8 +1,9 @@
-package s3client
+package s3backup
 
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -15,12 +16,13 @@ import (
 
 type client struct {
 	*minio.Client
+	now func() time.Time
 }
 
 type Client interface {
 	Verify(context.Context, *c.Config) error
-	Download(context.Context, *c.Config, func(context.Context, io.Reader) error) (bool, error)
-	Upload(context.Context, *c.Config, io.Reader) error
+	RestoreSnapshot(context.Context, *c.Config, uint64) (bool, error)
+	UploadSnapshot(context.Context, *c.Config, io.Reader) error
 }
 
 func NewClient(config *c.Config) (*client, error) {
@@ -42,7 +44,8 @@ func NewClient(config *c.Config) (*client, error) {
 		return nil, err
 	}
 	return &client{
-		minioClient,
+		Client: minioClient,
+		now:    func() time.Time { return time.Now() },
 	}, nil
 }
 
@@ -57,8 +60,8 @@ func (c *client) Verify(ctx context.Context, config *c.Config) error {
 	return nil
 }
 
-func (c *client) Download(ctx context.Context, config *c.Config, handler func(context.Context, io.Reader) error) (bool, error) {
-	object, err := c.GetObject(ctx, config.S3BackupBucket, config.S3BackupKey, minio.GetObjectOptions{})
+func (c *client) download(ctx context.Context, config *c.Config, key string, handler func(context.Context, io.Reader) error) (bool, error) {
+	object, err := c.GetObject(ctx, config.S3BackupBucket, key, minio.GetObjectOptions{})
 	if err != nil {
 		return false, err
 	}
@@ -75,7 +78,7 @@ func (c *client) Download(ctx context.Context, config *c.Config, handler func(co
 	return true, handler(ctx, object)
 }
 
-func (c *client) Upload(ctx context.Context, config *c.Config, reader io.Reader) error {
+func (c *client) upload(ctx context.Context, config *c.Config, key string, reader io.Reader) error {
 	buf := &bytes.Buffer{}
 	size, err := io.Copy(buf, reader)
 	if err != nil {
@@ -84,10 +87,10 @@ func (c *client) Upload(ctx context.Context, config *c.Config, reader io.Reader)
 	if size == 0 {
 		return fmt.Errorf("upload: size is 0")
 	}
-	if _, err = c.PutObject(ctx, config.S3BackupBucket, config.S3BackupKey, buf, size, minio.PutObjectOptions{
+	if _, err = c.PutObject(ctx, config.S3BackupBucket, key, buf, size, minio.PutObjectOptions{
 		AutoChecksum: minio.ChecksumCRC32,
 	}); err != nil {
-		if cleanupErr := c.cleanupIncomplete(config); cleanupErr != nil {
+		if cleanupErr := c.cleanupIncomplete(config, key); cleanupErr != nil {
 			return fmt.Errorf("upload: failed to put object: %w\n  failed to cleanup incomplete upload: %w", err, cleanupErr)
 		}
 		return fmt.Errorf("upload: failed to put object: %w", err)
@@ -95,9 +98,43 @@ func (c *client) Upload(ctx context.Context, config *c.Config, reader io.Reader)
 	return nil
 }
 
-func (c *client) cleanupIncomplete(config *c.Config) error {
+func (c *client) cleanupIncomplete(config *c.Config, key string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 
-	return c.RemoveIncompleteUpload(ctx, config.S3BackupBucket, config.S3BackupKey)
+	return c.RemoveIncompleteUpload(ctx, config.S3BackupBucket, key)
+}
+
+func (c *client) remove(ctx context.Context, config *c.Config, keys []string) error {
+	objectsCh := make(chan minio.ObjectInfo)
+	go func() {
+		defer close(objectsCh)
+		for _, k := range keys {
+			objectsCh <- minio.ObjectInfo{
+				Key: k,
+			}
+		}
+	}()
+
+	var errs []error
+	errorCh := c.RemoveObjects(ctx, config.S3BackupBucket, objectsCh, minio.RemoveObjectsOptions{})
+	for e := range errorCh {
+		errs = append(errs, e.Err)
+	}
+	return errors.Join(errs...)
+}
+
+func (c *client) list(ctx context.Context, config *c.Config) ([]minio.ObjectInfo, error) {
+	objectCh := c.ListObjects(ctx, config.S3BackupBucket, minio.ListObjectsOptions{
+		Prefix:    config.S3BackupKeyPrefix,
+		Recursive: true,
+	})
+	var objects []minio.ObjectInfo
+	for object := range objectCh {
+		if object.Err != nil {
+			return objects, fmt.Errorf("list: failed list objects: %w", object.Err)
+		}
+		objects = append(objects, object)
+	}
+	return objects, nil
 }

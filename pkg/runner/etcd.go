@@ -2,20 +2,18 @@ package runner
 
 import (
 	"context"
-	"fmt"
 	c "github.com/randomcoww/etcd-wrapper/pkg/config"
 	"github.com/randomcoww/etcd-wrapper/pkg/etcdclient"
 	"github.com/randomcoww/etcd-wrapper/pkg/etcdprocess"
-	"github.com/randomcoww/etcd-wrapper/pkg/s3client"
+	"github.com/randomcoww/etcd-wrapper/pkg/s3backup"
 	"github.com/randomcoww/etcd-wrapper/pkg/util"
 	etcdserverpb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.uber.org/zap"
-	"io"
 	"os"
 	"time"
 )
 
-func RunEtcd(ctx context.Context, config *c.Config, p etcdprocess.EtcdProcess, s3 s3client.Client) error {
+func RunEtcd(ctx context.Context, config *c.Config, p etcdprocess.EtcdProcess, s3 s3backup.Client) error {
 	defer config.Logger.Sync()
 
 	// always clean out data
@@ -41,7 +39,7 @@ func RunEtcd(ctx context.Context, config *c.Config, p etcdprocess.EtcdProcess, s
 		// no members found
 		config.Logger.Info("no members found")
 
-		ok, err := restoreSnapshot(ctx, config, s3, 1000000000)
+		ok, err := s3.RestoreSnapshot(ctx, config, 1000000000)
 		if err != nil {
 			return err
 		}
@@ -97,52 +95,6 @@ func RunEtcd(ctx context.Context, config *c.Config, p etcdprocess.EtcdProcess, s
 
 	config.Logger.Info("starting member existing")
 	return p.StartEtcdExisting(ctx, config)
-}
-
-func restoreSnapshot(ctx context.Context, config *c.Config, s3 s3client.Client, versionBump uint64) (bool, error) {
-	config.Logger.Info("attempting snapshot restore")
-	ctx, _ = context.WithTimeout(ctx, time.Duration(config.RestoreTimeout))
-
-	dir, err := os.MkdirTemp("", "etcd-wrapper-*")
-	if err != nil {
-		config.Logger.Error("create path for snapshot failed", zap.Error(err))
-		return false, err
-	}
-	defer os.RemoveAll(dir)
-
-	snapshotFile, err := os.CreateTemp(dir, "snapshot-restore-*.db")
-	if err != nil {
-		config.Logger.Error("open file for snapshot failed", zap.Error(err))
-		return false, err
-	}
-	defer os.RemoveAll(snapshotFile.Name())
-	defer snapshotFile.Close()
-	config.Logger.Info("opened file for snapshot")
-
-	ok, err := s3.Download(ctx, config, func(ctx context.Context, reader io.Reader) error {
-		b, err := io.Copy(snapshotFile, reader)
-		if err != nil {
-			return err
-		}
-		if b == 0 {
-			return fmt.Errorf("snapshot file download size was 0")
-		}
-		return nil
-	})
-	if err != nil {
-		config.Logger.Error("download snapshot failed", zap.Error(err))
-		return false, err
-	}
-	if !ok {
-		config.Logger.Info("no snapshots found")
-		return false, nil
-	}
-	if err := etcdprocess.RestoreV3Snapshot(ctx, config, snapshotFile.Name(), versionBump); err != nil {
-		config.Logger.Error("restore snapshot failed", zap.Error(err))
-		return false, err
-	}
-	config.Logger.Info("finished restoring snapshot")
-	return true, nil
 }
 
 func findLocalMember(listResp etcdclient.Members, config *c.Config) *etcdserverpb.Member {

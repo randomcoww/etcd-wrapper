@@ -11,7 +11,7 @@ const (
 	baseTestPath string = "../../test/outputs"
 )
 
-func MockRunConfigs(dataPath string) []*Config {
+func MockRunConfigs(dataPath, backupKeyPrefix string) []*Config {
 	var (
 		clientPortBase    int    = 8080
 		peerPortBase      int    = 8090
@@ -38,8 +38,9 @@ func MockRunConfigs(dataPath string) []*Config {
 		"etcd-wrapper",
 		"-etcd-binary-file", etcdBinaryFile,
 		"-etcdutl-binary-file", etcdutlBinaryFile,
-		"-s3-backup-resource", fmt.Sprintf("https://127.0.0.1:%d/%s/test-key/etcd-wrapper", minioPort, minioBucket),
+		"-s3-backup-resource-prefix", fmt.Sprintf("https://127.0.0.1:%d/%s/%s-", minioPort, minioBucket, backupKeyPrefix),
 		"-s3-backup-ca-file", filepath.Join(baseTestPath, "minio", "certs", "CAs", "ca.crt"),
+		"-s3-backup-count", "2",
 		"-initial-cluster-timeout", "2s",
 		"-restore-snapshot-timeout", "2s",
 		"-member-replace-timeout", "8s",

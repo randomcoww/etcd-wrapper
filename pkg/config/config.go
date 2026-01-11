@@ -26,7 +26,8 @@ type Config struct {
 	EtcdutlBinaryFile        string
 	S3BackupHost             string
 	S3BackupBucket           string
-	S3BackupKey              string
+	S3BackupKeyPrefix        string
+	S3BackupCount            int
 	S3TLSConfig              *tls.Config
 	ClusterTimeout           time.Duration
 	RestoreTimeout           time.Duration
@@ -70,8 +71,9 @@ func (config *Config) parseArgs(args []string) error {
 
 	fs := flag.NewFlagSet(cmd, flag.ExitOnError)
 	fs.StringVar(&config.LocalClientURL, "local-client-url", config.LocalClientURL, "URL of local etcd client")
-	fs.StringVar(&s3resource, "s3-backup-resource", s3resource, "S3 resource for backup")
+	fs.StringVar(&s3resource, "s3-backup-resource-prefix", s3resource, "S3 resource prefix for backup")
 	fs.StringVar(&s3CAFile, "s3-backup-ca-file", s3CAFile, "CA file for S3 resource")
+	fs.IntVar(&config.S3BackupCount, "s3-backup-count", 4, "count of snapshots to retain")
 	fs.DurationVar(&config.ClusterTimeout, "initial-cluster-timeout", 2*time.Minute, "Initial existing cluster lookup timeout")
 	fs.StringVar(&config.EtcdBinaryFile, "etcd-binary-file", config.EtcdBinaryFile, "Path to etcd binary")
 	fs.StringVar(&config.EtcdutlBinaryFile, "etcdutl-binary-file", config.EtcdutlBinaryFile, "Path to etcdutl binary")
@@ -98,7 +100,7 @@ func (config *Config) parseArgs(args []string) error {
 		return fmt.Errorf("bucket and key not found in s3-backup-resource")
 	}
 	config.S3BackupBucket = parts[1]
-	config.S3BackupKey = strings.Join(parts[2:], "/")
+	config.S3BackupKeyPrefix = strings.Join(parts[2:], "/")
 
 	var s3CAFiles []string
 	if s3CAFile != "" {

@@ -36,7 +36,8 @@ podman run -it --rm \
 Build test container
 
 ```bash
-podman build -t etcd-wrapper .
+ETCD_VERSION=$(curl -s https://api.github.com/repos/etcd-io/etcd/tags | grep name | head -1 | cut -d '"' -f 4)
+podman build --build-arg=ETCD_VERSION=$ETCD_VERSION -t etcd-wrapper .
 ```
 
 Run test cluster
@@ -47,4 +48,10 @@ podman play kube test/outputs/minio.yaml
 podman play kube test/outputs/node0.yaml
 podman play kube test/outputs/node1.yaml
 podman play kube test/outputs/node2.yaml
+```
+
+Check backups
+
+```bash
+podman exec <mc_container> mc ls m/etcd/integ
 ```
