@@ -54,5 +54,5 @@ podman play kube test/outputs/node2.yaml
 Check backups
 
 ```bash
-podman exec <mc_container> mc ls m/etcd/integ
+podman exec minio-mc mc ls m/etcd/integ
 ```

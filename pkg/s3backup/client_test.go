@@ -79,7 +79,7 @@ func TestClient(t *testing.T) {
 	err = minioClient.remove(clientCtx, config, []string{config.S3BackupKeyPrefix + "-1.db"})
 	assert.NoError(t, err)
 
-	// --- check deleted and no ley exists response --- //
+	// --- check deleted and no key exists response --- //
 
 	ok, err = minioClient.download(clientCtx, config, config.S3BackupKeyPrefix+"-1.db", func(ctx context.Context, reader io.Reader) error {
 		b, err := io.Copy(snapshotFile, reader)
