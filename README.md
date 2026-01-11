@@ -21,9 +21,10 @@ terraform -chdir=test init -upgrade && terraform -chdir=test apply
 Go build and test
 
 ```bash
+ETCD_VERSION=$(curl -s https://api.github.com/repos/etcd-io/etcd/tags | grep name | head -1 | cut -d '"' -f 4)
 podman volume create \
   --driver image \
-  --opt image="registry.k8s.io/etcd:v3.6.7" etcdvolume
+  --opt image="registry.k8s.io/etcd:$ETCD_VERSION" etcdvolume
 
 podman run -it --rm \
   -v $(pwd):/go/src \
