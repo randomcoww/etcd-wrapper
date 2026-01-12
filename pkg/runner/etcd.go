@@ -2,10 +2,11 @@ package runner
 
 import (
 	"context"
+	"github.com/randomcoww/etcd-wrapper/pkg/backup"
 	c "github.com/randomcoww/etcd-wrapper/pkg/config"
 	"github.com/randomcoww/etcd-wrapper/pkg/etcdclient"
 	"github.com/randomcoww/etcd-wrapper/pkg/etcdprocess"
-	"github.com/randomcoww/etcd-wrapper/pkg/s3backup"
+	"github.com/randomcoww/etcd-wrapper/pkg/s3client"
 	"github.com/randomcoww/etcd-wrapper/pkg/util"
 	etcdserverpb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.uber.org/zap"
@@ -13,7 +14,7 @@ import (
 	"time"
 )
 
-func RunEtcd(ctx context.Context, config *c.Config, p etcdprocess.EtcdProcess, s3 s3backup.Client) error {
+func RunEtcd(ctx context.Context, config *c.Config, p etcdprocess.EtcdProcess, s3 s3client.Client) error {
 	defer config.Logger.Sync()
 
 	// always clean out data
@@ -39,7 +40,7 @@ func RunEtcd(ctx context.Context, config *c.Config, p etcdprocess.EtcdProcess, s
 		// no members found
 		config.Logger.Info("no members found")
 
-		ok, err := s3.RestoreSnapshot(ctx, config, 1000000000)
+		ok, err := backup.RestoreSnapshot(ctx, config, s3, 1000000000)
 		if err != nil {
 			return err
 		}

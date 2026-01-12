@@ -2,10 +2,8 @@ package runner
 
 import (
 	"context"
-	c "github.com/randomcoww/etcd-wrapper/pkg/config"
 	"github.com/randomcoww/etcd-wrapper/pkg/etcdclient"
 	"github.com/randomcoww/etcd-wrapper/pkg/etcdprocess"
-	"github.com/randomcoww/etcd-wrapper/pkg/s3backup"
 	"github.com/stretchr/testify/assert"
 	"os"
 	"testing"
@@ -18,10 +16,10 @@ func TestRunnerFreshCluster(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	s3 := s3backup.NewMockNoBackupClient() // <-- simulate no backup found
+	s3 := &mockS3NoBackup{} // <-- simulate no backup found
 
 	var ps []etcdprocess.EtcdProcess
-	configs := c.MockRunConfigs(dataPath, "")
+	configs := mockConfigs(dataPath)
 	for _, config := range configs {
 		p := etcdprocess.NewEtcdProcess()
 		defer p.Wait()
@@ -46,10 +44,10 @@ func TestRunnerWithRestore(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	s3 := s3backup.NewMockSuccessClient() // <-- simulate backup restored
+	s3 := &mockS3{} // <-- simulate backup restored
 
 	var ps []etcdprocess.EtcdProcess
-	configs := c.MockRunConfigs(dataPath, "")
+	configs := mockConfigs(dataPath)
 	for _, config := range configs {
 		p := etcdprocess.NewEtcdProcess()
 		defer p.Wait()

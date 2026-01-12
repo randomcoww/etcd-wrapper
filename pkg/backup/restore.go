@@ -1,9 +1,10 @@
-package s3backup
+package backup
 
 import (
 	"context"
 	"fmt"
 	c "github.com/randomcoww/etcd-wrapper/pkg/config"
+	"github.com/randomcoww/etcd-wrapper/pkg/s3client"
 	"go.uber.org/zap"
 	"io"
 	"os"
@@ -11,22 +12,21 @@ import (
 	"time"
 )
 
-func (c *client) RestoreSnapshot(ctx context.Context, config *c.Config, versionBump uint64) (bool, error) {
-	objects, err := c.list(ctx, config)
-	if err != nil {
-		return false, err
-	}
-	if len(objects) == 0 {
+func RestoreSnapshot(ctx context.Context, config *c.Config, s3 s3client.Client, versionBump uint64) (bool, error) {
+	keys := s3.List(ctx, config)
+	if len(keys) == 0 {
 		return false, nil
 	}
 	var ok bool
-	for i := len(objects) - 1; i >= 0; i-- {
-		ok, err = c.restoreSnapshotKey(ctx, config, objects[i].Key, versionBump)
+	var err error
+
+	for i := len(keys) - 1; i >= 0; i-- {
+		ok, err = restoreSnapshotKey(ctx, config, s3, keys[i], versionBump)
 		if err == nil && ok {
-			config.Logger.Info("restored snapshot success")
+			config.Logger.Info("restored snapshot success", zap.String("key", keys[i]))
 			break
 		}
-		config.Logger.Error("restore failed", zap.Error(err))
+		config.Logger.Error("restore failed", zap.String("key", keys[i]), zap.Error(err))
 	}
 	if err != nil {
 		return false, fmt.Errorf("all restore failed %w", err)
@@ -34,7 +34,7 @@ func (c *client) RestoreSnapshot(ctx context.Context, config *c.Config, versionB
 	return true, nil
 }
 
-func (c *client) restoreSnapshotKey(ctx context.Context, config *c.Config, key string, versionBump uint64) (bool, error) {
+func restoreSnapshotKey(ctx context.Context, config *c.Config, s3 s3client.Client, key string, versionBump uint64) (bool, error) {
 	config.Logger.Info("attempting snapshot restore")
 	ctx, _ = context.WithTimeout(ctx, time.Duration(config.RestoreTimeout))
 
@@ -54,7 +54,7 @@ func (c *client) restoreSnapshotKey(ctx context.Context, config *c.Config, key s
 	defer snapshotFile.Close()
 	config.Logger.Info("opened file for snapshot")
 
-	ok, err := c.download(ctx, config, key, func(ctx context.Context, reader io.Reader) error {
+	ok, err := s3.Download(ctx, config, key, func(ctx context.Context, reader io.Reader) error {
 		b, err := io.Copy(snapshotFile, reader)
 		if err != nil {
 			return err

@@ -1,4 +1,4 @@
-package s3backup
+package s3client
 
 import (
 	"bytes"
@@ -8,6 +8,7 @@ import (
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
 	c "github.com/randomcoww/etcd-wrapper/pkg/config"
+	"go.uber.org/zap"
 	"io"
 	"net"
 	"net/http"
@@ -16,13 +17,14 @@ import (
 
 type client struct {
 	*minio.Client
-	now func() time.Time
 }
 
 type Client interface {
 	Verify(context.Context, *c.Config) error
-	RestoreSnapshot(context.Context, *c.Config, uint64) (bool, error)
-	UploadSnapshot(context.Context, *c.Config, io.Reader) error
+	Download(context.Context, *c.Config, string, func(context.Context, io.Reader) error) (bool, error)
+	Upload(context.Context, *c.Config, string, io.Reader) error
+	Remove(context.Context, *c.Config, []string) error
+	List(context.Context, *c.Config) []string
 }
 
 func NewClient(config *c.Config) (*client, error) {
@@ -44,8 +46,7 @@ func NewClient(config *c.Config) (*client, error) {
 		return nil, err
 	}
 	return &client{
-		Client: minioClient,
-		now:    func() time.Time { return time.Now() },
+		minioClient,
 	}, nil
 }
 
@@ -60,7 +61,7 @@ func (c *client) Verify(ctx context.Context, config *c.Config) error {
 	return nil
 }
 
-func (c *client) download(ctx context.Context, config *c.Config, key string, handler func(context.Context, io.Reader) error) (bool, error) {
+func (c *client) Download(ctx context.Context, config *c.Config, key string, handler func(context.Context, io.Reader) error) (bool, error) {
 	object, err := c.GetObject(ctx, config.S3BackupBucket, key, minio.GetObjectOptions{})
 	if err != nil {
 		return false, err
@@ -78,7 +79,7 @@ func (c *client) download(ctx context.Context, config *c.Config, key string, han
 	return true, handler(ctx, object)
 }
 
-func (c *client) upload(ctx context.Context, config *c.Config, key string, reader io.Reader) error {
+func (c *client) Upload(ctx context.Context, config *c.Config, key string, reader io.Reader) error {
 	buf := &bytes.Buffer{}
 	size, err := io.Copy(buf, reader)
 	if err != nil {
@@ -105,7 +106,7 @@ func (c *client) cleanupIncomplete(config *c.Config, key string) error {
 	return c.RemoveIncompleteUpload(ctx, config.S3BackupBucket, key)
 }
 
-func (c *client) remove(ctx context.Context, config *c.Config, keys []string) error {
+func (c *client) Remove(ctx context.Context, config *c.Config, keys []string) error {
 	objectsCh := make(chan minio.ObjectInfo)
 	go func() {
 		defer close(objectsCh)
@@ -124,17 +125,22 @@ func (c *client) remove(ctx context.Context, config *c.Config, keys []string) er
 	return errors.Join(errs...)
 }
 
-func (c *client) list(ctx context.Context, config *c.Config) ([]minio.ObjectInfo, error) {
+func (c *client) List(ctx context.Context, config *c.Config) []string {
 	objectCh := c.ListObjects(ctx, config.S3BackupBucket, minio.ListObjectsOptions{
 		Prefix:    config.S3BackupKeyPrefix,
 		Recursive: true,
 	})
-	var objects []minio.ObjectInfo
+	var keys []string
 	for object := range objectCh {
 		if object.Err != nil {
-			return objects, fmt.Errorf("list: failed list objects: %w", object.Err)
+			config.Logger.Error("list object error", zap.Error(object.Err))
+			continue
 		}
-		objects = append(objects, object)
+		if object.Size == 0 {
+			config.Logger.Error("list object size was 0")
+			continue
+		}
+		keys = append(keys, object.Key)
 	}
-	return objects, nil
+	return keys
 }

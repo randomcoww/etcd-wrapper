@@ -1,6 +1,4 @@
-### Dev environment
-
-Generate certs and manifests
+### Generate certs and manifests
 
 ```bash
 terraform() {
@@ -18,7 +16,15 @@ terraform() {
 terraform -chdir=test init -upgrade && terraform -chdir=test apply
 ```
 
-Go build and test
+### Go build and test
+
+Launch minio for testing
+
+```bash
+podman play kube test/outputs/minio.yaml
+```
+
+Add etcd binary for testing and run go env
 
 ```bash
 ETCD_VERSION=$(curl -s https://api.github.com/repos/etcd-io/etcd/tags | grep name | head -1 | cut -d '"' -f 4)
@@ -34,24 +40,22 @@ podman run -it --rm \
   docker.io/golang:alpine sh
 ```
 
-Build test container
+### Build test container
 
 ```bash
 ETCD_VERSION=$(curl -s https://api.github.com/repos/etcd-io/etcd/tags | grep name | head -1 | cut -d '"' -f 4)
 podman build --build-arg=ETCD_VERSION=$ETCD_VERSION -t etcd-wrapper .
 ```
 
-Run test cluster
+### Run test cluster
 
 ```bash
-podman play kube test/outputs/minio.yaml
-
 podman play kube test/outputs/node0.yaml
 podman play kube test/outputs/node1.yaml
 podman play kube test/outputs/node2.yaml
 ```
 
-Check backups
+### Check backups
 
 ```bash
 podman exec minio-mc mc ls m/etcd/integ

@@ -2,14 +2,19 @@ package runner
 
 import (
 	"context"
+	"github.com/randomcoww/etcd-wrapper/pkg/backup"
 	c "github.com/randomcoww/etcd-wrapper/pkg/config"
 	"github.com/randomcoww/etcd-wrapper/pkg/etcdclient"
-	"github.com/randomcoww/etcd-wrapper/pkg/s3backup"
+	"github.com/randomcoww/etcd-wrapper/pkg/s3client"
 	"go.uber.org/zap"
 	"time"
 )
 
-func RunBackup(ctx context.Context, config *c.Config, s3 s3backup.Client) error {
+const (
+	timeFormat string = "20060102-150405"
+)
+
+func RunBackup(ctx context.Context, config *c.Config, s3 s3client.Client) error {
 	defer config.Logger.Sync()
 
 	// wait for existing cluster (and quorum)
@@ -55,7 +60,9 @@ func RunBackup(ctx context.Context, config *c.Config, s3 s3backup.Client) error 
 		config.Logger.Error("create backup snapshot failed", zap.Error(err))
 		return err
 	}
-	if err := s3.UploadSnapshot(uploadCtx, config, reader); err != nil {
+	if err := backup.UploadSnapshot(uploadCtx, config, s3, reader, func() string {
+		return time.Now().Format(timeFormat)
+	}); err != nil {
 		config.Logger.Error("upload backup snapshot failed", zap.Error(err))
 		return err
 	}

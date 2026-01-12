@@ -8,7 +8,8 @@ import (
 
 func TestConfig(t *testing.T) {
 	var (
-		member string = "node0"
+		baseTestPath string = "../../test/outputs"
+		member       string = "node0"
 	)
 
 	t.Setenv("ETCD_NAME", "test")

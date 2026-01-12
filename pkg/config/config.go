@@ -53,16 +53,16 @@ func NewConfig(args []string) (*Config, error) {
 		}
 	}
 
-	if err := config.parseArgs(args); err != nil {
+	if err := config.ParseArgs(args); err != nil {
 		return nil, err
 	}
-	if err := config.parseEnvs(); err != nil {
+	if err := config.ParseEnvs(); err != nil {
 		return nil, err
 	}
 	return config, nil
 }
 
-func (config *Config) parseArgs(args []string) error {
+func (config *Config) ParseArgs(args []string) error {
 	var s3Resource, s3CAFile string
 	var cmd string
 	if len(args) > 0 {
@@ -97,7 +97,7 @@ func (config *Config) parseArgs(args []string) error {
 	config.S3BackupHost = u.Host
 	parts := strings.Split(u.Path, "/")
 	if len(parts) < 3 { // path always starts with / so first element should be blank
-		return fmt.Errorf("bucket and key not found in s3-backup-resource")
+		return fmt.Errorf("bucket and key not found in s3-backup-resource-prefix")
 	}
 	config.S3BackupBucket = parts[1]
 	config.S3BackupKeyPrefix = strings.Join(parts[2:], "/")
@@ -120,7 +120,7 @@ func (config *Config) parseArgs(args []string) error {
 	return nil
 }
 
-func (config *Config) parseEnvs() error {
+func (config *Config) ParseEnvs() error {
 	reList := regexp.MustCompile(`\s*,\s*`)
 	reMap := regexp.MustCompile(`\s*=\s*`)
 	var err error
