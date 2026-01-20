@@ -1,19 +1,19 @@
 ### Generate certs and manifests
 
 ```bash
-terraform() {
+tofu() {
   set -x
   podman run -it --rm --security-opt label=disable \
     -v $(pwd):$(pwd) \
     -w $(pwd) \
     --net=host \
-    docker.io/hashicorp/terraform:latest "$@"
+    ghcr.io/opentofu/opentofu:latest "$@"
   rc=$?; set +x; return $rc
 }
 ```
 
 ```bash
-terraform -chdir=test init -upgrade && terraform -chdir=test apply
+tofu -chdir=test init -upgrade && tofu -chdir=test apply
 ```
 
 ### Go build and test
