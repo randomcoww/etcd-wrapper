@@ -36,7 +36,8 @@ func RestoreSnapshot(ctx context.Context, config *c.Config, s3 s3client.Client, 
 
 func restoreSnapshotKey(ctx context.Context, config *c.Config, s3 s3client.Client, key string, versionBump uint64) (bool, error) {
 	config.Logger.Info("attempting snapshot restore")
-	ctx, _ = context.WithTimeout(ctx, time.Duration(config.RestoreTimeout))
+	restoreCtx, restoreCancel := context.WithTimeout(ctx, time.Duration(config.RestoreTimeout))
+	defer restoreCancel()
 
 	dir, err := os.MkdirTemp("", "etcd-wrapper-*")
 	if err != nil {
@@ -54,7 +55,7 @@ func restoreSnapshotKey(ctx context.Context, config *c.Config, s3 s3client.Clien
 	defer snapshotFile.Close()
 	config.Logger.Info("opened file for snapshot")
 
-	ok, err := s3.Download(ctx, config, key, func(ctx context.Context, reader io.Reader) error {
+	ok, err := s3.Download(restoreCtx, config, key, func(ctx context.Context, reader io.Reader) error {
 		b, err := io.Copy(snapshotFile, reader)
 		if err != nil {
 			return err
@@ -72,7 +73,7 @@ func restoreSnapshotKey(ctx context.Context, config *c.Config, s3 s3client.Clien
 		config.Logger.Info("no snapshots found")
 		return false, nil
 	}
-	if err := restoreV3Snapshot(ctx, config, snapshotFile.Name(), versionBump); err != nil {
+	if err := restoreV3Snapshot(restoreCtx, config, snapshotFile.Name(), versionBump); err != nil {
 		config.Logger.Error("restore snapshot failed", zap.Error(err))
 		return false, err
 	}

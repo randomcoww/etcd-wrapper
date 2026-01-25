@@ -34,7 +34,9 @@ func RunEtcd(ctx context.Context, config *c.Config, p etcdprocess.EtcdProcess, s
 	}
 
 	// wait for existing cluster (and quorum)
-	clusterCtx, _ := context.WithTimeout(ctx, time.Duration(config.ClusterTimeout))
+	clusterCtx, clusterCancel := context.WithTimeout(ctx, time.Duration(config.ClusterTimeout))
+	defer clusterCancel()
+
 	client, err := etcdclient.NewClientFromPeers(clusterCtx, config)
 	if err != nil {
 		// no members found
@@ -65,7 +67,9 @@ func RunEtcd(ctx context.Context, config *c.Config, p etcdprocess.EtcdProcess, s
 
 	config.Logger.Info("quorum found")
 	// cluster with quorum found - this is the most common scenario
-	clientCtx, _ := context.WithTimeout(ctx, time.Duration(config.ReplaceTimeout))
+	clientCtx, clientCancel := context.WithTimeout(ctx, time.Duration(config.ReplaceTimeout))
+	defer clientCancel()
+
 	listResp, err := client.MemberList(clientCtx)
 	if err != nil {
 		config.Logger.Error("list member failed", zap.Error(err))
@@ -86,7 +90,7 @@ func RunEtcd(ctx context.Context, config *c.Config, p etcdprocess.EtcdProcess, s
 	}
 
 	if localMember == nil && len(listResp.GetMembers()) < len(config.ClusterPeerURLs) {
-		listResp, err = client.MemberAdd(clientCtx, config.InitialAdvertisePeerURLs)
+		_, err = client.MemberAdd(clientCtx, config.InitialAdvertisePeerURLs)
 		if err != nil {
 			config.Logger.Error("add member failed", zap.Error(err))
 			return err

@@ -130,9 +130,7 @@ func (config *Config) ParseEnvs() error {
 	}
 
 	if v, ok := config.Env["ETCD_INITIAL_ADVERTISE_PEER_URLS"]; ok {
-		for _, u := range reList.Split(v, -1) {
-			config.InitialAdvertisePeerURLs = append(config.InitialAdvertisePeerURLs, u)
-		}
+		config.InitialAdvertisePeerURLs = append(config.InitialAdvertisePeerURLs, reList.Split(v, -1)...)
 		sort.Strings(config.InitialAdvertisePeerURLs)
 	} else {
 		return fmt.Errorf("env ETCD_INITIAL_ADVERTISE_PEER_URLS not set")

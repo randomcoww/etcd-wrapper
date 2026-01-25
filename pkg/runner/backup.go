@@ -18,7 +18,9 @@ func RunBackup(ctx context.Context, config *c.Config, s3 s3client.Client) error 
 	defer config.Logger.Sync()
 
 	// wait for existing cluster (and quorum)
-	clusterCtx, _ := context.WithTimeout(ctx, time.Duration(config.ClusterTimeout))
+	clusterCtx, clusterCancel := context.WithTimeout(ctx, time.Duration(config.ClusterTimeout))
+	defer clusterCancel()
+
 	client, err := etcdclient.NewClientFromPeers(clusterCtx, config)
 	if err != nil {
 		config.Logger.Error("get client failed", zap.Error(err))
@@ -31,7 +33,9 @@ func RunBackup(ctx context.Context, config *c.Config, s3 s3client.Client) error 
 		return err
 	}
 
-	statusCtx, _ := context.WithTimeout(ctx, time.Duration(config.StatusTimeout))
+	statusCtx, statusCancel := context.WithTimeout(ctx, time.Duration(config.StatusTimeout))
+	defer statusCancel()
+
 	status, err := client.Status(statusCtx, config.LocalClientURL)
 	if err != nil {
 		config.Logger.Error("get local node status failed", zap.Error(err))
@@ -54,7 +58,9 @@ func RunBackup(ctx context.Context, config *c.Config, s3 s3client.Client) error 
 	}
 
 	// continue to run backup if leader
-	uploadCtx, _ := context.WithTimeout(ctx, time.Duration(config.UploadTimeout))
+	uploadCtx, uploadCancel := context.WithTimeout(ctx, time.Duration(config.UploadTimeout))
+	defer uploadCancel()
+
 	reader, err := client.Snapshot(uploadCtx)
 	if err != nil {
 		config.Logger.Error("create backup snapshot failed", zap.Error(err))

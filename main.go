@@ -14,11 +14,11 @@ import (
 	"time"
 )
 
-func main() {
+func run() error {
 	config, err := c.NewConfig(os.Args)
 	if err != nil {
 		config.Logger.Error("parse config", zap.Error(err))
-		os.Exit(1)
+		return err
 	}
 
 	p := etcdprocess.NewEtcdProcess()
@@ -34,22 +34,25 @@ func main() {
 	s3, err := s3client.NewClient(config)
 	if err != nil {
 		config.Logger.Error("create s3 backup client", zap.Error(err))
-		os.Exit(1)
+		return err
 	}
-	verifyCtx, _ := context.WithTimeout(ctx, 4*time.Second)
+	verifyCtx, verifyCancel := context.WithTimeout(ctx, 4*time.Second)
+	defer verifyCancel()
+
 	err = s3.Verify(verifyCtx, config)
 	if err != nil {
 		config.Logger.Error("verify backup bucket", zap.Error(err))
-		os.Exit(1)
+		return err
 	}
 
 	if err := runner.RunEtcd(ctx, config, p, s3); err != nil {
 		config.Logger.Error("start etcd", zap.Error(err))
-		os.Exit(1)
+		return err
 	}
 
+	wg.Add(1)
 	go func() {
-		wg.Add(1)
+		defer wg.Done()
 		for {
 			timer := time.NewTimer(config.BackupInterval)
 			select {
@@ -61,4 +64,12 @@ func main() {
 		}
 	}()
 	p.Wait()
+	return nil
+}
+
+func main() {
+	err := run()
+	if err != nil {
+		os.Exit(1)
+	}
 }

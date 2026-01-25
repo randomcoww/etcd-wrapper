@@ -18,13 +18,11 @@ func TestRunnerFreshCluster(t *testing.T) {
 	defer cancel()
 	s3 := &mockS3NoBackup{} // <-- simulate no backup found
 
-	var ps []etcdprocess.EtcdProcess
 	configs := mockConfigs(dataPath)
 	for _, config := range configs {
 		p := etcdprocess.NewEtcdProcess()
 		defer p.Wait()
 		defer p.Stop()
-		ps = append(ps, p)
 
 		err := RunEtcd(ctx, config, p, s3)
 		assert.NoError(t, err)
@@ -103,7 +101,9 @@ func TestRunnerWithRestore(t *testing.T) {
 	}
 
 	// verify that test data is readable
-	clientCtx, _ := context.WithTimeout(ctx, time.Duration(20*time.Second))
+	clientCtx, clientCancel := context.WithTimeout(ctx, time.Duration(20*time.Second))
+	defer clientCancel()
+
 	client, err := etcdclient.NewClientFromPeers(clientCtx, configs[2])
 	assert.NoError(t, err)
 
