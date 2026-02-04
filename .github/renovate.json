@@ -6,18 +6,6 @@
   "dockerfile": {
     "enabled": false
   },
-  "customManagers": [
-    {
-      "customType": "regex",
-      "managerFilePatterns": [
-        "/^.github/workflows/.+.ya?ml$/"
-      ],
-      "matchStrings": [
-        "GITHUB_TAG:\\s+(?<currentValue>[^\\s]+)\\s+#\\s+(?<depName>[^\\s]+)"
-      ],
-      "datasourceTemplate": "github-tags"
-    }
-  ],
   "packageRules": [
     {
       "matchUpdateTypes": [
