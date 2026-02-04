@@ -1,7 +1,3 @@
-# TODO: Remove baking in etcd binaries once ImageVolumes work
-ARG ETCD_VERSION
-FROM registry.k8s.io/etcd:$ETCD_VERSION as etcd
-
 FROM docker.io/golang:alpine as build
 
 WORKDIR /go/src
@@ -18,8 +14,6 @@ RUN set -x \
 
 FROM scratch
 
-COPY --from=etcd /usr/local/bin/etcd /bin/
-COPY --from=etcd /usr/local/bin/etcdutl /bin/
 COPY --from=build /go/src/etcd-wrapper /bin/
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
