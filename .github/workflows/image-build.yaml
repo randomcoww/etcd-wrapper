@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  GITHUB_TAG: v3.6.7 # etcd-io/etcd
+  GITHUB_TAG: v3.6.8 # etcd-io/etcd
 
 jobs:
   build:
