@@ -262,7 +262,7 @@ module "etcd" {
       {
         name = "etcd"
         image = {
-          reference  = "gcr.io/etcd-development/etcd:v3.6.6"
+          reference  = "registry.k8s.io/etcd:v3.6.8"
           pullPolicy = "IfNotPresent"
         }
       }
