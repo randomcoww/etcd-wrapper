@@ -1,19 +1,8 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
-    "config:best-practices"
-  ],
-  "customManagers": [
-    {
-      "customType": "regex",
-      "managerFilePatterns": [
-        "/^.github/workflows/.+.ya?ml$/"
-      ],
-      "matchStrings": [
-        "GITHUB_TAG:\\s+(?<currentValue>[^\\s]+)\\s+#\\s+(?<depName>[^\\s]+)"
-      ],
-      "datasourceTemplate": "github-tags"
-    }
+    "config:best-practices",
+    "customManagers:githubActionsVersions"
   ],
   "packageRules": [
     {
