@@ -91,7 +91,7 @@ module "minio" {
     containers = [
       {
         name  = "minio"
-        image = "ghcr.io/randomcoww/minio:v20251015.172955"
+        image = "cgr.dev/chainguard/minio:latest"
         args = [
           "server",
           "--certs-dir",
