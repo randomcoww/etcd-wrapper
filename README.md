@@ -28,6 +28,8 @@ Add etcd binary for testing and run go env
 
 ```bash
 ETCD_VERSION=$(curl -s https://api.github.com/repos/etcd-io/etcd/tags | grep name | head -1 | cut -d '"' -f 4)
+podman volume rm etcdvolume -f
+podman pull registry.k8s.io/etcd:$ETCD_VERSION
 podman volume create \
   --driver image \
   --opt image="registry.k8s.io/etcd:$ETCD_VERSION" etcdvolume
@@ -43,8 +45,7 @@ podman run -it --rm \
 ### Build test container
 
 ```bash
-ETCD_VERSION=$(curl -s https://api.github.com/repos/etcd-io/etcd/tags | grep name | head -1 | cut -d '"' -f 4)
-podman build --build-arg=ETCD_VERSION=$ETCD_VERSION -t etcd-wrapper .
+podman build -t etcd-wrapper .
 ```
 
 ### Run test cluster
