@@ -8,7 +8,7 @@ require (
 	go.etcd.io/etcd/api/v3 v3.6.10
 	go.etcd.io/etcd/client/v3 v3.6.10
 	go.etcd.io/etcd/server/v3 v3.6.10
-	go.uber.org/zap v1.27.1
+	go.uber.org/zap v1.28.0
 )
 
 require (
