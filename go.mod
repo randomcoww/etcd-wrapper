@@ -5,9 +5,9 @@ go 1.26
 require (
 	github.com/minio/minio-go/v7 v7.2.1
 	github.com/stretchr/testify v1.11.1
-	go.etcd.io/etcd/api/v3 v3.7.0
-	go.etcd.io/etcd/client/v3 v3.7.0
-	go.etcd.io/etcd/server/v3 v3.7.0
+	go.etcd.io/etcd/api/v3 v3.7.1
+	go.etcd.io/etcd/client/v3 v3.7.1
+	go.etcd.io/etcd/server/v3 v3.7.1
 	go.uber.org/zap v1.28.0
 )
 
@@ -47,8 +47,8 @@ require (
 	github.com/xiang90/probing v0.0.0-20221125231312-a49e3df8f510 // indirect
 	github.com/zeebo/xxh3 v1.1.0 // indirect
 	go.etcd.io/bbolt v1.5.0 // indirect
-	go.etcd.io/etcd/client/pkg/v3 v3.7.0 // indirect
-	go.etcd.io/etcd/pkg/v3 v3.7.0 // indirect
+	go.etcd.io/etcd/client/pkg/v3 v3.7.1 // indirect
+	go.etcd.io/etcd/pkg/v3 v3.7.1 // indirect
 	go.etcd.io/raft/v3 v3.7.0 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.68.0 // indirect
@@ -65,7 +65,7 @@ require (
 	golang.org/x/time v0.15.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260414002931-afd174a4e478 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260414002931-afd174a4e478 // indirect
-	google.golang.org/grpc v1.81.0 // indirect
+	google.golang.org/grpc v1.82.1 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/ini.v1 v1.67.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
