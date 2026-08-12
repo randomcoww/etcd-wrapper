@@ -27,7 +27,7 @@ podman play kube test/outputs/minio.yaml
 Add etcd binary for testing and run go env
 
 ```bash
-ETCD_VERSION=$(curl -s https://api.github.com/repos/etcd-io/etcd/tags | grep name | head -1 | cut -d '"' -f 4)
+ETCD_VERSION=$(curl -s https://api.github.com/repos/etcd-io/etcd/releases/latest | grep tag_name | cut -d '"' -f 4)
 podman volume rm etcdvolume -f
 podman pull registry.k8s.io/etcd:$ETCD_VERSION
 podman volume create \
