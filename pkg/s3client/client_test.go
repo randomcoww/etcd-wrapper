@@ -41,14 +41,17 @@ func TestClient(t *testing.T) {
 
 	// --- upload --- //
 
-	err = minioClient.Upload(clientCtx, config, config.S3BackupKeyPrefix+"1.db", bytes.NewBufferString("test-data-1"))
+	size, err := minioClient.Upload(clientCtx, config, config.S3BackupKeyPrefix+"1.db", bytes.NewBufferString("test-data-1"))
 	assert.NoError(t, err)
+	assert.Equal(t, int64(11), size)
 
-	err = minioClient.Upload(clientCtx, config, config.S3BackupKeyPrefix+"2.db", bytes.NewBufferString("test-data-2"))
+	size, err = minioClient.Upload(clientCtx, config, config.S3BackupKeyPrefix+"2.db", bytes.NewBufferString("test-data-22"))
 	assert.NoError(t, err)
+	assert.Equal(t, int64(12), size)
 
-	err = minioClient.Upload(clientCtx, config, config.S3BackupKeyPrefix+"3.db", bytes.NewBufferString(""))
+	size, err = minioClient.Upload(clientCtx, config, config.S3BackupKeyPrefix+"3.db", bytes.NewBufferString(""))
 	assert.Error(t, err)
+	assert.Equal(t, int64(0), size)
 
 	// --- list --- //
 

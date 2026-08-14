@@ -79,24 +79,24 @@ func (c *client) Download(ctx context.Context, config *c.Config, key string, han
 	return true, handler(ctx, object)
 }
 
-func (c *client) Upload(ctx context.Context, config *c.Config, key string, reader io.Reader) error {
+func (c *client) Upload(ctx context.Context, config *c.Config, key string, reader io.Reader) (int64, error) {
 	buf := &bytes.Buffer{}
 	size, err := io.Copy(buf, reader)
 	if err != nil {
-		return fmt.Errorf("upload: failed to create buffer: %w", err)
+		return size, fmt.Errorf("upload: failed to create buffer: %w", err)
 	}
 	if size == 0 {
-		return fmt.Errorf("upload: size is 0")
+		return size, fmt.Errorf("upload: size is 0")
 	}
 	if _, err = c.PutObject(ctx, config.S3BackupBucket, key, buf, size, minio.PutObjectOptions{
 		AutoChecksum: minio.ChecksumCRC32,
 	}); err != nil {
 		if cleanupErr := c.cleanupIncomplete(config, key); cleanupErr != nil {
-			return fmt.Errorf("upload: failed to put object: %w\n  failed to cleanup incomplete upload: %w", err, cleanupErr)
+			return size, fmt.Errorf("upload: failed to put object: %w\n  failed to cleanup incomplete upload: %w", err, cleanupErr)
 		}
-		return fmt.Errorf("upload: failed to put object: %w", err)
+		return size, fmt.Errorf("upload: failed to put object: %w", err)
 	}
-	return nil
+	return size, nil
 }
 
 func (c *client) cleanupIncomplete(config *c.Config, key string) error {
