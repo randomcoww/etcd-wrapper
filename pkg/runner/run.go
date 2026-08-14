@@ -25,8 +25,6 @@ const (
 )
 
 func RunEtcd(ctx context.Context, config *c.Config, etcdRunner etcdProcess, s3 s3client.Client) error {
-	defer config.Logger.Sync()
-
 	// always clean out data
 	// data can be recreated from cluster
 	// data restore is needed on full cluster restart
