@@ -51,10 +51,10 @@ func TestRestore(t *testing.T) {
 
 	// --- add test data --- //
 
-	err = minioClient.Upload(ctx, config, config.S3BackupKeyPrefix+"1.db", file)
+	_, err = minioClient.Upload(ctx, config, config.S3BackupKeyPrefix+"1.db", file)
 	assert.NoError(t, err)
 
-	err = minioClient.Upload(ctx, config, config.S3BackupKeyPrefix+"2.db", bytes.NewBufferString("random-bad-data"))
+	_, err = minioClient.Upload(ctx, config, config.S3BackupKeyPrefix+"2.db", bytes.NewBufferString("random-bad-data"))
 	assert.NoError(t, err)
 
 	// -- test restoring it -- //

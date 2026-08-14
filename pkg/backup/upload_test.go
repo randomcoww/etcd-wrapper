@@ -32,17 +32,17 @@ func TestUploadSnapshot(t *testing.T) {
 	// --- test data --- //
 
 	baseNow, _ := time.Parse("2006-01-02", "2000-01-01")
-	err = UploadSnapshot(ctx, config, minioClient, bytes.NewBufferString("test-data-1"),
+	_, err = UploadSnapshot(ctx, config, minioClient, bytes.NewBufferString("test-data-1"),
 		func() string { return baseNow.Add(time.Duration(1 * time.Minute)).Format(timeFormat) },
 	)
 	assert.NoError(t, err)
 
-	err = UploadSnapshot(ctx, config, minioClient, bytes.NewBufferString("test-data-2"),
+	_, err = UploadSnapshot(ctx, config, minioClient, bytes.NewBufferString("test-data-22"),
 		func() string { return baseNow.Add(time.Duration(2 * time.Minute)).Format(timeFormat) },
 	)
 	assert.NoError(t, err)
 
-	err = UploadSnapshot(ctx, config, minioClient, bytes.NewBufferString("test-data-3"),
+	_, err = UploadSnapshot(ctx, config, minioClient, bytes.NewBufferString("test-data-333"),
 		func() string { return baseNow.Add(time.Duration(3 * time.Minute)).Format(timeFormat) },
 	)
 	assert.NoError(t, err)

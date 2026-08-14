@@ -69,8 +69,8 @@ func (m *mockS3) Download(ctx context.Context, config *c.Config, key string, han
 	return true, handler(ctx, file)
 }
 
-func (c *mockS3) Upload(ctx context.Context, config *c.Config, key string, reader io.Reader) error {
-	return nil
+func (c *mockS3) Upload(ctx context.Context, config *c.Config, key string, reader io.Reader) (int64, error) {
+	return 10, nil
 }
 
 func (c *mockS3) Remove(ctx context.Context, config *c.Config, keys []string) error {
