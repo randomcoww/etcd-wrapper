@@ -87,7 +87,7 @@ func mockRunConfigs(dataPath string) ([]*c.Config, error) {
 	return configs, nil
 }
 
-func mockBackupConfigs(dataPath string) ([]*c.Config, error) {
+func mockSidecarConfigs(dataPath string) ([]*c.Config, error) {
 	var (
 		clientPortBase int = 8080
 		peerPortBase   int = 8090
@@ -104,7 +104,7 @@ func mockBackupConfigs(dataPath string) ([]*c.Config, error) {
 	for i, member := range members {
 		var err error
 		config := &c.Config{
-			Cmd:               "backup",
+			Cmd:               "sidecar",
 			Logger:            logger,
 			LocalClientURL:    fmt.Sprintf("https://127.0.0.1:%d", clientPortBase+i),
 			EtcdutlBinaryFile: "/etcd/usr/local/bin/etcdutl",
@@ -143,8 +143,8 @@ func (m *mockS3) Download(ctx context.Context, config *c.Config, key string, han
 	return true, handler(ctx, file)
 }
 
-func (c *mockS3) Upload(ctx context.Context, config *c.Config, key string, reader io.Reader) error {
-	return nil
+func (c *mockS3) Upload(ctx context.Context, config *c.Config, key string, reader io.Reader) (int64, error) {
+	return 10, nil
 }
 
 func (c *mockS3) Remove(ctx context.Context, config *c.Config, keys []string) error {
@@ -167,8 +167,8 @@ func (m *mockS3NoBackup) Download(ctx context.Context, config *c.Config, key str
 	return false, nil
 }
 
-func (c *mockS3NoBackup) Upload(ctx context.Context, config *c.Config, key string, reader io.Reader) error {
-	return nil
+func (c *mockS3NoBackup) Upload(ctx context.Context, config *c.Config, key string, reader io.Reader) (int64, error) {
+	return 10, nil
 }
 
 func (c *mockS3NoBackup) Remove(ctx context.Context, config *c.Config, keys []string) error {

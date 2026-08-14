@@ -22,7 +22,7 @@ type client struct {
 type Client interface {
 	Verify(context.Context, *c.Config) error
 	Download(context.Context, *c.Config, string, func(context.Context, io.Reader) error) (bool, error)
-	Upload(context.Context, *c.Config, string, io.Reader) error
+	Upload(context.Context, *c.Config, string, io.Reader) (int64, error)
 	Remove(context.Context, *c.Config, []string) error
 	List(context.Context, *c.Config) []string
 }

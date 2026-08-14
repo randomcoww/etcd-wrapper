@@ -240,14 +240,14 @@ module "etcd" {
         ]
       },
       {
-        name = "backup"
+        name = "sidecar"
         image = join(":", [
           "registry.k8s.io/etcd",
           "3.7.1@sha256:a9983dd6d9283138ab926daa307c6c25623636703ecf5645d5df4d666ce9eba2", # renovate: datasource=docker depName=registry.k8s.io/etcd
         ])
         command = [
           "${local.etcd_wrapper_path}/bin/etcd-wrapper",
-          "backup",
+          "sidecar",
           "-local-client-url", each.value.client_url,
           "-s3-backup-resource-prefix", "https://127.0.0.1:${local.minio_port}/${local.minio_bucket}/integ/snapshot-",
           "-s3-backup-count", "3",

@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-func TestRunnerFreshCluster(t *testing.T) {
+func TestRunNewCluster(t *testing.T) {
 	dataPath, _ := os.MkdirTemp("", "etcd-test-*")
 	defer os.RemoveAll(dataPath)
 
@@ -39,7 +39,7 @@ func TestRunnerFreshCluster(t *testing.T) {
 	}
 }
 
-func TestRunnerWithRestore(t *testing.T) {
+func TestRunExistingCluster(t *testing.T) {
 	dataPath, _ := os.MkdirTemp("", "etcd-test-*")
 	defer os.RemoveAll(dataPath)
 

@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func TestBackupConfig(t *testing.T) {
+func TestSidecarConfig(t *testing.T) {
 	var (
 		baseTestPath string = "../../test/outputs"
 		member       string = "node0"
