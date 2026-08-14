@@ -2,6 +2,7 @@ package etcdclient
 
 import (
 	"context"
+	"fmt"
 	c "github.com/randomcoww/etcd-wrapper/pkg/config"
 	etcdserverpb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
@@ -85,7 +86,40 @@ func NewClientFromPeers(ctx context.Context, config *c.Config) (EtcdClient, erro
 		timer := time.NewTimer(backoffWaitBetween)
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, fmt.Errorf("%w: %w", ctx.Err(), err)
+
+		case <-timer.C:
+			continue
+		}
+	}
+}
+
+func NewClientFromPeersWithQuorum(ctx context.Context, config *c.Config) (EtcdClient, error) {
+	for {
+		pcluster, err := etcdserver.GetClusterFromRemotePeers(config.Logger, config.ClusterPeerURLs, &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+			DialContext: (&net.Dialer{
+				Timeout:   dialTimeout,
+				KeepAlive: 30 * time.Second, // value taken from http.DefaultTransport
+			}).DialContext,
+			TLSHandshakeTimeout: 10 * time.Second, // value taken from http.DefaultTransport
+			TLSClientConfig:     config.PeerTLSConfig,
+		})
+		if err == nil {
+			client, err := NewClient(ctx, config, pcluster.ClientURLs())
+			if err == nil {
+				err = client.GetQuorum(ctx)
+				if err == nil {
+					return client, nil
+				}
+				client.Close()
+			}
+		}
+
+		timer := time.NewTimer(backoffWaitBetween)
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("%w: %w", ctx.Err(), err)
 
 		case <-timer.C:
 			continue

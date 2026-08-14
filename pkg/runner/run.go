@@ -5,7 +5,6 @@ import (
 	"github.com/randomcoww/etcd-wrapper/pkg/backup"
 	c "github.com/randomcoww/etcd-wrapper/pkg/config"
 	"github.com/randomcoww/etcd-wrapper/pkg/etcdclient"
-	"github.com/randomcoww/etcd-wrapper/pkg/etcdprocess"
 	"github.com/randomcoww/etcd-wrapper/pkg/s3client"
 	"github.com/randomcoww/etcd-wrapper/pkg/util"
 	etcdserverpb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -14,27 +13,29 @@ import (
 	"time"
 )
 
-func RunEtcd(ctx context.Context, config *c.Config, p etcdprocess.EtcdProcess, s3 s3client.Client) error {
+type etcdProcess interface {
+	StartNew(*c.Config) error
+	StartExisting(*c.Config) error
+	Stop() error
+	Wait() error
+}
+
+const (
+	restoreVersionBump uint64 = 1000000000
+)
+
+func RunEtcd(ctx context.Context, config *c.Config, etcdRunner etcdProcess, s3 s3client.Client) error {
 	defer config.Logger.Sync()
 
 	// always clean out data
 	// data can be recreated from cluster
 	// data restore is needed on full cluster restart
-	if d, ok := config.Env["ETCD_DATA_DIR"]; ok && d != "" {
-		if err := removeDir(d); err != nil {
-			config.Logger.Error("remove data dir", zap.Error(err))
-			return err
-		}
-	}
-	if d, ok := config.Env["ETCD_WAL_DIR"]; ok && d != "" {
-		if err := removeDir(d); err != nil {
-			config.Logger.Error("remove wal dir", zap.Error(err))
-			return err
-		}
+	if err := clearExistingData(config); err != nil {
+		return err
 	}
 
 	// wait for existing cluster (and quorum)
-	clusterCtx, clusterCancel := context.WithTimeout(ctx, time.Duration(config.ClusterTimeout))
+	clusterCtx, clusterCancel := context.WithTimeout(ctx, time.Duration(config.InitialClusterTimeout))
 	defer clusterCancel()
 
 	client, err := etcdclient.NewClientFromPeers(clusterCtx, config)
@@ -42,17 +43,26 @@ func RunEtcd(ctx context.Context, config *c.Config, p etcdprocess.EtcdProcess, s
 		// no members found
 		config.Logger.Info("no members found")
 
-		ok, err := backup.RestoreSnapshot(ctx, config, s3, 1000000000)
+		// attempt restoring backup
+		verifyS3Ctx, verifyS3Cancel := context.WithTimeout(ctx, config.S3VerifyTimeout)
+		defer verifyS3Cancel()
+		// if backup bucket can't be verified, fail instead of moving to new cluster
+		if err := s3.Verify(verifyS3Ctx, config); err != nil {
+			config.Logger.Error("failed to verify backup S3 resource", zap.Error(err))
+			return err
+		}
+		ok, err := backup.RestoreSnapshot(ctx, config, s3, restoreVersionBump)
 		if err != nil {
 			return err
 		}
+		// backup resource accessible but no backups found. move on to new cluster from scratch
 		if !ok {
 			config.Logger.Info("starting member new fresh")
-			return p.StartEtcdNew(ctx, config)
+			return etcdRunner.StartNew(config)
 		}
 
 		config.Logger.Info("starting member existing with backup data")
-		return p.StartEtcdExisting(ctx, config)
+		return etcdRunner.StartExisting(config)
 	}
 	defer client.Close()
 
@@ -62,12 +72,12 @@ func RunEtcd(ctx context.Context, config *c.Config, p etcdprocess.EtcdProcess, s
 		config.Logger.Info("no quorum found")
 
 		config.Logger.Info("starting member existing")
-		return p.StartEtcdExisting(ctx, config)
+		return etcdRunner.StartExisting(config)
 	}
 
 	config.Logger.Info("quorum found")
 	// cluster with quorum found - this is the most common scenario
-	clientCtx, clientCancel := context.WithTimeout(ctx, time.Duration(config.ReplaceTimeout))
+	clientCtx, clientCancel := context.WithTimeout(ctx, time.Duration(config.ClientTimeout*2))
 	defer clientCancel()
 
 	listResp, err := client.MemberList(clientCtx)
@@ -99,7 +109,17 @@ func RunEtcd(ctx context.Context, config *c.Config, p etcdprocess.EtcdProcess, s
 	}
 
 	config.Logger.Info("starting member existing")
-	return p.StartEtcdExisting(ctx, config)
+	return etcdRunner.StartExisting(config)
+}
+
+func clearExistingData(config *c.Config) error {
+	if d, ok := config.Env["ETCD_DATA_DIR"]; ok && d != "" {
+		if err := removeDir(d); err != nil {
+			config.Logger.Error("remove data dir", zap.Error(err))
+			return err
+		}
+	}
+	return nil
 }
 
 func findLocalMember(listResp etcdclient.Members, config *c.Config) *etcdserverpb.Member {

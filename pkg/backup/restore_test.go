@@ -15,7 +15,9 @@ func TestRestoreSnapshot(t *testing.T) {
 	dataPath, _ := os.MkdirTemp("", "etcd-test-*")
 	defer os.RemoveAll(dataPath)
 
-	config := mockConfig("restore", dataPath)
+	config, err := mockConfig("restore", dataPath)
+	assert.NoError(t, err)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 
@@ -29,7 +31,9 @@ func TestRestore(t *testing.T) {
 	dataPath, _ := os.MkdirTemp("", "etcd-test-*")
 	defer os.RemoveAll(dataPath)
 
-	config := mockConfig("restore", dataPath)
+	config, err := mockConfig("restore", dataPath)
+	assert.NoError(t, err)
+
 	t.Setenv("AWS_ACCESS_KEY_ID", minioUser)
 	t.Setenv("AWS_SECRET_ACCESS_KEY", minioPassword)
 
@@ -45,7 +49,7 @@ func TestRestore(t *testing.T) {
 	file, _ := os.Open(filepath.Join(baseTestPath, "../test-snapshot.db"))
 	defer file.Close()
 
-	// --- test data --- //
+	// --- add test data --- //
 
 	err = minioClient.Upload(ctx, config, config.S3BackupKeyPrefix+"1.db", file)
 	assert.NoError(t, err)
@@ -53,7 +57,7 @@ func TestRestore(t *testing.T) {
 	err = minioClient.Upload(ctx, config, config.S3BackupKeyPrefix+"2.db", bytes.NewBufferString("random-bad-data"))
 	assert.NoError(t, err)
 
-	// -- test restore -- //
+	// -- test restoring it -- //
 
 	ok, err := RestoreSnapshot(ctx, config, minioClient, 10000)
 	assert.NoError(t, err)

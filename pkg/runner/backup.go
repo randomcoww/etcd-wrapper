@@ -18,22 +18,17 @@ func RunBackup(ctx context.Context, config *c.Config, s3 s3client.Client) error 
 	defer config.Logger.Sync()
 
 	// wait for existing cluster (and quorum)
-	clusterCtx, clusterCancel := context.WithTimeout(ctx, time.Duration(config.ClusterTimeout))
-	defer clusterCancel()
+	clientCtx, clientCancel := context.WithTimeout(ctx, time.Duration(config.ClientTimeout))
+	defer clientCancel()
 
-	client, err := etcdclient.NewClientFromPeers(clusterCtx, config)
+	client, err := etcdclient.NewClientFromPeersWithQuorum(clientCtx, config)
 	if err != nil {
 		config.Logger.Error("get client failed", zap.Error(err))
 		return err
 	}
 	defer client.Close()
 
-	if err := client.GetQuorum(clusterCtx); err != nil {
-		config.Logger.Error("get cluster failed", zap.Error(err))
-		return err
-	}
-
-	statusCtx, statusCancel := context.WithTimeout(ctx, time.Duration(config.StatusTimeout))
+	statusCtx, statusCancel := context.WithTimeout(ctx, time.Duration(config.ClientTimeout))
 	defer statusCancel()
 
 	status, err := client.Status(statusCtx, config.LocalClientURL)
@@ -43,14 +38,17 @@ func RunBackup(ctx context.Context, config *c.Config, s3 s3client.Client) error 
 	}
 	config.Logger.Info("local node responds to status")
 
-	if err := client.Defragment(statusCtx, config.LocalClientURL); err != nil {
+	config.Logger.Info("node", zap.Int64("ID", int64(status.GetHeader().GetMemberId())))
+	config.Logger.Info("leader", zap.Int64("ID", int64(status.GetLeader())))
+
+	defragCtx, defragCancel := context.WithTimeout(ctx, time.Duration(config.ClientTimeout))
+	defer defragCancel()
+
+	if err := client.Defragment(defragCtx, config.LocalClientURL); err != nil {
 		config.Logger.Error("run defragment failed", zap.Error(err))
 		return err
 	}
 	config.Logger.Info("defragment success")
-
-	config.Logger.Info("node", zap.Int64("ID", int64(status.GetHeader().GetMemberId())))
-	config.Logger.Info("leader", zap.Int64("ID", int64(status.GetLeader())))
 
 	if status.GetHeader().GetMemberId() != status.GetLeader() {
 		config.Logger.Info("skipping backup on non leader")

@@ -14,7 +14,9 @@ func TestUploadSnapshot(t *testing.T) {
 	dataPath, _ := os.MkdirTemp("", "etcd-test-*")
 	defer os.RemoveAll(dataPath)
 
-	config := mockConfig("upload", dataPath)
+	config, err := mockConfig("upload", dataPath)
+	assert.NoError(t, err)
+
 	t.Setenv("AWS_ACCESS_KEY_ID", minioUser)
 	t.Setenv("AWS_SECRET_ACCESS_KEY", minioPassword)
 

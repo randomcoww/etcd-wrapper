@@ -1,10 +1,10 @@
 
 locals {
-  url_regex       = "[a-z]+://(?<ip>[\\d.]+):(?<port>\\d+)"
-  data_path       = "/var/lib/etcd"
-  base_path       = "outputs"
-  etcd_mount_path = "/etcd"
-  cluster_token   = "test"
+  url_regex         = "[a-z]+://(?<ip>[\\d.]+):(?<port>\\d+)"
+  data_path         = "/var/lib/etcd"
+  base_path         = "outputs"
+  etcd_wrapper_path = "/etcd-wrapper"
+  cluster_token     = "test"
   members = {
     node0 = {
       client_url            = "https://127.0.0.1:8080"
@@ -31,40 +31,40 @@ locals {
 }
 
 resource "local_file" "ca-cert" {
-  filename = "${local.base_path}/ca-cert.pem"
+  filename = "${local.base_path}/ca.crt"
   content  = tls_self_signed_cert.etcd-ca.cert_pem
 }
 
 resource "local_file" "peer-ca-cert" {
-  filename = "${local.base_path}/peer-ca-cert.pem"
+  filename = "${local.base_path}/peer-ca.crt"
   content  = tls_self_signed_cert.etcd-peer-ca.cert_pem
 }
 
 resource "local_file" "cert" {
   for_each = local.members
 
-  filename = "${local.base_path}/${each.key}/client/cert.pem"
+  filename = "${local.base_path}/${each.key}/client/tls.crt"
   content  = tls_locally_signed_cert.etcd[each.key].cert_pem
 }
 
 resource "local_file" "key" {
   for_each = local.members
 
-  filename = "${local.base_path}/${each.key}/client/key.pem"
+  filename = "${local.base_path}/${each.key}/client/tls.key"
   content  = tls_private_key.etcd[each.key].private_key_pem
 }
 
 resource "local_file" "peer-cert" {
   for_each = local.members
 
-  filename = "${local.base_path}/${each.key}/peer/cert.pem"
+  filename = "${local.base_path}/${each.key}/peer/tls.crt"
   content  = tls_locally_signed_cert.etcd-peer[each.key].cert_pem
 }
 
 resource "local_file" "peer-key" {
   for_each = local.members
 
-  filename = "${local.base_path}/${each.key}/peer/key.pem"
+  filename = "${local.base_path}/${each.key}/peer/tls.key"
   content  = tls_private_key.etcd-peer[each.key].private_key_pem
 }
 
@@ -177,31 +177,19 @@ module "etcd" {
       {
         name  = "etcd"
         image = "localhost/etcd-wrapper:latest"
-        args = [
-          "-local-client-url",
-          each.value.client_url,
-          "-etcd-binary-file",
-          "${local.etcd_mount_path}/usr/local/bin/etcd",
-          "-etcdutl-binary-file",
-          "${local.etcd_mount_path}/usr/local/bin/etcdutl",
-          "-s3-backup-resource-prefix",
-          "https://127.0.0.1:${local.minio_port}/${local.minio_bucket}/integ/snapshot-",
-          "-s3-backup-count",
-          "3",
-          "-s3-backup-ca-file",
-          "/etc/etcd/minio/certs/CAs/ca.crt",
-          "-initial-cluster-timeout",
-          "${local.initial_startup_delay_seconds}s",
-          "-restore-snapshot-timeout",
-          "4s",
-          "-member-replace-timeout",
-          "12s",
-          "-status-timeout",
-          "4s",
-          "-upload-snapshot-timeout",
-          "4s",
-          "-backup-interval",
-          "30s",
+        image = join(":", [
+          "registry.k8s.io/etcd",
+          "3.7.1@sha256:a9983dd6d9283138ab926daa307c6c25623636703ecf5645d5df4d666ce9eba2", # renovate: datasource=docker depName=registry.k8s.io/etcd
+        ])
+        command = [
+          "${local.etcd_wrapper_path}/bin/etcd-wrapper",
+          "run",
+          "-local-client-url", each.value.client_url,
+          "-s3-backup-resource-prefix", "https://127.0.0.1:${local.minio_port}/${local.minio_bucket}/integ/snapshot-",
+          "-s3-backup-trusted-ca-file", "/etc/etcd/minio/certs/CAs/ca.crt",
+          "-initial-cluster-timeout", "${local.initial_startup_delay_seconds}s",
+          "-restore-snapshot-timeout", "4s",
+          "-client-timeout", "8s",
         ]
         env = [
           for k, v in {
@@ -216,12 +204,12 @@ module "etcd" {
             ])
             "ETCD_INITIAL_CLUSTER_TOKEN"     = "test"
             "ETCD_ADVERTISE_CLIENT_URLS"     = each.value.client_url
-            "ETCD_TRUSTED_CA_FILE"           = "/etc/etcd/ca-cert.pem"
-            "ETCD_CERT_FILE"                 = "/etc/etcd/${each.key}/client/cert.pem"
-            "ETCD_KEY_FILE"                  = "/etc/etcd/${each.key}/client/key.pem"
-            "ETCD_PEER_TRUSTED_CA_FILE"      = "etc/etcd/peer-ca-cert.pem"
-            "ETCD_PEER_CERT_FILE"            = "/etc/etcd/${each.key}/peer/cert.pem"
-            "ETCD_PEER_KEY_FILE"             = "/etc/etcd/${each.key}/peer/key.pem"
+            "ETCD_TRUSTED_CA_FILE"           = "/etc/etcd/ca.crt"
+            "ETCD_CERT_FILE"                 = "/etc/etcd/${each.key}/client/tls.crt"
+            "ETCD_KEY_FILE"                  = "/etc/etcd/${each.key}/client/tls.key"
+            "ETCD_PEER_TRUSTED_CA_FILE"      = "/etc/etcd/peer-ca.crt"
+            "ETCD_PEER_CERT_FILE"            = "/etc/etcd/${each.key}/peer/tls.crt"
+            "ETCD_PEER_KEY_FILE"             = "/etc/etcd/${each.key}/peer/tls.key"
             "ETCD_STRICT_RECONFIG_CHECK"     = true
             "ETCD_LOG_LEVEL"                 = "warn"
             "ETCD_AUTO_COMPACTION_RETENTION" = 1
@@ -246,8 +234,56 @@ module "etcd" {
             mountPath = "/etc/etcd"
           },
           {
-            name      = "etcd"
-            mountPath = local.etcd_mount_path
+            name      = "etcd-wrapper"
+            mountPath = local.etcd_wrapper_path
+          },
+        ]
+      },
+      {
+        name = "backup"
+        image = join(":", [
+          "registry.k8s.io/etcd",
+          "3.7.1@sha256:a9983dd6d9283138ab926daa307c6c25623636703ecf5645d5df4d666ce9eba2", # renovate: datasource=docker depName=registry.k8s.io/etcd
+        ])
+        command = [
+          "${local.etcd_wrapper_path}/bin/etcd-wrapper",
+          "backup",
+          "-local-client-url", each.value.client_url,
+          "-s3-backup-resource-prefix", "https://127.0.0.1:${local.minio_port}/${local.minio_bucket}/integ/snapshot-",
+          "-s3-backup-count", "3",
+          "-s3-backup-trusted-ca-file", "/etc/etcd/minio/certs/CAs/ca.crt",
+          "-client-timeout", "8s",
+          "-upload-snapshot-timeout", "4s",
+          "-backup-interval", "30s",
+        ]
+        env = [
+          for k, v in {
+            "ETCD_INITIAL_CLUSTER" = join(",", [
+              for name, m in local.members :
+              "${name}=${m.peer_url}"
+            ])
+            "ETCD_TRUSTED_CA_FILE"      = "/etc/etcd/ca.crt"
+            "ETCD_CERT_FILE"            = "/etc/etcd/${each.key}/client/tls.crt"
+            "ETCD_KEY_FILE"             = "/etc/etcd/${each.key}/client/tls.key"
+            "ETCD_PEER_TRUSTED_CA_FILE" = "/etc/etcd/peer-ca.crt"
+            "ETCD_PEER_CERT_FILE"       = "/etc/etcd/${each.key}/peer/tls.crt"
+            "ETCD_PEER_KEY_FILE"        = "/etc/etcd/${each.key}/peer/tls.key"
+            "AWS_ACCESS_KEY_ID"         = local.minio_username
+            "AWS_SECRET_ACCESS_KEY"     = local.minio_password
+          } :
+          {
+            name  = tostring(k)
+            value = tostring(v)
+          }
+        ]
+        volumeMounts = [
+          {
+            name      = "data"
+            mountPath = "/etc/etcd"
+          },
+          {
+            name      = "etcd-wrapper"
+            mountPath = local.etcd_wrapper_path
           },
         ]
       },
@@ -260,9 +296,9 @@ module "etcd" {
         }
       },
       {
-        name = "etcd"
+        name = "etcd-wrapper"
         image = {
-          reference  = "registry.k8s.io/etcd:v3.6.8"
+          reference  = "localhost/etcd-wrapper:latest"
           pullPolicy = "IfNotPresent"
         }
       }

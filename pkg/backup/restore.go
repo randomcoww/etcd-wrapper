@@ -93,9 +93,6 @@ func restoreV3Snapshot(ctx context.Context, config *c.Config, snapshotFile strin
 		"--data-dir", config.Env["ETCD_DATA_DIR"],
 		"--bump-revision", fmt.Sprintf("%d", versionBump),
 	}
-	if d, ok := config.Env["ETCD_WAL_DIR"]; ok && d != "" {
-		c.Args = append(c.Args, "--wal-dir", d)
-	}
 	if versionBump > 0 {
 		c.Args = append(c.Args, "--mark-compacted")
 	}

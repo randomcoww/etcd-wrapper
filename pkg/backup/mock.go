@@ -19,6 +19,41 @@ const (
 	timeFormat    string = "20060102-150405"
 )
 
+func mockConfig(prefixKey, dataPath string) (*c.Config, error) {
+	var (
+		peerPortBase int    = 8090
+		minioPort    int    = 9000
+		member       string = "node0"
+		err          error
+	)
+	logger, _ := zap.NewProduction()
+
+	config := &c.Config{
+		EtcdutlBinaryFile: "/etcd/usr/local/bin/etcdutl",
+		Logger:            logger,
+		S3BackupHost:      fmt.Sprintf("127.0.0.1:%d", minioPort),
+		S3BackupBucket:    "etcd",
+		S3BackupKeyPrefix: fmt.Sprintf("%s-%d-", prefixKey, time.Now().Unix()),
+		S3BackupCount:     2,
+		RestoreTimeout:    2 * time.Second,
+		UploadTimeout:     2 * time.Second,
+		Env: map[string]string{
+			"ETCD_NAME":                        member,
+			"ETCD_INITIAL_CLUSTER":             fmt.Sprintf("%s=https://127.0.0.1:%d", member, peerPortBase),
+			"ETCD_INITIAL_CLUSTER_TOKEN":       "test",
+			"ETCD_INITIAL_ADVERTISE_PEER_URLS": fmt.Sprintf("https://127.0.0.1:%d", peerPortBase),
+			"ETCD_DATA_DIR":                    dataPath,
+		},
+	}
+	config.S3TLSConfig, err = tlsutil.TLSCAConfig([]string{filepath.Join(baseTestPath, "minio", "certs", "CAs", "ca.crt")})
+	if err != nil {
+		return nil, err
+	}
+	config.WriteEnv()
+
+	return config, nil
+}
+
 type mockS3 struct{}
 
 func (c *mockS3) Verify(ctx context.Context, config *c.Config) error {
@@ -46,35 +81,4 @@ func (c *mockS3) List(ctx context.Context, config *c.Config) []string {
 	return []string{
 		"dummy", // just need non-zero keys
 	}
-}
-
-func mockConfig(prefixKey, dataPath string) *c.Config {
-	var (
-		peerPortBase int    = 8090
-		minioPort    int    = 9000
-		member       string = "node0"
-	)
-	logger, _ := zap.NewProduction()
-
-	config := &c.Config{
-		EtcdutlBinaryFile: "/etcd/usr/local/bin/etcdutl",
-		Logger:            logger,
-		S3BackupHost:      fmt.Sprintf("127.0.0.1:%d", minioPort),
-		S3BackupBucket:    "etcd",
-		S3BackupKeyPrefix: fmt.Sprintf("%s-%d-", prefixKey, time.Now().Unix()),
-		S3BackupCount:     2,
-		RestoreTimeout:    2 * time.Second,
-		UploadTimeout:     2 * time.Second,
-		Env: map[string]string{
-			"ETCD_NAME":                        member,
-			"ETCD_INITIAL_CLUSTER":             fmt.Sprintf("%s=https://127.0.0.1:%d", member, peerPortBase),
-			"ETCD_INITIAL_CLUSTER_TOKEN":       "test",
-			"ETCD_INITIAL_ADVERTISE_PEER_URLS": fmt.Sprintf("https://127.0.0.1:%d", peerPortBase),
-			"ETCD_DATA_DIR":                    dataPath,
-		},
-	}
-	config.S3TLSConfig, _ = tlsutil.TLSCAConfig([]string{filepath.Join(baseTestPath, "minio", "certs", "CAs", "ca.crt")})
-	config.WriteEnv()
-
-	return config
 }
