@@ -21,7 +21,7 @@ func TestBackupConfig(t *testing.T) {
 	t.Setenv("ETCD_PEER_CERT_FILE", filepath.Join(baseTestPath, member, "peer", "tls.crt"))
 	t.Setenv("ETCD_PEER_KEY_FILE", filepath.Join(baseTestPath, member, "peer", "tls.key"))
 
-	c, err := NewConfig("backup", []string{
+	c, err := NewConfig("sidecar", []string{
 		"-local-client-url", "https://127.0.0.1:9080",
 		"-etcdutl-binary-file", "/path/etcdutl",
 		"-s3-backup-resource-prefix", "https://test-1.internal:9000/bucket-1/path/etcd-0.db",

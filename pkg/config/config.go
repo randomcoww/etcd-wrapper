@@ -99,7 +99,7 @@ func (config *Config) ParseArgs(args []string) error {
 		fs.DurationVar(&config.InitialClusterTimeout, "initial-cluster-timeout", 2*time.Minute, "Initial cluster discovery timeout")
 		fs.StringVar(&config.EtcdBinaryFile, "etcd-binary-file", "/usr/local/bin/etcd", "Path to etcd binary")
 		fs.DurationVar(&config.RestoreTimeout, "restore-snapshot-timeout", 1*time.Minute, "Restore snapshot timeout")
-	case "backup":
+	case "sidecar":
 		fs.DurationVar(&config.UploadTimeout, "upload-snapshot-timeout", 1*time.Minute, "Upload snapshot timeout")
 		fs.DurationVar(&config.BackupInterval, "backup-interval", 10*time.Minute, "Backup interval")
 		fs.IntVar(&config.S3BackupCount, "s3-backup-count", 4, "count of snapshots to retain")
