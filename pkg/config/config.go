@@ -4,14 +4,15 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
-	"github.com/randomcoww/etcd-wrapper/pkg/tlsutil"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 	"os"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/randomcoww/etcd-wrapper/pkg/tlsutil"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 type Config struct {
@@ -81,6 +82,12 @@ func (config *Config) parseArgs(args []string) error {
 		return err
 	}
 
+	if _, ok := config.Env["ETCD_NAME"]; !ok {
+		return fmt.Errorf("env ETCD_NAME is not set")
+	}
+	if _, ok := config.Env["ETCD_INITIAL_CLUSTER_TOKEN"]; !ok {
+		return fmt.Errorf("env ETCD_INITIAL_CLUSTER_TOKEN is not set")
+	}
 	delete(config.Env, "ETCD_INITIAL_CLUSTER_STATE") // this is set internally
 
 	if v, ok := config.Env["ETCD_INITIAL_CLUSTER"]; ok {
@@ -126,9 +133,6 @@ func (config *Config) parseArgs(args []string) error {
 		return err
 	}
 
-	if _, ok := config.Env["ETCD_NAME"]; !ok {
-		return fmt.Errorf("env ETCD_NAME is not set")
-	}
 	if v, ok := config.Env["ETCD_INITIAL_ADVERTISE_PEER_URLS"]; ok {
 		config.InitialAdvertisePeerURLs = append(config.InitialAdvertisePeerURLs, reList.Split(v, -1)...)
 		sort.Strings(config.InitialAdvertisePeerURLs)

@@ -1,9 +1,10 @@
 package config
 
 import (
-	"github.com/stretchr/testify/assert"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRunConfig(t *testing.T) {
@@ -16,6 +17,7 @@ func TestRunConfig(t *testing.T) {
 	t.Setenv("ETCD_LISTEN_CLIENT_URLS", "https://10.1.0.1:9080,https://127.0.0.1:9080,https://10.0.0.1:9080")
 	t.Setenv("ETCD_INITIAL_ADVERTISE_PEER_URLS", "https://10.0.0.1:8080")
 	t.Setenv("ETCD_INITIAL_CLUSTER", "node0=https://10.0.0.1:8080,node1=https://10.0.0.2:8080")
+	t.Setenv("ETCD_INITIAL_CLUSTER_TOKEN", "token")
 	t.Setenv("ETCD_TRUSTED_CA_FILE", filepath.Join(baseTestPath, "client", "ca.crt"))
 	t.Setenv("ETCD_CERT_FILE", filepath.Join(baseTestPath, member, "client", "tls.crt"))
 	t.Setenv("ETCD_KEY_FILE", filepath.Join(baseTestPath, member, "client", "tls.key"))
@@ -37,6 +39,7 @@ func TestRunConfig(t *testing.T) {
 		"ETCD_LISTEN_CLIENT_URLS":          "https://10.1.0.1:9080,https://127.0.0.1:9080,https://10.0.0.1:9080",
 		"ETCD_INITIAL_ADVERTISE_PEER_URLS": "https://10.0.0.1:8080",
 		"ETCD_INITIAL_CLUSTER":             "node0=https://10.0.0.1:8080,node1=https://10.0.0.2:8080",
+		"ETCD_INITIAL_CLUSTER_TOKEN":       "token",
 		"ETCD_CLIENT_CERT_AUTH":            "true",
 		"ETCD_TRUSTED_CA_FILE":             filepath.Join(baseTestPath, "client", "ca.crt"),
 		"ETCD_CERT_FILE":                   filepath.Join(baseTestPath, member, "client", "tls.crt"),
@@ -66,6 +69,7 @@ func TestRunConfig(t *testing.T) {
 		"ETCD_ENABLE_V2=false",
 		"ETCD_INITIAL_ADVERTISE_PEER_URLS=https://10.0.0.1:8080",
 		"ETCD_INITIAL_CLUSTER=node0=https://10.0.0.1:8080,node1=https://10.0.0.2:8080",
+		"ETCD_INITIAL_CLUSTER_TOKEN=token",
 		"ETCD_KEY_FILE=" + filepath.Join(baseTestPath, member, "client", "tls.key"),
 		"ETCD_LISTEN_CLIENT_URLS=https://10.1.0.1:9080,https://127.0.0.1:9080,https://10.0.0.1:9080",
 		"ETCD_LOG_OUTPUTS=stdout",
