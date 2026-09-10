@@ -178,19 +178,19 @@ func (client *Client) MemberRemove(ctx context.Context, id uint64) (Members, err
 	}
 }
 
-func (client *Client) GetQuorum(ctx context.Context) error {
+func (client *Client) GetRevision(ctx context.Context) (int64, error) {
 	for {
-		_, err := client.Get(ctx, "health-check-dummy", clientv3.WithCountOnly())
+		resp, err := client.Get(ctx, "health-check-dummy", clientv3.WithCountOnly())
 		switch {
 		case err == nil:
-			return nil
+			return resp.Header.Revision, nil
 		default:
 		}
 
 		timer := time.NewTimer(backoffWaitBetween)
 		select {
 		case <-ctx.Done():
-			return err
+			return 0, err
 
 		case <-timer.C:
 			continue
