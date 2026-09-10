@@ -185,7 +185,7 @@ module "etcd" {
             "ETCD_NAME"                        = each.key
             "ETCD_DATA_DIR"                    = "${local.data_path}/data"
             "ETCD_LISTEN_PEER_URLS"            = each.value.peer_url
-            "ETCD_LISTEN_CLIENT_URLS"          = "${each.value.client_url},unixs://${abspath("${local.data_path}/etcd.sock")}"
+            "ETCD_LISTEN_CLIENT_URLS"          = each.value.client_url
             "ETCD_INITIAL_ADVERTISE_PEER_URLS" = each.value.peer_url
             "ETCD_INITIAL_CLUSTER" = join(",", [
               for name, m in local.members :
@@ -271,7 +271,7 @@ module "etcd-wrapper" {
             "ETCD_NAME"                        = each.key
             "ETCD_DATA_DIR"                    = "${local.data_path}/data"
             "ETCD_LISTEN_PEER_URLS"            = each.value.peer_url
-            "ETCD_LISTEN_CLIENT_URLS"          = "${each.value.client_url},unixs://${abspath("${local.data_path}/etcd.sock")}"
+            "ETCD_LISTEN_CLIENT_URLS"          = each.value.client_url
             "ETCD_INITIAL_ADVERTISE_PEER_URLS" = each.value.peer_url
             "ETCD_INITIAL_CLUSTER" = join(",", [
               for name, m in local.members :
