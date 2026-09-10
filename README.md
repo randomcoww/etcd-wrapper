@@ -51,9 +51,9 @@ podman build -t etcd-wrapper .
 ### Run test cluster
 
 ```bash
-podman play kube test/outputs/node0.yaml
-podman play kube test/outputs/node1.yaml
-podman play kube test/outputs/node2.yaml
+podman play kube test/outputs/node0-wrapper.yaml
+podman play kube test/outputs/node1-wrapper.yaml
+podman play kube test/outputs/node2-wrapper.yaml
 ```
 
 ### Check backups
@@ -62,10 +62,20 @@ podman play kube test/outputs/node2.yaml
 podman exec minio-mc mc ls m/etcd/integ
 ```
 
-### Cleanup
+### Run etcd only
 
 ```bash
-podman play kube test/outputs/node0.yaml --down & \
-podman play kube test/outputs/node1.yaml --down & \
-podman play kube test/outputs/node2.yaml --down
+podman play kube test/outputs/node0.yaml
+podman play kube test/outputs/node1.yaml
+podman play kube test/outputs/node2.yaml
+```
+
+### Test query
+
+```bash
+podman exec -it node0-etcd etcdctl --endpoints=https://127.0.0.1:8080 \
+  --cacert=/var/lib/etcd/client/ca.crt \
+  --cert=/var/lib/etcd/client/tls.crt \
+  --key=/var/lib/etcd/client/tls.key \
+  member list
 ```

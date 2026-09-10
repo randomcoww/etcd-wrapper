@@ -31,12 +31,12 @@ locals {
 }
 
 resource "local_file" "ca-cert" {
-  filename = "${local.base_path}/ca.crt"
+  filename = "${local.base_path}/client/ca.crt"
   content  = tls_self_signed_cert.etcd-ca.cert_pem
 }
 
 resource "local_file" "peer-ca-cert" {
-  filename = "${local.base_path}/peer-ca.crt"
+  filename = "${local.base_path}/peer/ca.crt"
   content  = tls_self_signed_cert.etcd-peer-ca.cert_pem
 }
 
@@ -193,12 +193,12 @@ module "etcd" {
             ])
             "ETCD_INITIAL_CLUSTER_TOKEN"     = "test"
             "ETCD_ADVERTISE_CLIENT_URLS"     = each.value.client_url
-            "ETCD_TRUSTED_CA_FILE"           = "/etc/etcd/ca.crt"
-            "ETCD_CERT_FILE"                 = "/etc/etcd/${each.key}/client/tls.crt"
-            "ETCD_KEY_FILE"                  = "/etc/etcd/${each.key}/client/tls.key"
-            "ETCD_PEER_TRUSTED_CA_FILE"      = "/etc/etcd/peer-ca.crt"
-            "ETCD_PEER_CERT_FILE"            = "/etc/etcd/${each.key}/peer/tls.crt"
-            "ETCD_PEER_KEY_FILE"             = "/etc/etcd/${each.key}/peer/tls.key"
+            "ETCD_TRUSTED_CA_FILE"           = "${local.data_path}/client/ca.crt"
+            "ETCD_CERT_FILE"                 = "${local.data_path}/client/tls.crt"
+            "ETCD_KEY_FILE"                  = "${local.data_path}/client/tls.key"
+            "ETCD_PEER_TRUSTED_CA_FILE"      = "${local.data_path}/peer/ca.crt"
+            "ETCD_PEER_CERT_FILE"            = "${local.data_path}/peer/tls.crt"
+            "ETCD_PEER_KEY_FILE"             = "${local.data_path}/peer/tls.key"
             "ETCD_STRICT_RECONFIG_CHECK"     = true
             "ETCD_LOG_LEVEL"                 = "warn"
             "ETCD_AUTO_COMPACTION_RETENTION" = 1
@@ -220,7 +220,13 @@ module "etcd" {
           },
           {
             name      = "data"
-            mountPath = "/etc/etcd"
+            mountPath = "${local.data_path}/client/ca.crt"
+            subPath   = "client/ca.crt"
+          },
+          {
+            name      = "data"
+            mountPath = "${local.data_path}/peer/ca.crt"
+            subPath   = "peer/ca.crt"
           },
         ]
       },
@@ -273,12 +279,12 @@ module "etcd-wrapper" {
             ])
             "ETCD_INITIAL_CLUSTER_TOKEN"     = "test"
             "ETCD_ADVERTISE_CLIENT_URLS"     = each.value.client_url
-            "ETCD_TRUSTED_CA_FILE"           = "/etc/etcd/ca.crt"
-            "ETCD_CERT_FILE"                 = "/etc/etcd/${each.key}/client/tls.crt"
-            "ETCD_KEY_FILE"                  = "/etc/etcd/${each.key}/client/tls.key"
-            "ETCD_PEER_TRUSTED_CA_FILE"      = "/etc/etcd/peer-ca.crt"
-            "ETCD_PEER_CERT_FILE"            = "/etc/etcd/${each.key}/peer/tls.crt"
-            "ETCD_PEER_KEY_FILE"             = "/etc/etcd/${each.key}/peer/tls.key"
+            "ETCD_TRUSTED_CA_FILE"           = "${local.data_path}/client/ca.crt"
+            "ETCD_CERT_FILE"                 = "${local.data_path}/client/tls.crt"
+            "ETCD_KEY_FILE"                  = "${local.data_path}/client/tls.key"
+            "ETCD_PEER_TRUSTED_CA_FILE"      = "${local.data_path}/peer/ca.crt"
+            "ETCD_PEER_CERT_FILE"            = "${local.data_path}/peer/tls.crt"
+            "ETCD_PEER_KEY_FILE"             = "${local.data_path}/peer/tls.key"
             "ETCD_STRICT_RECONFIG_CHECK"     = true
             "ETCD_LOG_LEVEL"                 = "warn"
             "ETCD_AUTO_COMPACTION_RETENTION" = 1
@@ -300,7 +306,13 @@ module "etcd-wrapper" {
           },
           {
             name      = "data"
-            mountPath = "/etc/etcd"
+            mountPath = "${local.data_path}/client/ca.crt"
+            subPath   = "client/ca.crt"
+          },
+          {
+            name      = "data"
+            mountPath = "${local.data_path}/peer/ca.crt"
+            subPath   = "peer/ca.crt"
           },
           {
             name      = "etcd-wrapper"
@@ -331,12 +343,12 @@ module "etcd-wrapper" {
               for name, m in local.members :
               "${name}=${m.peer_url}"
             ])
-            "ETCD_TRUSTED_CA_FILE"      = "/etc/etcd/ca.crt"
-            "ETCD_CERT_FILE"            = "/etc/etcd/${each.key}/client/tls.crt"
-            "ETCD_KEY_FILE"             = "/etc/etcd/${each.key}/client/tls.key"
-            "ETCD_PEER_TRUSTED_CA_FILE" = "/etc/etcd/peer-ca.crt"
-            "ETCD_PEER_CERT_FILE"       = "/etc/etcd/${each.key}/peer/tls.crt"
-            "ETCD_PEER_KEY_FILE"        = "/etc/etcd/${each.key}/peer/tls.key"
+            "ETCD_TRUSTED_CA_FILE"      = "${local.data_path}/client/ca.crt"
+            "ETCD_CERT_FILE"            = "${local.data_path}/client/tls.crt"
+            "ETCD_KEY_FILE"             = "${local.data_path}/client/tls.key"
+            "ETCD_PEER_TRUSTED_CA_FILE" = "${local.data_path}/peer/ca.crt"
+            "ETCD_PEER_CERT_FILE"       = "${local.data_path}/peer/tls.crt"
+            "ETCD_PEER_KEY_FILE"        = "${local.data_path}/peer/tls.key"
             "AWS_ACCESS_KEY_ID"         = local.minio_username
             "AWS_SECRET_ACCESS_KEY"     = local.minio_password
           } :
@@ -348,7 +360,18 @@ module "etcd-wrapper" {
         volumeMounts = [
           {
             name      = "data"
-            mountPath = "/etc/etcd"
+            mountPath = local.data_path
+            subPath   = each.key
+          },
+          {
+            name      = "data"
+            mountPath = "${local.data_path}/client/ca.crt"
+            subPath   = "client/ca.crt"
+          },
+          {
+            name      = "data"
+            mountPath = "${local.data_path}/peer/ca.crt"
+            subPath   = "peer/ca.crt"
           },
           {
             name      = "etcd-wrapper"
