@@ -1,8 +1,9 @@
 package etcdexec
 
 import (
-	c "github.com/randomcoww/etcd-wrapper/pkg/config"
 	"syscall"
+
+	c "github.com/randomcoww/etcd-wrapper/pkg/config"
 )
 
 type EtcdExec struct {

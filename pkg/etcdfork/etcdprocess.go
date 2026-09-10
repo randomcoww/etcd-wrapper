@@ -4,9 +4,10 @@ package etcdfork
 
 import (
 	"context"
-	c "github.com/randomcoww/etcd-wrapper/pkg/config"
 	"os"
 	"os/exec"
+
+	c "github.com/randomcoww/etcd-wrapper/pkg/config"
 )
 
 type EtcdFork struct {
