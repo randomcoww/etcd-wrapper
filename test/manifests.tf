@@ -175,8 +175,77 @@ module "etcd" {
     hostNetwork = true
     containers = [
       {
-        name  = "etcd"
-        image = "localhost/etcd-wrapper:latest"
+        name = "etcd"
+        image = join(":", [
+          "registry.k8s.io/etcd",
+          "3.7.1@sha256:a9983dd6d9283138ab926daa307c6c25623636703ecf5645d5df4d666ce9eba2", # renovate: datasource=docker depName=registry.k8s.io/etcd
+        ])
+        env = [
+          for k, v in {
+            "ETCD_NAME"                        = each.key
+            "ETCD_DATA_DIR"                    = "${local.data_path}/data"
+            "ETCD_LISTEN_PEER_URLS"            = each.value.peer_url
+            "ETCD_LISTEN_CLIENT_URLS"          = "${each.value.client_url},unixs://${abspath("${local.data_path}/etcd.sock")}"
+            "ETCD_INITIAL_ADVERTISE_PEER_URLS" = each.value.peer_url
+            "ETCD_INITIAL_CLUSTER" = join(",", [
+              for name, m in local.members :
+              "${name}=${m.peer_url}"
+            ])
+            "ETCD_INITIAL_CLUSTER_TOKEN"     = "test"
+            "ETCD_ADVERTISE_CLIENT_URLS"     = each.value.client_url
+            "ETCD_TRUSTED_CA_FILE"           = "/etc/etcd/ca.crt"
+            "ETCD_CERT_FILE"                 = "/etc/etcd/${each.key}/client/tls.crt"
+            "ETCD_KEY_FILE"                  = "/etc/etcd/${each.key}/client/tls.key"
+            "ETCD_PEER_TRUSTED_CA_FILE"      = "/etc/etcd/peer-ca.crt"
+            "ETCD_PEER_CERT_FILE"            = "/etc/etcd/${each.key}/peer/tls.crt"
+            "ETCD_PEER_KEY_FILE"             = "/etc/etcd/${each.key}/peer/tls.key"
+            "ETCD_STRICT_RECONFIG_CHECK"     = true
+            "ETCD_LOG_LEVEL"                 = "warn"
+            "ETCD_AUTO_COMPACTION_RETENTION" = 1
+            "ETCD_AUTO_COMPACTION_MODE"      = "revision"
+            "ETCD_SOCKET_REUSE_ADDRESS"      = true
+            "AWS_ACCESS_KEY_ID"              = local.minio_username
+            "AWS_SECRET_ACCESS_KEY"          = local.minio_password
+          } :
+          {
+            name  = tostring(k)
+            value = tostring(v)
+          }
+        ]
+        volumeMounts = [
+          {
+            name      = "data"
+            mountPath = local.data_path
+            subPath   = each.key
+          },
+          {
+            name      = "data"
+            mountPath = "/etc/etcd"
+          },
+        ]
+      },
+    ]
+    volumes = [
+      {
+        name = "data"
+        hostPath = {
+          path = abspath(local.base_path)
+        }
+      },
+    ]
+  }
+}
+
+module "etcd-wrapper" {
+  for_each = local.members
+
+  source = "./modules/static_pod"
+  name   = each.key
+  spec = {
+    hostNetwork = true
+    containers = [
+      {
+        name = "etcd"
         image = join(":", [
           "registry.k8s.io/etcd",
           "3.7.1@sha256:a9983dd6d9283138ab926daa307c6c25623636703ecf5645d5df4d666ce9eba2", # renovate: datasource=docker depName=registry.k8s.io/etcd
@@ -315,7 +384,16 @@ resource "local_file" "minio-manifest" {
   file_permission      = "0600"
 }
 
-resource "local_file" "etcd-manifest" {
+resource "local_file" "etcd-wrapper-manifest" {
+  for_each = local.members
+
+  filename             = "${local.base_path}/${each.key}-wrapper.yaml"
+  content              = module.etcd-wrapper[each.key].manifest
+  directory_permission = "0700"
+  file_permission      = "0600"
+}
+
+resource "local_file" "etcd-wrapper" {
   for_each = local.members
 
   filename             = "${local.base_path}/${each.key}.yaml"
