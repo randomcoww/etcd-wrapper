@@ -3,14 +3,15 @@ package etcdclient
 import (
 	"context"
 	"fmt"
-	c "github.com/randomcoww/etcd-wrapper/pkg/config"
-	etcdserverpb "go.etcd.io/etcd/api/v3/etcdserverpb"
-	clientv3 "go.etcd.io/etcd/client/v3"
-	"go.etcd.io/etcd/server/v3/etcdserver"
 	"io"
 	"net"
 	"net/http"
 	"time"
+
+	c "github.com/randomcoww/etcd-wrapper/pkg/config"
+	etcdserverpb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	clientv3 "go.etcd.io/etcd/client/v3"
+	"go.etcd.io/etcd/server/v3/etcdserver"
 )
 
 type Client struct {
@@ -124,10 +125,35 @@ func NewClient(ctx context.Context, config *c.Config, endpoints []string) (EtcdC
 	}, nil
 }
 
+func RestoreSnapshot(snapshotFile string, config *c.Config) error {
+	sp := snapshot.NewV3(config.Logger)
+	if err := sp.Restore(snapshot.RestoreConfig{
+		SnapshotPath:        snapshotFile,
+		OutputDataDir:       config.Env["ETCD_DATA_DIR"],
+		OutputWALDir:        config.Env["ETCD_WAL_DIR"],
+		Name:                config.Env["ETCD_NAME"],
+		InitialCluster:      config.Env["ETCD_INITIAL_CLUSTER"],
+		InitialClusterToken: config.Env["ETCD_INITIAL_CLUSTER_TOKEN"],
+		SkipHashCheck:       false,
+	}); err != nil {
+		return fmt.Errorf("restore snapshot from %s: %w", snapshotFile, err)
+	}
+	return nil
+}
+
+func GetDataRevision(config *c.Config) (int64, error) {
+	sp := snapshot.NewV3(config.Logger)
+	status, err := sp.Status(config.Env["ETCD_DATA_DIR"])
+	if err != nil {
+		return 0, fmt.Errorf("get local revision: %w", err)
+	}
+	return status.Revision, nil
+}
+
 func (client *Client) MemberList(ctx context.Context) (Members, error) {
 	resp, err := client.Cluster.MemberList(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get member list: %w", err)
 	}
 	return (*etcdserverpb.MemberListResponse)(resp), nil
 }
@@ -135,7 +161,7 @@ func (client *Client) MemberList(ctx context.Context) (Members, error) {
 func (client *Client) Status(ctx context.Context, endpoint string) (Status, error) {
 	resp, err := client.Maintenance.Status(ctx, endpoint)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("get node status: %w", err)
 	}
 	return (*etcdserverpb.StatusResponse)(resp), nil
 }
@@ -152,7 +178,7 @@ func (client *Client) MemberAdd(ctx context.Context, peerURLs []string) (Members
 		timer := time.NewTimer(backoffWaitBetween)
 		select {
 		case <-ctx.Done():
-			return nil, err
+			return nil, fmt.Errorf("add member %w: %w", ctx.Err(), err)
 		case <-timer.C:
 			continue
 		}
@@ -171,7 +197,7 @@ func (client *Client) MemberRemove(ctx context.Context, id uint64) (Members, err
 		timer := time.NewTimer(backoffWaitBetween)
 		select {
 		case <-ctx.Done():
-			return nil, err
+			return nil, fmt.Errorf("remove member %w: %w", ctx.Err(), err)
 		case <-timer.C:
 			continue
 		}
@@ -190,7 +216,7 @@ func (client *Client) GetRevision(ctx context.Context) (int64, error) {
 		timer := time.NewTimer(backoffWaitBetween)
 		select {
 		case <-ctx.Done():
-			return 0, err
+			return 0, fmt.Errorf("get cluster revision %w: %w", ctx.Err(), err)
 
 		case <-timer.C:
 			continue
@@ -200,13 +226,13 @@ func (client *Client) GetRevision(ctx context.Context) (int64, error) {
 
 func (client *Client) Defragment(ctx context.Context, endpoint string) error {
 	_, err := client.Maintenance.Defragment(ctx, endpoint)
-	return err
+	return fmt.Errorf("defragment node: %w", err)
 }
 
 func (client *Client) Snapshot(ctx context.Context) (io.Reader, error) {
 	rc, err := client.Maintenance.Snapshot(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("snapshot data: %w", err)
 	}
 	return rc, nil
 }
