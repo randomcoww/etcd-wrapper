@@ -16,14 +16,6 @@ tofu() {
 tofu -chdir=test init -upgrade && tofu -chdir=test apply
 ```
 
-### Go build and test
-
-Launch minio for testing
-
-```bash
-podman play kube test/outputs/minio.yaml
-```
-
 Add etcd binary for testing and run go env
 
 ```bash

@@ -6,12 +6,15 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"path/filepath"
 	"time"
 
 	c "github.com/randomcoww/etcd-wrapper/pkg/config"
 	etcdserverpb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
+	"go.etcd.io/etcd/etcdutl/v3/snapshot"
 	"go.etcd.io/etcd/server/v3/etcdserver"
+	"go.uber.org/zap"
 )
 
 type Client struct {
@@ -54,7 +57,7 @@ type EtcdClient interface {
 	MemberList(context.Context) (Members, error)
 	MemberAdd(context.Context, []string) (Members, error)
 	MemberRemove(context.Context, uint64) (Members, error)
-	GetQuorum(context.Context) error
+	GetRevision(context.Context) (int64, error)
 	Defragment(context.Context, string) error
 	Snapshot(context.Context) (io.Reader, error)
 	Close() error
@@ -100,7 +103,7 @@ func NewClientFromPeersWithQuorum(ctx context.Context, config *c.Config) (EtcdCl
 	if err != nil {
 		return nil, err
 	}
-	if err = client.GetQuorum(ctx); err != nil {
+	if _, err = client.GetRevision(ctx); err != nil {
 		return nil, err
 	}
 	return client, nil
@@ -127,8 +130,11 @@ func NewClient(ctx context.Context, config *c.Config, endpoints []string) (EtcdC
 
 func RestoreSnapshot(snapshotFile string, config *c.Config) error {
 	sp := snapshot.NewV3(config.Logger)
+
+	config.Logger.Info("config", zap.Object("config", config))
 	if err := sp.Restore(snapshot.RestoreConfig{
 		SnapshotPath:        snapshotFile,
+		PeerURLs:            config.InitialAdvertisePeerURLs,
 		OutputDataDir:       config.Env["ETCD_DATA_DIR"],
 		OutputWALDir:        config.Env["ETCD_WAL_DIR"],
 		Name:                config.Env["ETCD_NAME"],
@@ -143,7 +149,7 @@ func RestoreSnapshot(snapshotFile string, config *c.Config) error {
 
 func GetDataRevision(config *c.Config) (int64, error) {
 	sp := snapshot.NewV3(config.Logger)
-	status, err := sp.Status(config.Env["ETCD_DATA_DIR"])
+	status, err := sp.Status(filepath.Join(config.Env["ETCD_DATA_DIR"], "member", "snap", "db"))
 	if err != nil {
 		return 0, fmt.Errorf("get local revision: %w", err)
 	}

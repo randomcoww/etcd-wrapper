@@ -2,15 +2,14 @@ package runner
 
 import (
 	"context"
-	"github.com/randomcoww/etcd-wrapper/pkg/backup"
-	c "github.com/randomcoww/etcd-wrapper/pkg/config"
-	"github.com/randomcoww/etcd-wrapper/pkg/etcdclient"
-	"github.com/randomcoww/etcd-wrapper/pkg/s3client"
-	"github.com/randomcoww/etcd-wrapper/pkg/util"
-	etcdserverpb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.uber.org/zap"
 	"os"
 	"time"
+
+	c "github.com/randomcoww/etcd-wrapper/pkg/config"
+	"github.com/randomcoww/etcd-wrapper/pkg/etcdclient"
+	"github.com/randomcoww/etcd-wrapper/pkg/util"
+	etcdserverpb "go.etcd.io/etcd/api/v3/etcdserverpb"
 )
 
 type etcdProcess interface {
@@ -20,41 +19,29 @@ type etcdProcess interface {
 	Wait() error
 }
 
-const (
-	restoreVersionBump uint64 = 1000000000
-)
-
-func RunEtcd(ctx context.Context, config *c.Config, etcdRunner etcdProcess, s3 s3client.Client) error {
-	// always clean out data
-	// data can be recreated from cluster
-	// data restore is needed on full cluster restart
-	if err := clearExistingData(config); err != nil {
-		return err
-	}
-
+func RunEtcd(ctx context.Context, config *c.Config, etcdRunner etcdProcess) error {
 	// wait for existing cluster (and quorum)
 	clusterCtx, clusterCancel := context.WithTimeout(ctx, time.Duration(config.InitialClusterTimeout))
 	defer clusterCancel()
+
+	// local data revision, err if broken, revision > 0 if data exists
+	revision, err := etcdclient.GetDataRevision(config)
+	if err != nil {
+		config.Logger.Error("get local data revision", zap.Error(err))
+
+		if err = clearExistingData(config); err != nil {
+			config.Logger.Error("delete local data", zap.Error(err))
+			return err
+		}
+	}
 
 	client, err := etcdclient.NewClientFromPeers(clusterCtx, config)
 	if err != nil {
 		// no members found
 		config.Logger.Info("no members found")
 
-		// attempt restoring backup
-		verifyS3Ctx, verifyS3Cancel := context.WithTimeout(ctx, config.S3VerifyTimeout)
-		defer verifyS3Cancel()
-		// if backup bucket can't be verified, fail instead of moving to new cluster
-		if err := s3.Verify(verifyS3Ctx, config); err != nil {
-			config.Logger.Error("failed to verify backup S3 resource", zap.Error(err))
-			return err
-		}
-		ok, err := backup.RestoreSnapshot(ctx, config, s3, restoreVersionBump)
-		if err != nil {
-			return err
-		}
-		// backup resource accessible but no backups found. move on to new cluster from scratch
-		if !ok {
+		if revision == 0 {
+			// no local data - start fresh
 			config.Logger.Info("starting member new fresh")
 			return etcdRunner.StartNew(config)
 		}
@@ -64,16 +51,22 @@ func RunEtcd(ctx context.Context, config *c.Config, etcdRunner etcdProcess, s3 s
 	}
 	defer client.Close()
 
+	// at least one member found
 	config.Logger.Info("existing members found")
-	// found members - check if quorum is established
-	if err := client.GetQuorum(clusterCtx); err != nil {
-		config.Logger.Info("no quorum found")
 
+	// found members - check if quorum is established
+	remoteRevision, err := client.GetRevision(clusterCtx)
+	if err != nil {
+		config.Logger.Info("no quorum found")
 		config.Logger.Info("starting member existing")
 		return etcdRunner.StartExisting(config)
 	}
 
 	config.Logger.Info("quorum found")
+	if revision >= remoteRevision {
+		return etcdRunner.StartExisting(config)
+	}
+
 	// cluster with quorum found - this is the most common scenario
 	clientCtx, clientCancel := context.WithTimeout(ctx, time.Duration(config.ClientTimeout*2))
 	defer clientCancel()
@@ -107,6 +100,9 @@ func RunEtcd(ctx context.Context, config *c.Config, etcdRunner etcdProcess, s3 s
 	}
 
 	config.Logger.Info("starting member existing")
+	if err = clearExistingData(config); err != nil {
+		return err
+	}
 	return etcdRunner.StartExisting(config)
 }
 
@@ -117,6 +113,7 @@ func clearExistingData(config *c.Config) error {
 			return err
 		}
 	}
+	config.Logger.Info("cleaned out existing data")
 	return nil
 }
 
