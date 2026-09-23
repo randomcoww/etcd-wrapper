@@ -98,17 +98,6 @@ func NewClientFromPeers(ctx context.Context, config *c.Config) (EtcdClient, erro
 	}
 }
 
-func NewClientFromPeersWithQuorum(ctx context.Context, config *c.Config) (EtcdClient, error) {
-	client, err := NewClientFromPeers(ctx, config)
-	if err != nil {
-		return nil, err
-	}
-	if _, err = client.GetRevision(ctx); err != nil {
-		return nil, err
-	}
-	return client, nil
-}
-
 func NewClient(ctx context.Context, config *c.Config, endpoints []string) (EtcdClient, error) {
 	client, err := clientv3.New(clientv3.Config{
 		Endpoints:            endpoints,
