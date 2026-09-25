@@ -3,9 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
-	c "github.com/randomcoww/etcd-wrapper/pkg/config"
-	"github.com/randomcoww/etcd-wrapper/pkg/etcdexec"
-	"github.com/randomcoww/etcd-wrapper/pkg/runner"
+	c "github.com/randomcoww/etcd-wrapper/internal/config"
+	"github.com/randomcoww/etcd-wrapper/internal/etcd"
+	"github.com/randomcoww/etcd-wrapper/internal/runner"
 	"go.uber.org/zap"
 	"os"
 	"os/signal"
@@ -36,7 +36,7 @@ func run(args []string) error {
 
 	logger.Info("Start etcd with", zap.Object("config", config))
 
-	if err := runner.RunEtcd(ctx, config, &etcdexec.EtcdExec{}); err != nil {
+	if err := runner.RunEtcd(ctx, config, &etcd.Exec{}); err != nil {
 		logger.Error("start etcd", zap.Error(err))
 		return err
 	}

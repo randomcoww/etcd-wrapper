@@ -4,13 +4,14 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/pem"
+	"fmt"
 	"os"
 )
 
-func TLSCAConfig(trustedCAFiles []string) (*tls.Config, error) {
+func BuildTLSCAConfig(trustedCAFiles []string) (*tls.Config, error) {
 	rootCAs, err := newCertPool(trustedCAFiles)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("no valid certificates found in %v", trustedCAFiles)
 	}
 
 	return &tls.Config{
@@ -19,28 +20,28 @@ func TLSCAConfig(trustedCAFiles []string) (*tls.Config, error) {
 	}, nil
 }
 
-func TLSConfig(trustedCAFiles []string, clientCertFile, clientKeyFile string) (*tls.Config, error) {
-	config, err := TLSCAConfig(trustedCAFiles)
+func BuildTLSConfig(certFile, keyFile string, trustedCAFiles []string) (*tls.Config, error) {
+	config, err := BuildTLSCAConfig(trustedCAFiles)
 	if err != nil {
 		return nil, err
 	}
 
 	config.GetCertificate = func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
-		return newCert(clientCertFile, clientKeyFile)
+		return newCert(certFile, keyFile)
 	}
 	config.GetClientCertificate = func(unused *tls.CertificateRequestInfo) (*tls.Certificate, error) {
-		return newCert(clientCertFile, clientKeyFile)
+		return newCert(certFile, keyFile)
 	}
 	return config, nil
 }
 
-func newCertPool(CAFiles []string) (*x509.CertPool, error) {
+func newCertPool(trustedCAFiles []string) (*x509.CertPool, error) {
 	certPool, err := x509.SystemCertPool()
 	if err != nil {
 		certPool = x509.NewCertPool()
 	}
-	for _, CAFile := range CAFiles {
-		pemByte, err := os.ReadFile(CAFile)
+	for _, f := range trustedCAFiles {
+		pemByte, err := os.ReadFile(f)
 		if err != nil {
 			return nil, err
 		}
@@ -62,13 +63,13 @@ func newCertPool(CAFiles []string) (*x509.CertPool, error) {
 	return certPool, nil
 }
 
-func newCert(certfile, keyfile string) (*tls.Certificate, error) {
-	cert, err := os.ReadFile(certfile)
+func newCert(certFile, keyFile string) (*tls.Certificate, error) {
+	cert, err := os.ReadFile(certFile)
 	if err != nil {
 		return nil, err
 	}
 
-	key, err := os.ReadFile(keyfile)
+	key, err := os.ReadFile(keyFile)
 	if err != nil {
 		return nil, err
 	}

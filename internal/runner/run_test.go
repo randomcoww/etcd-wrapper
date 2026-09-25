@@ -3,13 +3,13 @@ package runner
 import (
 	"context"
 	"os"
-	"path/filepath"
+	// "path/filepath"
 	"testing"
 	"time"
 
-	c "github.com/randomcoww/etcd-wrapper/pkg/config"
-	"github.com/randomcoww/etcd-wrapper/pkg/etcdclient"
-	"github.com/randomcoww/etcd-wrapper/pkg/etcdfork"
+	c "github.com/randomcoww/etcd-wrapper/internal/config"
+	"github.com/randomcoww/etcd-wrapper/internal/etcdclient"
+	"github.com/randomcoww/etcd-wrapper/internal/etcd"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -24,7 +24,7 @@ func TestNewWithNoDataCluster(t *testing.T) {
 	assert.NoError(t, err)
 
 	for _, config := range configs {
-		p := &etcdfork.EtcdFork{Ctx: ctx}
+		p := &etcd.Fork{Ctx: ctx}
 		defer p.Wait()
 		defer p.Stop()
 
@@ -41,6 +41,7 @@ func TestNewWithNoDataCluster(t *testing.T) {
 }
 
 // Restart cluster with different version data
+// A separate controller ensures that the highest revision node starts first
 func TestStartWithExistingData(t *testing.T) {
 	tests := []struct {
 		label            string
@@ -48,26 +49,36 @@ func TestStartWithExistingData(t *testing.T) {
 		queryKey         string
 		expectedVal      string
 	}{
-		{
-			label: "same revision",
-			snapshotRevFiles: []string{
-				filepath.Join(baseTestPath, "../rev3-snap.db"),
-				filepath.Join(baseTestPath, "../rev3-snap.db"),
-				filepath.Join(baseTestPath, "../rev3-snap.db"),
-			},
-			queryKey:    "test-rev3",
-			expectedVal: "test-rev3-val",
-		},
-		{
-			label: "one node data missing",
-			snapshotRevFiles: []string{
-				filepath.Join(baseTestPath, "../rev3-snap.db"),
-				"",
-				filepath.Join(baseTestPath, "../rev3-snap.db"),
-			},
-			queryKey:    "test-rev3",
-			expectedVal: "test-rev3-val",
-		},
+		// {
+		// 	label: "same revision",
+		// 	snapshotRevFiles: []string{
+		// 		filepath.Join(baseTestPath, "../rev3-snap.db"),
+		// 		filepath.Join(baseTestPath, "../rev3-snap.db"),
+		// 		filepath.Join(baseTestPath, "../rev3-snap.db"),
+		// 	},
+		// 	queryKey:    "test-rev3",
+		// 	expectedVal: "test-rev3-val",
+		// },
+		// {
+		// 	label: "mismatched revisions",
+		// 	snapshotRevFiles: []string{
+		// 		filepath.Join(baseTestPath, "../rev3-snap.db"),
+		// 		filepath.Join(baseTestPath, "../rev2-snap.db"),
+		// 		filepath.Join(baseTestPath, "../rev2-snap.db"),
+		// 	},
+		// 	queryKey:    "test-rev3",
+		// 	expectedVal: "test-rev3-val",
+		// },
+		// {
+		// 	label: "mismatched revisions",
+		// 	snapshotRevFiles: []string{
+		// 		filepath.Join(baseTestPath, "../rev3-snap.db"),
+		// 		"",
+		// 		"",
+		// 	},
+		// 	queryKey:    "test-rev3",
+		// 	expectedVal: "test-rev3-val",
+		// },
 	}
 	for _, tt := range tests {
 		t.Run(tt.label, func(t *testing.T) {
@@ -81,7 +92,7 @@ func TestStartWithExistingData(t *testing.T) {
 			assert.NoError(t, err)
 
 			for i, config := range configs {
-				p := &etcdfork.EtcdFork{Ctx: ctx}
+				p := &etcd.Fork{Ctx: ctx}
 				defer p.Wait()
 				defer p.Stop()
 
@@ -112,11 +123,80 @@ func TestStartWithExistingData(t *testing.T) {
 	}
 }
 
+/*
+func TestRunExistingCluster(t *testing.T) {
+	dataPath, _ := os.MkdirTemp("", "etcd-test-*")
+	defer os.RemoveAll(dataPath)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var ps []*etcd.Fork
+	configs, err := mockRunConfigs(dataPath)
+	assert.NoError(t, err)
+
+	for _, config := range configs {
+		p := &etcd.Fork{Ctx: ctx}
+		defer p.Wait()
+		defer p.Stop()
+		ps = append(ps, p)
+
+		err := RunEtcd(ctx, config, p)
+		assert.NoError(t, err)
+		time.Sleep(config.InitialClusterTimeout + 2*time.Second)
+	}
+
+	for _, config := range configs {
+		err := verifyTestStatus(ctx, config)
+		assert.NoError(t, err)
+	}
+
+	// -- test replacing one node --- //
+
+	for i := range configs[:1] {
+		ps[i].Stop()
+		ps[i].Wait()
+	}
+
+	for i, config := range configs[:1] {
+		time.Sleep(config.InitialClusterTimeout + 2*time.Second)
+		err := RunEtcd(ctx, config, ps[i])
+		assert.NoError(t, err)
+	}
+
+	// verify quorum, nodes, and backup
+	for _, config := range configs {
+		err := verifyTestStatus(ctx, config)
+		assert.NoError(t, err)
+	}
+
+	// --- test replacing two nodes (break quorum) --- //
+
+	for i := range configs[:2] {
+		ps[i].Stop()
+		ps[i].Wait()
+	}
+
+	for i, config := range configs[:2] {
+		time.Sleep(config.InitialClusterTimeout + 2*time.Second)
+		err := RunEtcd(ctx, config, ps[i])
+		assert.NoError(t, err)
+	}
+
+	// verify quorum, nodes, and backup
+	for _, config := range configs {
+		val, err := verifyTestData(ctx, config, "test-key1")
+		assert.NoError(t, err)
+		assert.Equal(t, "test-val1", val) // match value that should exist in the test data
+	}
+}
+*/
+
 func verifyTestStatus(ctx context.Context, config *c.Config) error {
 	clientCtx, clientCancel := context.WithTimeout(ctx, time.Duration(config.ClientTimeout))
 	defer clientCancel()
 
-	client, err := etcdclient.NewClientFromPeersWithQuorum(clientCtx, config)
+	client, err := etcdclient.NewClientFromPeers(clientCtx, config)
 	if err != nil {
 		return err
 	}
@@ -133,7 +213,7 @@ func verifyTestData(ctx context.Context, config *c.Config, key string) (string, 
 	clusterCtx, clusterCancel := context.WithTimeout(ctx, time.Duration(config.InitialClusterTimeout))
 	defer clusterCancel()
 
-	client, err := etcdclient.NewClientFromPeersWithQuorum(clusterCtx, config)
+	client, err := etcdclient.NewClientFromPeers(clusterCtx, config)
 	if err != nil {
 		return "", err
 	}

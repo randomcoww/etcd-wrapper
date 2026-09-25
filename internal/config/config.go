@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/randomcoww/etcd-wrapper/pkg/tlsutil"
+	"github.com/randomcoww/etcd-wrapper/internal/tlsutil"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -111,7 +111,7 @@ func (config *Config) parseArgs(args []string) error {
 	if !ok {
 		return fmt.Errorf("env ETCD_PEER_KEY_FILE is required")
 	}
-	config.PeerTLSConfig, err = tlsutil.TLSConfig([]string{peerTrustedCAFile}, peerCertFile, peerKeyFile)
+	config.PeerTLSConfig, err = tlsutil.BuildTLSConfig(peerCertFile, peerKeyFile, []string{peerTrustedCAFile})
 	if err != nil {
 		return err
 	}
@@ -128,7 +128,7 @@ func (config *Config) parseArgs(args []string) error {
 	if !ok {
 		return fmt.Errorf("env ETCD_KEY_FILE is required")
 	}
-	config.ClientTLSConfig, err = tlsutil.TLSConfig([]string{trustedCAFile}, certFile, keyFile)
+	config.ClientTLSConfig, err = tlsutil.BuildTLSConfig(certFile, keyFile, []string{trustedCAFile})
 	if err != nil {
 		return err
 	}

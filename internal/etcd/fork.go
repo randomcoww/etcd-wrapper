@@ -1,21 +1,21 @@
 // Test EtcdExec with fork process that can be stopped
 
-package etcdfork
+package etcd
 
 import (
 	"context"
 	"os"
 	"os/exec"
 
-	c "github.com/randomcoww/etcd-wrapper/pkg/config"
+	c "github.com/randomcoww/etcd-wrapper/internal/config"
 )
 
-type EtcdFork struct {
+type Fork struct {
 	Cmd *exec.Cmd
 	Ctx context.Context
 }
 
-func (m *EtcdFork) StartNew(config *c.Config) error {
+func (m *Fork) StartNew(config *c.Config) error {
 	m.Cmd = exec.CommandContext(m.Ctx, config.EtcdBinaryFile)
 	m.Cmd.Args = []string{
 		config.EtcdBinaryFile,
@@ -28,7 +28,7 @@ func (m *EtcdFork) StartNew(config *c.Config) error {
 	return m.Cmd.Start()
 }
 
-func (m *EtcdFork) StartExisting(config *c.Config) error {
+func (m *Fork) StartExisting(config *c.Config) error {
 	m.Cmd = exec.CommandContext(m.Ctx, config.EtcdBinaryFile)
 	m.Cmd.Args = []string{
 		config.EtcdBinaryFile,
@@ -41,14 +41,14 @@ func (m *EtcdFork) StartExisting(config *c.Config) error {
 	return m.Cmd.Start()
 }
 
-func (m *EtcdFork) Stop() error {
+func (m *Fork) Stop() error {
 	if m.Cmd.Process != nil {
 		return m.Cmd.Process.Kill()
 	}
 	return nil
 }
 
-func (m *EtcdFork) Wait() error {
+func (m *Fork) Wait() error {
 	if m.Cmd.Process != nil {
 		_, err := m.Cmd.Process.Wait()
 		return err

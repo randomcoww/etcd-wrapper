@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	c "github.com/randomcoww/etcd-wrapper/pkg/config"
+	c "github.com/randomcoww/etcd-wrapper/internal/config"
 	etcdserverpb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/etcdutl/v3/snapshot"

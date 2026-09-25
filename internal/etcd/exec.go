@@ -1,32 +1,32 @@
-package etcdexec
+package etcd
 
 import (
 	"syscall"
 
-	c "github.com/randomcoww/etcd-wrapper/pkg/config"
+	c "github.com/randomcoww/etcd-wrapper/internal/config"
 )
 
-type EtcdExec struct {
+type Exec struct {
 }
 
-func (m *EtcdExec) StartNew(config *c.Config) error {
+func (m *Exec) StartNew(config *c.Config) error {
 	return syscall.Exec(config.EtcdBinaryFile,
 		[]string{"--initial-cluster-state=new"},
 		config.WriteEnv(),
 	)
 }
 
-func (m *EtcdExec) StartExisting(config *c.Config) error {
+func (m *Exec) StartExisting(config *c.Config) error {
 	return syscall.Exec(config.EtcdBinaryFile,
 		[]string{"--initial-cluster-state=existing"},
 		config.WriteEnv(),
 	)
 }
 
-func (m *EtcdExec) Stop() error {
+func (m *Exec) Stop() error {
 	return nil
 }
 
-func (m *EtcdExec) Wait() error {
+func (m *Exec) Wait() error {
 	return nil
 }

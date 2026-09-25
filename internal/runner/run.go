@@ -6,9 +6,9 @@ import (
 	"os"
 	"time"
 
-	c "github.com/randomcoww/etcd-wrapper/pkg/config"
-	"github.com/randomcoww/etcd-wrapper/pkg/etcdclient"
-	"github.com/randomcoww/etcd-wrapper/pkg/util"
+	c "github.com/randomcoww/etcd-wrapper/internal/config"
+	"github.com/randomcoww/etcd-wrapper/internal/etcdclient"
+	"github.com/randomcoww/etcd-wrapper/internal/util"
 	etcdserverpb "go.etcd.io/etcd/api/v3/etcdserverpb"
 )
 
@@ -40,12 +40,6 @@ func RunEtcd(ctx context.Context, config *c.Config, etcdRunner etcdProcess) erro
 		// no members found
 		config.Logger.Info("no members found")
 
-		if revision == 0 {
-			// no local data - start fresh
-			config.Logger.Info("starting member new fresh")
-			return etcdRunner.StartNew(config)
-		}
-
 		config.Logger.Info("starting member existing with backup data")
 		return etcdRunner.StartExisting(config)
 	}
@@ -59,6 +53,10 @@ func RunEtcd(ctx context.Context, config *c.Config, etcdRunner etcdProcess) erro
 	if err != nil {
 		config.Logger.Info("no quorum found")
 		config.Logger.Info("starting member existing")
+
+		if err = clearExistingData(config); err != nil {
+			return err
+		}
 		return etcdRunner.StartExisting(config)
 	}
 
