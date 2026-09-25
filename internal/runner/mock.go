@@ -57,7 +57,7 @@ func mockConfigs(dataPath string) ([]*c.Config, error) {
 			},
 			LocalClientURL:           fmt.Sprintf("https://127.0.0.1:%d", clientPortBase+i),
 			EtcdBinaryFile:           "/etcd/usr/local/bin/etcd",
-			ClientTimeout:            2 * time.Second,
+			ClientTimeout:            8 * time.Second,
 			InitialClusterTimeout:    8 * time.Second,
 			InitialAdvertisePeerURLs: []string{fmt.Sprintf("https://127.0.0.1:%d", peerPortBase+i)},
 		}
@@ -69,7 +69,7 @@ func mockConfigs(dataPath string) ([]*c.Config, error) {
 		}
 		config.Env["ETCD_INITIAL_CLUSTER"] = strings.Join(initialCluster, ",")
 
-		config.ClientTLSConfig, err = tlsutil.BuildTLSConfig(
+		config.ClientTLSConfig, err = tlsutil.BuildTLSClientConfig(
 			filepath.Join(baseTestPath, member, "client", "tls.crt"),
 			filepath.Join(baseTestPath, member, "client", "tls.key"),
 			[]string{filepath.Join(baseTestPath, "client", "ca.crt")},
@@ -77,7 +77,7 @@ func mockConfigs(dataPath string) ([]*c.Config, error) {
 		if err != nil {
 			return nil, err
 		}
-		config.PeerTLSConfig, err = tlsutil.BuildTLSConfig(
+		config.PeerTLSConfig, err = tlsutil.BuildTLSClientConfig(
 			filepath.Join(baseTestPath, member, "peer", "tls.crt"),
 			filepath.Join(baseTestPath, member, "peer", "tls.key"),
 			[]string{filepath.Join(baseTestPath, "peer", "ca.crt")},

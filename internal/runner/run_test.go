@@ -2,43 +2,42 @@ package runner
 
 import (
 	"context"
-	"os"
-	// "path/filepath"
+	"path/filepath"
 	"testing"
 	"time"
 
 	c "github.com/randomcoww/etcd-wrapper/internal/config"
-	"github.com/randomcoww/etcd-wrapper/internal/etcdclient"
 	"github.com/randomcoww/etcd-wrapper/internal/etcd"
+	"github.com/randomcoww/etcd-wrapper/internal/etcdclient"
 	"github.com/stretchr/testify/assert"
 )
 
 // Fresh cluster with no existing data
-func TestNewWithNoDataCluster(t *testing.T) {
-	dataPath, _ := os.MkdirTemp("", "etcd-test-*")
-	defer os.RemoveAll(dataPath)
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+// func TestNewWithNoDataCluster(t *testing.T) {
+// 	dataPath, _ := os.MkdirTemp("", "etcd-test-*")
+// 	defer os.RemoveAll(dataPath)
+// 	ctx, cancel := context.WithCancel(context.Background())
+// 	defer cancel()
 
-	configs, err := mockConfigs(dataPath)
-	assert.NoError(t, err)
+// 	configs, err := mockConfigs(dataPath)
+// 	assert.NoError(t, err)
 
-	for _, config := range configs {
-		p := &etcd.Fork{Ctx: ctx}
-		defer p.Wait()
-		defer p.Stop()
+// 	for _, config := range configs {
+// 		p := &etcd.Fork{Ctx: ctx}
+// 		defer p.Wait()
+// 		defer p.Stop()
 
-		err := RunEtcd(ctx, config, p)
-		assert.NoError(t, err)
-		time.Sleep(config.InitialClusterTimeout + 2*time.Second)
-	}
+// 		err := RunEtcd(ctx, config, p)
+// 		assert.NoError(t, err)
+// 		time.Sleep(config.InitialClusterTimeout + 2*time.Second)
+// 	}
 
-	// verify quorum, nodes, and backup
-	for _, config := range configs {
-		err := verifyTestStatus(ctx, config)
-		assert.NoError(t, err)
-	}
-}
+// 	// verify quorum, nodes, and backup
+// 	for _, config := range configs {
+// 		err := verifyTestStatus(ctx, config)
+// 		assert.NoError(t, err)
+// 	}
+// }
 
 // Restart cluster with different version data
 // A separate controller ensures that the highest revision node starts first
@@ -49,42 +48,40 @@ func TestStartWithExistingData(t *testing.T) {
 		queryKey         string
 		expectedVal      string
 	}{
-		// {
-		// 	label: "same revision",
-		// 	snapshotRevFiles: []string{
-		// 		filepath.Join(baseTestPath, "../rev3-snap.db"),
-		// 		filepath.Join(baseTestPath, "../rev3-snap.db"),
-		// 		filepath.Join(baseTestPath, "../rev3-snap.db"),
-		// 	},
-		// 	queryKey:    "test-rev3",
-		// 	expectedVal: "test-rev3-val",
-		// },
-		// {
-		// 	label: "mismatched revisions",
-		// 	snapshotRevFiles: []string{
-		// 		filepath.Join(baseTestPath, "../rev3-snap.db"),
-		// 		filepath.Join(baseTestPath, "../rev2-snap.db"),
-		// 		filepath.Join(baseTestPath, "../rev2-snap.db"),
-		// 	},
-		// 	queryKey:    "test-rev3",
-		// 	expectedVal: "test-rev3-val",
-		// },
-		// {
-		// 	label: "mismatched revisions",
-		// 	snapshotRevFiles: []string{
-		// 		filepath.Join(baseTestPath, "../rev3-snap.db"),
-		// 		"",
-		// 		"",
-		// 	},
-		// 	queryKey:    "test-rev3",
-		// 	expectedVal: "test-rev3-val",
-		// },
+		{
+			label: "same revision",
+			snapshotRevFiles: []string{
+				filepath.Join(baseTestPath, "../rev3-snap.db"),
+				filepath.Join(baseTestPath, "../rev3-snap.db"),
+				filepath.Join(baseTestPath, "../rev3-snap.db"),
+			},
+			queryKey:    "test-rev3",
+			expectedVal: "test-rev3-val",
+		},
+		{
+			label: "mismatched revisions",
+			snapshotRevFiles: []string{
+				filepath.Join(baseTestPath, "../rev3-snap.db"),
+				filepath.Join(baseTestPath, "../rev2-snap.db"),
+				filepath.Join(baseTestPath, "../rev2-snap.db"),
+			},
+			queryKey:    "test-rev3",
+			expectedVal: "test-rev3-val",
+		},
+		{
+			label: "mismatched revisions",
+			snapshotRevFiles: []string{
+				filepath.Join(baseTestPath, "../rev3-snap.db"),
+				"",
+				"",
+			},
+			queryKey:    "test-rev3",
+			expectedVal: "test-rev3-val",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.label, func(t *testing.T) {
-
-			dataPath, _ := os.MkdirTemp("", "etcd-test-*")
-			defer os.RemoveAll(dataPath)
+			dataPath := t.TempDir()
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 

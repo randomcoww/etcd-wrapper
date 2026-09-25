@@ -8,22 +8,14 @@ import (
 	"os"
 )
 
-func BuildTLSCAConfig(trustedCAFiles []string) (*tls.Config, error) {
-	rootCAs, err := newCertPool(trustedCAFiles)
+func BuildTLSClientConfig(certFile, keyFile string, trustedCAFiles []string) (*tls.Config, error) {
+	pool, err := newCertPool(trustedCAFiles)
 	if err != nil {
 		return nil, fmt.Errorf("no valid certificates found in %v", trustedCAFiles)
 	}
-
-	return &tls.Config{
+	config := &tls.Config{
+		RootCAs:    pool,
 		MinVersion: tls.VersionTLS13,
-		RootCAs:    rootCAs,
-	}, nil
-}
-
-func BuildTLSConfig(certFile, keyFile string, trustedCAFiles []string) (*tls.Config, error) {
-	config, err := BuildTLSCAConfig(trustedCAFiles)
-	if err != nil {
-		return nil, err
 	}
 
 	config.GetCertificate = func(clientHello *tls.ClientHelloInfo) (*tls.Certificate, error) {
@@ -33,6 +25,18 @@ func BuildTLSConfig(certFile, keyFile string, trustedCAFiles []string) (*tls.Con
 		return newCert(certFile, keyFile)
 	}
 	return config, nil
+}
+
+func BuildTLSCAConfig(trustedCAFiles []string) (*tls.Config, error) {
+	pool, err := newCertPool(trustedCAFiles)
+	if err != nil {
+		return nil, fmt.Errorf("no valid certificates found in %v", trustedCAFiles)
+	}
+
+	return &tls.Config{
+		RootCAs:    pool,
+		MinVersion: tls.VersionTLS13,
+	}, nil
 }
 
 func newCertPool(trustedCAFiles []string) (*x509.CertPool, error) {

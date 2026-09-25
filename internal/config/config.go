@@ -111,7 +111,7 @@ func (config *Config) parseArgs(args []string) error {
 	if !ok {
 		return fmt.Errorf("env ETCD_PEER_KEY_FILE is required")
 	}
-	config.PeerTLSConfig, err = tlsutil.BuildTLSConfig(peerCertFile, peerKeyFile, []string{peerTrustedCAFile})
+	config.PeerTLSConfig, err = tlsutil.BuildTLSClientConfig(peerCertFile, peerKeyFile, []string{peerTrustedCAFile})
 	if err != nil {
 		return err
 	}
@@ -128,7 +128,7 @@ func (config *Config) parseArgs(args []string) error {
 	if !ok {
 		return fmt.Errorf("env ETCD_KEY_FILE is required")
 	}
-	config.ClientTLSConfig, err = tlsutil.BuildTLSConfig(certFile, keyFile, []string{trustedCAFile})
+	config.ClientTLSConfig, err = tlsutil.BuildTLSClientConfig(certFile, keyFile, []string{trustedCAFile})
 	if err != nil {
 		return err
 	}

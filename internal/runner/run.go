@@ -35,6 +35,14 @@ func RunEtcd(ctx context.Context, config *c.Config, etcdRunner etcdProcess) erro
 		}
 	}
 
+	// Client from peers doesn't pick up etcd nodes that have come up that are not enough to form a quorum
+	// Need a reliable way to detect condition
+
+	// if revision == 0 {
+	// 	config.Logger.Info("starting member new with no existing data")
+	// 	return etcdRunner.StartNew(config)
+	// }
+
 	client, err := etcdclient.NewClientFromPeers(clusterCtx, config)
 	if err != nil {
 		// no members found
