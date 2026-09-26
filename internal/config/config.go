@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
 	"regexp"
 	"sort"
@@ -56,8 +57,9 @@ func (config *Config) parseArgs(args []string) error {
 		ok  bool
 		cmd string
 
-		reList = regexp.MustCompile(`\s*,\s*`)
-		reMap  = regexp.MustCompile(`\s*=\s*`)
+		reList         = regexp.MustCompile(`\s*,\s*`)
+		reMap          = regexp.MustCompile(`\s*=\s*`)
+		localClientURL string
 	)
 
 	for _, e := range os.Environ() {
@@ -74,13 +76,19 @@ func (config *Config) parseArgs(args []string) error {
 	}
 
 	fs := flag.NewFlagSet(cmd, flag.ExitOnError)
-	fs.StringVar(&config.LocalClientURL, "local-client-url", "", "URL of local etcd client")
+	fs.StringVar(&localClientURL, "local-client-url", "", "URL of local etcd client")
 	fs.DurationVar(&config.ClientTimeout, "client-timeout", 8*time.Second, "Client operations timeout")
 	fs.DurationVar(&config.InitialClusterTimeout, "initial-cluster-timeout", 2*time.Minute, "Initial cluster discovery timeout")
 	fs.StringVar(&config.EtcdBinaryFile, "etcd-binary-file", "/usr/local/bin/etcd", "Path to etcd binary")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
+
+	clientURL, err := url.Parse(localClientURL)
+	if err != nil {
+		return fmt.Errorf("parse local client url: %w", err)
+	}
+	config.LocalClientURL = fmt.Sprintf("%s://%s", clientURL.Scheme, clientURL.Host)
 
 	if _, ok := config.Env["ETCD_NAME"]; !ok {
 		return fmt.Errorf("env ETCD_NAME is not set")
@@ -93,7 +101,11 @@ func (config *Config) parseArgs(args []string) error {
 	if v, ok := config.Env["ETCD_INITIAL_CLUSTER"]; ok {
 		for _, member := range reList.Split(v, -1) {
 			k := reMap.Split(member, 2)
-			config.ClusterPeerURLs = append(config.ClusterPeerURLs, k[1])
+			u, err := url.Parse(k[1])
+			if err != nil {
+				return fmt.Errorf("parse initial cluster peer url: %w", err)
+			}
+			config.ClusterPeerURLs = append(config.ClusterPeerURLs, fmt.Sprintf("%s://%s", u.Scheme, u.Host))
 		}
 	} else {
 		return fmt.Errorf("env ETCD_INITIAL_CLUSTER not set")
@@ -134,7 +146,13 @@ func (config *Config) parseArgs(args []string) error {
 	}
 
 	if v, ok := config.Env["ETCD_INITIAL_ADVERTISE_PEER_URLS"]; ok {
-		config.InitialAdvertisePeerURLs = append(config.InitialAdvertisePeerURLs, reList.Split(v, -1)...)
+		for _, member := range reList.Split(v, -1) {
+			u, err := url.Parse(member)
+			if err != nil {
+				return fmt.Errorf("parse initial advertise peer url: %w", err)
+			}
+			config.InitialAdvertisePeerURLs = append(config.InitialAdvertisePeerURLs, fmt.Sprintf("%s://%s", u.Scheme, u.Host))
+		}
 		sort.Strings(config.InitialAdvertisePeerURLs)
 	} else {
 		return fmt.Errorf("env ETCD_INITIAL_ADVERTISE_PEER_URLS not set")
