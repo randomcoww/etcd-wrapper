@@ -20,60 +20,40 @@ type etcdProcess interface {
 }
 
 func RunEtcd(ctx context.Context, config *c.Config, etcdRunner etcdProcess) error {
-	// wait for existing cluster (and quorum)
 	clusterCtx, clusterCancel := context.WithTimeout(ctx, time.Duration(config.InitialClusterTimeout))
 	defer clusterCancel()
 
-	// local data revision, err if broken, revision > 0 if data exists
 	revision, err := etcdclient.GetDataRevision(config)
 	if err != nil {
 		config.Logger.Error("get local data revision", zap.Error(err))
-
 		if err = clearExistingData(config); err != nil {
 			config.Logger.Error("delete local data", zap.Error(err))
 			return err
 		}
 	}
-
-	// Client from peers doesn't pick up etcd nodes that have come up that are not enough to form a quorum
-	// Need a reliable way to detect condition
-
-	// if revision == 0 {
-	// 	config.Logger.Info("starting member new with no existing data")
-	// 	return etcdRunner.StartNew(config)
-	// }
+	config.Logger.Error("got data revision", zap.Int64("revision", revision))
 
 	client, err := etcdclient.NewClientFromPeers(clusterCtx, config)
 	if err != nil {
-		// no members found
 		config.Logger.Info("no members found")
-
 		config.Logger.Info("starting member existing with backup data")
 		return etcdRunner.StartExisting(config)
 	}
 	defer client.Close()
 
-	// at least one member found
-	config.Logger.Info("existing members found")
-
-	// found members - check if quorum is established
+	config.Logger.Info("existing quorum found")
 	remoteRevision, err := client.GetRevision(clusterCtx)
 	if err != nil {
-		config.Logger.Info("no quorum found")
+		config.Logger.Error("failed to look up cluster revision")
 		config.Logger.Info("starting member existing")
-
-		if err = clearExistingData(config); err != nil {
-			return err
-		}
 		return etcdRunner.StartExisting(config)
 	}
 
-	config.Logger.Info("quorum found")
+	config.Logger.Error("got cluster revision", zap.Int64("revision", remoteRevision))
 	if revision >= remoteRevision {
 		return etcdRunner.StartExisting(config)
 	}
 
-	// cluster with quorum found - this is the most common scenario
 	clientCtx, clientCancel := context.WithTimeout(ctx, time.Duration(config.ClientTimeout*2))
 	defer clientCancel()
 
