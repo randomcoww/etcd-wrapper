@@ -68,12 +68,12 @@ func TestReplaceOneMember(t *testing.T) {
 	for i, config := range configs[:1] {
 		etcdPs[i].Stop()
 		etcdPs[i].Wait()
-		if err := clearExistingData(config); err != nil {
+		if err := clearExistingData(config); err != nil { // node restart and data loss
 			t.Fatal("clear test data: %w", err)
 		}
 	}
 	for i, config := range configs[:1] {
-		if err := etcdclient.RestoreSnapshot(testSnapshotOld, config); err != nil {
+		if err := etcdclient.RestoreSnapshot(testSnapshotOld, config); err != nil { // restored old snapshot
 			t.Fatal("add test snapshot: %w", err)
 		}
 		err := RunEtcd(ctx, config, etcdPs[i])
@@ -118,12 +118,12 @@ func TestReplaceTwoMembers(t *testing.T) {
 	for i, config := range configs[:2] {
 		etcdPs[i].Stop()
 		etcdPs[i].Wait()
-		if err := clearExistingData(config); err != nil {
+		if err := clearExistingData(config); err != nil { // node restart and data loss
 			t.Fatal("clear test data: %w", err)
 		}
 	}
 	for i, config := range configs[:2] {
-		if err := etcdclient.RestoreSnapshot(testSnapshot, config); err != nil {
+		if err := etcdclient.RestoreSnapshot(testSnapshotOld, config); err != nil { // restored old snapshot
 			t.Fatal("add test snapshot: %w", err)
 		}
 		err := RunEtcd(ctx, config, etcdPs[i])
@@ -139,9 +139,9 @@ func TestReplaceTwoMembers(t *testing.T) {
 
 	// verify quorum, nodes, and backup
 	for _, config := range configs {
-		val, err := verifyTestData(t, ctx, config, "test-rev3")
+		val, err := verifyTestData(t, ctx, config, "test-rev2") // reverts to older revision
 		assert.NoError(t, err)
-		assert.Equal(t, "test-rev3-val", val) // match value that should exist in the test data
+		assert.Equal(t, "test-rev2-val", val) // match value that should exist in the test data
 	}
 }
 
