@@ -145,6 +145,50 @@ func TestReplaceTwoMembers(t *testing.T) {
 	}
 }
 
+func TestRestartWithoutDataWipe(t *testing.T) {
+	dataPath := t.TempDir()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	configs, err := clienttest.MockConfig(dataPath)
+	if err != nil {
+		t.Fatal("generate etcd mock configs: %w", err)
+	}
+
+	etcdPs, err := createTestEtcdCluster(t, ctx, configs, testSnapshot)
+	if err != nil {
+		t.Fatal("create test etcd cluster: %w", err)
+	}
+	for _, p := range etcdPs {
+		defer p.Wait()
+		defer p.Stop()
+	}
+
+	// stop all nodes
+	for i, _ := range configs {
+		etcdPs[i].Stop()
+		etcdPs[i].Wait()
+	}
+	for i, config := range configs {
+		err := RunEtcd(ctx, config, etcdPs[i])
+		assert.NoError(t, err)
+		time.Sleep(config.InitialClusterTimeout + 2*time.Second)
+	}
+
+	// verify quorum, nodes, and backup
+	for _, config := range configs {
+		err := verifyTestStatus(t, ctx, config)
+		assert.NoError(t, err)
+	}
+
+	// verify quorum, nodes, and backup
+	for _, config := range configs {
+		val, err := verifyTestData(t, ctx, config, "test-rev3") // reverts to older revision
+		assert.NoError(t, err)
+		assert.Equal(t, "test-rev3-val", val) // match value that should exist in the test data
+	}
+}
+
 func verifyTestStatus(t *testing.T, ctx context.Context, config *c.Config) error {
 	t.Helper()
 	clientCtx, clientCancel := context.WithTimeout(ctx, time.Duration(config.ClientTimeout))
