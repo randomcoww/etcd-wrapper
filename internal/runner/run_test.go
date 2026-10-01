@@ -46,102 +46,150 @@ func TestCreateFromRestore(t *testing.T) {
 }
 
 func TestReplaceOneMember(t *testing.T) {
-	dataPath := t.TempDir()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	tests := []struct {
+		label                   string
+		restoreLocalRevision    string
+		testKey                 string
+		expectedClusterRevision string
+	}{
+		{
+			label:                   "old revions replace member path",
+			restoreLocalRevision:    testSnapshot,
+			testKey:                 "test-rev3",
+			expectedClusterRevision: "test-rev3-val",
+		},
+		{
+			label:                   "matching or greater revision path",
+			restoreLocalRevision:    testSnapshotOld,
+			testKey:                 "test-rev3",
+			expectedClusterRevision: "test-rev3-val",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.label, func(t *testing.T) {
 
-	configs, err := clienttest.MockConfig(dataPath)
-	if err != nil {
-		t.Fatal("generate etcd mock configs: %w", err)
-	}
+			dataPath := t.TempDir()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
 
-	etcdPs, err := createTestEtcdCluster(t, ctx, configs, testSnapshot)
-	if err != nil {
-		t.Fatal("create test etcd cluster: %w", err)
-	}
-	for _, p := range etcdPs {
-		defer p.Wait()
-		defer p.Stop()
-	}
+			configs, err := clienttest.MockConfig(dataPath)
+			if err != nil {
+				t.Fatal("generate etcd mock configs: %w", err)
+			}
 
-	// stop one node
-	for i, config := range configs[:1] {
-		etcdPs[i].Stop()
-		etcdPs[i].Wait()
-		if err := clearExistingData(config); err != nil { // node restart and data loss
-			t.Fatal("clear test data: %w", err)
-		}
-	}
-	for i, config := range configs[:1] {
-		if err := etcdclient.RestoreSnapshot(testSnapshotOld, config); err != nil { // restored old snapshot
-			t.Fatal("add test snapshot: %w", err)
-		}
-		err := RunEtcd(ctx, config, etcdPs[i])
-		assert.NoError(t, err)
-		time.Sleep(config.InitialClusterTimeout + 2*time.Second)
-	}
+			etcdPs, err := createTestEtcdCluster(t, ctx, configs, testSnapshot)
+			if err != nil {
+				t.Fatal("create test etcd cluster: %w", err)
+			}
+			for _, p := range etcdPs {
+				defer p.Wait()
+				defer p.Stop()
+			}
 
-	// verify quorum, nodes, and backup
-	for _, config := range configs {
-		err := verifyTestStatus(t, ctx, config)
-		assert.NoError(t, err)
-	}
+			// stop one node
+			for i, config := range configs[:1] {
+				etcdPs[i].Stop()
+				etcdPs[i].Wait()
+				if err := clearExistingData(config); err != nil { // node restart and data loss
+					t.Fatal("clear test data: %w", err)
+				}
+			}
+			for i, config := range configs[:1] {
+				if err := etcdclient.RestoreSnapshot(tt.restoreLocalRevision, config); err != nil { // restored old snapshot
+					t.Fatal("add test snapshot: %w", err)
+				}
+				err := RunEtcd(ctx, config, etcdPs[i])
+				assert.NoError(t, err)
+				time.Sleep(config.InitialClusterTimeout + 2*time.Second)
+			}
 
-	// verify quorum, nodes, and backup
-	for _, config := range configs {
-		val, err := verifyTestData(t, ctx, config, "test-rev3")
-		assert.NoError(t, err)
-		assert.Equal(t, "test-rev3-val", val) // match value that should exist in the test data
+			// verify quorum, nodes, and backup
+			for _, config := range configs {
+				err := verifyTestStatus(t, ctx, config)
+				assert.NoError(t, err)
+			}
+
+			// verify quorum, nodes, and backup
+			for _, config := range configs {
+				val, err := verifyTestData(t, ctx, config, tt.testKey)
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expectedClusterRevision, val) // match value that should exist in the test data
+			}
+		})
 	}
 }
 
 func TestReplaceTwoMembers(t *testing.T) {
-	dataPath := t.TempDir()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	tests := []struct {
+		label                   string
+		restoreLocalRevision    string
+		testKey                 string
+		expectedClusterRevision string
+	}{
+		{
+			label:                   "old revions replace member path",
+			restoreLocalRevision:    testSnapshot,
+			testKey:                 "test-rev3",
+			expectedClusterRevision: "test-rev3-val",
+		},
+		{
+			label:                   "matching or greater revision path",
+			restoreLocalRevision:    testSnapshotOld,
+			testKey:                 "test-rev2",
+			expectedClusterRevision: "test-rev2-val", // reverts to older revision
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.label, func(t *testing.T) {
 
-	configs, err := clienttest.MockConfig(dataPath)
-	if err != nil {
-		t.Fatal("generate etcd mock configs: %w", err)
-	}
+			dataPath := t.TempDir()
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
 
-	etcdPs, err := createTestEtcdCluster(t, ctx, configs, testSnapshot)
-	if err != nil {
-		t.Fatal("create test etcd cluster: %w", err)
-	}
-	for _, p := range etcdPs {
-		defer p.Wait()
-		defer p.Stop()
-	}
+			configs, err := clienttest.MockConfig(dataPath)
+			if err != nil {
+				t.Fatal("generate etcd mock configs: %w", err)
+			}
 
-	// stop two nodes
-	for i, config := range configs[:2] {
-		etcdPs[i].Stop()
-		etcdPs[i].Wait()
-		if err := clearExistingData(config); err != nil { // node restart and data loss
-			t.Fatal("clear test data: %w", err)
-		}
-	}
-	for i, config := range configs[:2] {
-		if err := etcdclient.RestoreSnapshot(testSnapshotOld, config); err != nil { // restored old snapshot
-			t.Fatal("add test snapshot: %w", err)
-		}
-		err := RunEtcd(ctx, config, etcdPs[i])
-		assert.NoError(t, err)
-		time.Sleep(config.InitialClusterTimeout + 2*time.Second)
-	}
+			etcdPs, err := createTestEtcdCluster(t, ctx, configs, testSnapshot)
+			if err != nil {
+				t.Fatal("create test etcd cluster: %w", err)
+			}
+			for _, p := range etcdPs {
+				defer p.Wait()
+				defer p.Stop()
+			}
 
-	// verify quorum, nodes, and backup
-	for _, config := range configs {
-		err := verifyTestStatus(t, ctx, config)
-		assert.NoError(t, err)
-	}
+			// stop two nodes
+			for i, config := range configs[:2] {
+				etcdPs[i].Stop()
+				etcdPs[i].Wait()
+				if err := clearExistingData(config); err != nil { // node restart and data loss
+					t.Fatal("clear test data: %w", err)
+				}
+			}
+			for i, config := range configs[:2] {
+				if err := etcdclient.RestoreSnapshot(tt.restoreLocalRevision, config); err != nil { // restored old snapshot
+					t.Fatal("add test snapshot: %w", err)
+				}
+				err := RunEtcd(ctx, config, etcdPs[i])
+				assert.NoError(t, err)
+				time.Sleep(config.InitialClusterTimeout + 2*time.Second)
+			}
 
-	// verify quorum, nodes, and backup
-	for _, config := range configs {
-		val, err := verifyTestData(t, ctx, config, "test-rev2") // reverts to older revision
-		assert.NoError(t, err)
-		assert.Equal(t, "test-rev2-val", val) // match value that should exist in the test data
+			// verify quorum, nodes, and backup
+			for _, config := range configs {
+				err := verifyTestStatus(t, ctx, config)
+				assert.NoError(t, err)
+			}
+
+			// verify quorum, nodes, and backup
+			for _, config := range configs {
+				val, err := verifyTestData(t, ctx, config, tt.testKey)
+				assert.NoError(t, err)
+				assert.Equal(t, tt.expectedClusterRevision, val) // match value that should exist in the test data
+			}
+		})
 	}
 }
 
