@@ -62,7 +62,7 @@ func TestS3Client(t *testing.T) {
 
 	dataPath := t.TempDir()
 
-	// --- download file with content
+	// --- download file with content ---
 
 	snapshotFile, _ := os.CreateTemp(dataPath, "snapshot-restore-*.db")
 	defer os.RemoveAll(snapshotFile.Name())
@@ -87,7 +87,7 @@ func TestS3Client(t *testing.T) {
 	}
 	assert.Equal(t, "snap-2-val", string(content))
 
-	// --- download zero length
+	// --- download zero length ---
 
 	snapshotBad, _ := os.CreateTemp(dataPath, "snapshot-bad-*.db")
 	defer os.RemoveAll(snapshotBad.Name())
@@ -106,7 +106,7 @@ func TestS3Client(t *testing.T) {
 	assert.Error(t, err) // picks up b == 0
 	assert.True(t, ok)   // true (exists)
 
-	// --- download non existent
+	// --- download non existent ---
 
 	ok, err = client.Download(clientCtx, "non-existent", func(ctx context.Context, reader io.Reader) error {
 		b, err := io.Copy(snapshotBad, reader)
