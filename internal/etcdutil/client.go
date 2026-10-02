@@ -1,18 +1,16 @@
-package etcdclient
+package etcdutil
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
-	"path/filepath"
 	"time"
 
-	c "github.com/randomcoww/etcd-wrapper/internal/config"
 	etcdserverpb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
-	"go.etcd.io/etcd/etcdutl/v3/snapshot"
 	"go.etcd.io/etcd/server/v3/etcdserver"
 	"go.uber.org/zap"
 )
@@ -54,6 +52,7 @@ type Header interface {
 
 type EtcdClient interface {
 	Status(context.Context, string) (Status, error)
+	AggregateStatus(context.Context, []string) ([]Status, error)
 	MemberList(context.Context) (Members, error)
 	MemberAdd(context.Context, []string) (Members, error)
 	MemberRemove(context.Context, uint64) (Members, error)
@@ -69,19 +68,19 @@ const (
 	backoffWaitBetween time.Duration = 2 * time.Second
 )
 
-func NewClientFromPeers(ctx context.Context, config *c.Config) (EtcdClient, error) {
+func NewClientFromPeers(ctx context.Context, logger *zap.Logger, peerURLs []string, peerTLSConfig, clienTLSConfig *tls.Config) (EtcdClient, error) {
 	for {
-		pcluster, err := etcdserver.GetClusterFromRemotePeers(config.Logger, config.ClusterPeerURLs, &http.Transport{
+		pcluster, err := etcdserver.GetClusterFromRemotePeers(logger, peerURLs, &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
 				Timeout:   dialTimeout,
 				KeepAlive: 30 * time.Second, // value taken from http.DefaultTransport
 			}).DialContext,
 			TLSHandshakeTimeout: 10 * time.Second, // value taken from http.DefaultTransport
-			TLSClientConfig:     config.PeerTLSConfig,
+			TLSClientConfig:     peerTLSConfig,
 		})
 		if err == nil {
-			client, err := NewClient(ctx, config, pcluster.ClientURLs())
+			client, err := NewClient(ctx, logger, pcluster.ClientURLs(), clienTLSConfig)
 			if err == nil {
 				return client, nil
 			}
@@ -98,16 +97,16 @@ func NewClientFromPeers(ctx context.Context, config *c.Config) (EtcdClient, erro
 	}
 }
 
-func NewClient(ctx context.Context, config *c.Config, endpoints []string) (EtcdClient, error) {
+func NewClient(ctx context.Context, logger *zap.Logger, endpoints []string, clienTLSConfig *tls.Config) (EtcdClient, error) {
 	client, err := clientv3.New(clientv3.Config{
 		Endpoints:            endpoints,
 		DialTimeout:          dialTimeout,
-		TLS:                  config.ClientTLSConfig,
+		TLS:                  clienTLSConfig,
 		DialKeepAliveTime:    2 * time.Second,
 		DialKeepAliveTimeout: 2 * time.Second,
 		BackoffWaitBetween:   backoffWaitBetween,
 		Context:              ctx,
-		Logger:               config.Logger,
+		Logger:               logger,
 	})
 	if err != nil {
 		return nil, err
@@ -115,34 +114,6 @@ func NewClient(ctx context.Context, config *c.Config, endpoints []string) (EtcdC
 	return &Client{
 		client,
 	}, nil
-}
-
-func RestoreSnapshot(snapshotFile string, config *c.Config) error {
-	sp := snapshot.NewV3(config.Logger)
-
-	config.Logger.Info("config", zap.Object("config", config))
-	if err := sp.Restore(snapshot.RestoreConfig{
-		SnapshotPath:        snapshotFile,
-		PeerURLs:            config.InitialAdvertisePeerURLs,
-		OutputDataDir:       config.Env["ETCD_DATA_DIR"],
-		OutputWALDir:        config.Env["ETCD_WAL_DIR"],
-		Name:                config.Env["ETCD_NAME"],
-		InitialCluster:      config.Env["ETCD_INITIAL_CLUSTER"],
-		InitialClusterToken: config.Env["ETCD_INITIAL_CLUSTER_TOKEN"],
-		SkipHashCheck:       false,
-	}); err != nil {
-		return fmt.Errorf("restore snapshot from %s: %w", snapshotFile, err)
-	}
-	return nil
-}
-
-func GetDataRevision(config *c.Config) (int64, error) {
-	sp := snapshot.NewV3(config.Logger)
-	status, err := sp.Status(filepath.Join(config.Env["ETCD_DATA_DIR"], "member", "snap", "db"))
-	if err != nil {
-		return 0, fmt.Errorf("get local revision: %w", err)
-	}
-	return status.Revision, nil
 }
 
 func (client *Client) MemberList(ctx context.Context) (Members, error) {
@@ -161,62 +132,59 @@ func (client *Client) Status(ctx context.Context, endpoint string) (Status, erro
 	return (*etcdserverpb.StatusResponse)(resp), nil
 }
 
-func (client *Client) MemberAdd(ctx context.Context, peerURLs []string) (Members, error) {
-	for {
-		resp, err := client.Cluster.MemberAdd(ctx, peerURLs)
-		switch {
-		case err == nil:
-			return (*etcdserverpb.MemberAddResponse)(resp), nil
-		default:
-		}
+func (client *Client) AggregateStatus(ctx context.Context, endpoints []string) ([]Status, error) {
+	res := make([]Status, len(endpoints))
+	ch := make(chan struct {
+		index  int
+		status Status
+	})
 
-		timer := time.NewTimer(backoffWaitBetween)
-		select {
-		case <-ctx.Done():
-			return nil, fmt.Errorf("add member %w: %w", ctx.Err(), err)
-		case <-timer.C:
-			continue
-		}
+	for i, url := range endpoints {
+		go func(index int) {
+			s, err := client.Status(ctx, url)
+			if err == nil {
+				ch <- struct {
+					index  int
+					status Status
+				}{i, s}
+			} else {
+				ch <- struct {
+					index  int
+					status Status
+				}{i, nil}
+			}
+		}(i)
 	}
+
+	for i := 0; i < len(endpoints); i++ {
+		c := <-ch
+		res[c.index] = c.status
+	}
+	return res, nil
+}
+
+func (client *Client) MemberAdd(ctx context.Context, peerURLs []string) (Members, error) {
+	resp, err := client.Cluster.MemberAdd(ctx, peerURLs)
+	if err != nil {
+		return nil, fmt.Errorf("add member: %w", err)
+	}
+	return (*etcdserverpb.MemberAddResponse)(resp), nil
 }
 
 func (client *Client) MemberRemove(ctx context.Context, id uint64) (Members, error) {
-	for {
-		resp, err := client.Cluster.MemberRemove(ctx, id)
-		switch {
-		case err == nil:
-			return (*etcdserverpb.MemberRemoveResponse)(resp), nil
-		default:
-		}
-
-		timer := time.NewTimer(backoffWaitBetween)
-		select {
-		case <-ctx.Done():
-			return nil, fmt.Errorf("remove member %w: %w", ctx.Err(), err)
-		case <-timer.C:
-			continue
-		}
+	resp, err := client.Cluster.MemberRemove(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("add remove: %w", err)
 	}
+	return (*etcdserverpb.MemberRemoveResponse)(resp), nil
 }
 
 func (client *Client) GetRevision(ctx context.Context) (int64, error) {
-	for {
-		resp, err := client.Get(ctx, "health-check-dummy", clientv3.WithCountOnly())
-		switch {
-		case err == nil:
-			return resp.Header.Revision, nil
-		default:
-		}
-
-		timer := time.NewTimer(backoffWaitBetween)
-		select {
-		case <-ctx.Done():
-			return 0, fmt.Errorf("get cluster revision %w: %w", ctx.Err(), err)
-
-		case <-timer.C:
-			continue
-		}
+	resp, err := client.Get(ctx, "health-check-dummy", clientv3.WithCountOnly())
+	if err != nil {
+		return 0, fmt.Errorf("get cluster revision: %w", err)
 	}
+	return resp.Header.Revision, nil
 }
 
 func (client *Client) Defragment(ctx context.Context, endpoint string) error {
