@@ -42,7 +42,7 @@ func NewClientFromConfig(raw *c.YamlConfig) (*s3client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("building S3 TLS config: %w", err)
 	}
-	client, err := NewClient(fmt.Sprintf("%s://%s", u.Scheme, u.Host), raw.S3Region, raw.S3Bucket, raw.S3AccessKeyID, raw.S3SecretAccessKey, tlsConfig)
+	client, err := NewClient(u.Host, raw.S3Region, raw.S3Bucket, raw.S3AccessKeyID, raw.S3SecretAccessKey, tlsConfig)
 	if err != nil {
 		return nil, fmt.Errorf("client: %v", err)
 	}
