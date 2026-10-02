@@ -21,7 +21,7 @@ type s3client struct {
 	bucket string
 }
 
-type S3Client interface {
+type Client interface {
 	Verify(context.Context) error
 	Download(context.Context, string, func(context.Context, io.Reader) error) (bool, error)
 	List(context.Context, string) []string
