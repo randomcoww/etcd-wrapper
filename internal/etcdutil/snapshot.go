@@ -17,24 +17,11 @@ func GetDataRevision(dataDir string, logger *zap.Logger) (int64, error) {
 	return status.Revision, nil
 }
 
-func RestoreSnapshot(snapshotFile string, logger *zap.Logger, peerURLs []string, dataDir, walDir, name, initialCluster, initialClusterToken string, revisionBump uint64) error {
+func RestoreSnapshot(logger *zap.Logger, restoreConfig snapshot.RestoreConfig) error {
 	sp := snapshot.NewV3(logger)
-	restoreConfig := snapshot.RestoreConfig{
-		SnapshotPath:        snapshotFile,
-		PeerURLs:            peerURLs,
-		OutputDataDir:       dataDir,
-		OutputWALDir:        walDir,
-		Name:                name,
-		InitialCluster:      initialCluster,
-		InitialClusterToken: initialClusterToken,
-		RevisionBump:        revisionBump,
-		SkipHashCheck:       false,
-	}
-	if revisionBump > 0 {
-		restoreConfig.MarkCompacted = true
-	}
+	restoreConfig.MarkCompacted = restoreConfig.RevisionBump > 0
 	if err := sp.Restore(restoreConfig); err != nil {
-		return fmt.Errorf("restore snapshot from %s: %w", snapshotFile, err)
+		return fmt.Errorf("restore snapshot: %w", err)
 	}
 	return nil
 }
