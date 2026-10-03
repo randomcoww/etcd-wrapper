@@ -10,13 +10,11 @@ import (
 	"strings"
 
 	"github.com/randomcoww/etcd-wrapper/internal/tlsutil"
-	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
 
 type EnvConfig struct {
 	Env                      map[string]string
-	Logger                   *zap.Logger
 	Name                     string
 	InitialClusterToken      string
 	DataDir                  string
@@ -36,7 +34,7 @@ func (config *EnvConfig) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	return nil
 }
 
-func LoadEnv() (*EnvConfig, error) {
+func LoadFromEnv() (*EnvConfig, error) {
 	var (
 		err    error
 		ok     bool

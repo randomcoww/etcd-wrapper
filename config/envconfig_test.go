@@ -27,7 +27,7 @@ func TestRunConfig(t *testing.T) {
 	t.Setenv("ETCD_DATA_DIR", "/data/test")
 	t.Setenv("ETCD_INITIAL_CLUSTER_STATE", "new")
 
-	c, err := LoadEnv()
+	c, err := LoadFromEnv()
 	assert.NoError(t, err)
 
 	assert.Equal(t, map[string]string{
