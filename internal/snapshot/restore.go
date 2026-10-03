@@ -13,9 +13,12 @@ import (
 )
 
 func Restore(ctx context.Context, logger *zap.Logger, s3 s3util.Client, prefix string, restoreConfig snapshot.RestoreConfig) (bool, error) {
-	keys := s3.List(ctx, prefix)
+	keys, errors := s3.List(ctx, prefix)
 	if len(keys) == 0 {
 		return false, nil
+	}
+	for object, err := range errors {
+		logger.Error("list", zap.String("object", object), zap.Error(err))
 	}
 	var ok bool
 	var err error

@@ -24,7 +24,7 @@ type s3client struct {
 type Client interface {
 	Verify(context.Context) error
 	Download(context.Context, string, func(context.Context, io.Reader) error) (bool, error)
-	List(context.Context, string) []string
+	List(context.Context, string) ([]string, map[string]error)
 }
 
 func NewClientFromConfig(raw *c.YamlConfig) (*s3client, error) {
@@ -85,7 +85,7 @@ func (c *s3client) Verify(ctx context.Context) error {
 func (c *s3client) Download(ctx context.Context, key string, handler func(context.Context, io.Reader) error) (bool, error) {
 	object, err := c.client.GetObject(ctx, c.bucket, key, minio.GetObjectOptions{})
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("get snapshot object: %w", err)
 	}
 	defer object.Close()
 	_, err = object.Stat()
@@ -94,26 +94,30 @@ func (c *s3client) Download(ctx context.Context, key string, handler func(contex
 		case minio.NoSuchKey, minio.NoSuchBucket:
 			return false, nil
 		default:
-			return false, err
+			return false, fmt.Errorf("read snapshot object: %w", err)
 		}
 	}
 	return true, handler(ctx, object)
 }
 
-func (c *s3client) List(ctx context.Context, prefix string) []string {
+func (c *s3client) List(ctx context.Context, prefix string) ([]string, map[string]error) {
 	objectCh := c.client.ListObjects(ctx, c.bucket, minio.ListObjectsOptions{
 		Prefix:    prefix,
 		Recursive: true,
 	})
 	var keys []string
+	errors := make(map[string]error)
+
 	for object := range objectCh {
 		if object.Err != nil {
+			errors[object.Key] = object.Err
 			continue
 		}
 		if object.Size == 0 {
+			errors[object.Key] = fmt.Errorf("object size is 0")
 			continue
 		}
 		keys = append(keys, object.Key)
 	}
-	return keys
+	return keys, errors
 }

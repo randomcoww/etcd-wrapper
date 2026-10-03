@@ -20,6 +20,7 @@ const (
 
 type fakeS3Client struct {
 	objectsList   []string
+	objectsErrors map[string]error
 	snapshotFiles map[string]string
 }
 
@@ -36,8 +37,8 @@ func (c *fakeS3Client) Download(ctx context.Context, key string, handler func(co
 	return true, handler(ctx, file)
 }
 
-func (c *fakeS3Client) List(ctx context.Context, prefix string) []string {
-	return c.objectsList
+func (c *fakeS3Client) List(ctx context.Context, prefix string) ([]string, map[string]error) {
+	return c.objectsList, c.objectsErrors
 }
 
 func TestRestore(t *testing.T) {
@@ -62,6 +63,7 @@ func TestRestore(t *testing.T) {
 			"snap-5",
 			"snap-6",
 		},
+		objectsErrors: make(map[string]error),
 		snapshotFiles: map[string]string{
 			"snap-2": filepath.Join(baseTestPath, "../rev2-snap.db"), // good data
 			"snap-3": filepath.Join(baseTestPath, "../rev3-snap.db"), // good data

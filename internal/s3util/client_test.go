@@ -57,8 +57,9 @@ func TestS3Client(t *testing.T) {
 	err = client.Verify(clientCtx)
 	assert.NoError(t, err)
 
-	list := client.List(clientCtx, "snap-")
+	list, errors := client.List(clientCtx, "snap-")
 	assert.Equal(t, []string{"snap-1", "snap-2"}, list)
+	assert.Equal(t, map[string]error{"snap-3": fmt.Errorf("object size is 0")}, errors)
 
 	dataPath := t.TempDir()
 
