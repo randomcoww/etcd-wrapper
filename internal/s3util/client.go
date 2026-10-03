@@ -2,7 +2,6 @@ package s3util
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
@@ -22,7 +21,7 @@ type s3client struct {
 }
 
 type Client interface {
-	Verify(context.Context) error
+	VerifyBucket(context.Context) (bool, error)
 	Download(context.Context, string, func(context.Context, io.Reader) error) (bool, error)
 	List(context.Context, string) ([]string, map[string]error)
 }
@@ -42,18 +41,11 @@ func NewClientFromConfig(raw *c.YamlConfig) (*s3client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("building S3 TLS config: %w", err)
 	}
-	client, err := NewClient(u.Host, raw.S3Region, raw.S3Bucket, raw.S3AccessKeyID, raw.S3SecretAccessKey, tlsConfig)
-	if err != nil {
-		return nil, fmt.Errorf("client: %v", err)
-	}
-	return client, nil
-}
 
-func NewClient(endpoint, region, bucket, accessKeyID, secretAccessKey string, tlsConfig *tls.Config) (*s3client, error) {
 	opts := &minio.Options{
-		Creds:  credentials.NewStaticV4(accessKeyID, secretAccessKey, ""),
+		Creds:  credentials.NewStaticV4(raw.S3AccessKeyID, raw.S3SecretAccessKey, ""),
 		Secure: true,
-		Region: region,
+		Region: raw.S3Region,
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
@@ -64,22 +56,15 @@ func NewClient(endpoint, region, bucket, accessKeyID, secretAccessKey string, tl
 			TLSClientConfig:     tlsConfig,
 		},
 	}
-	client, err := minio.New(endpoint, opts)
+	client, err := minio.New(u.Host, opts)
 	if err != nil {
 		return nil, fmt.Errorf("creating S3 client: %w", err)
 	}
-	return &s3client{client: client, bucket: bucket}, nil
+	return &s3client{client: client, bucket: raw.S3Bucket}, nil
 }
 
-func (c *s3client) Verify(ctx context.Context) error {
-	ok, err := c.client.BucketExists(ctx, c.bucket)
-	if err != nil {
-		return fmt.Errorf("failed to validate backup bucket: %w", err)
-	}
-	if !ok {
-		return fmt.Errorf("backup bucket not found")
-	}
-	return nil
+func (c *s3client) VerifyBucket(ctx context.Context) (bool, error) {
+	return c.client.BucketExists(ctx, c.bucket)
 }
 
 func (c *s3client) Download(ctx context.Context, key string, handler func(context.Context, io.Reader) error) (bool, error) {

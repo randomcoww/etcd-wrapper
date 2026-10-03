@@ -54,8 +54,9 @@ func TestS3Client(t *testing.T) {
 		}
 	}
 
-	err = client.Verify(clientCtx)
+	ok, err := client.VerifyBucket(clientCtx)
 	assert.NoError(t, err)
+	assert.True(t, ok)
 
 	list, errors := client.List(clientCtx, "snap-")
 	assert.Equal(t, []string{"snap-1", "snap-2"}, list)
@@ -69,7 +70,7 @@ func TestS3Client(t *testing.T) {
 	defer os.RemoveAll(snapshotFile.Name())
 	defer snapshotFile.Close()
 
-	ok, err := client.Download(clientCtx, "snap-2", func(ctx context.Context, reader io.Reader) error {
+	ok, err = client.Download(clientCtx, "snap-2", func(ctx context.Context, reader io.Reader) error {
 		b, err := io.Copy(snapshotFile, reader)
 		if err != nil {
 			return err
