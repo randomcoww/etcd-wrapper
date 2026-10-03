@@ -50,10 +50,6 @@ func TestRunConfig(t *testing.T) {
 		"ETCD_DATA_DIR":                    "/data/test",
 	}, c.Env)
 
-	assert.Equal(t, "test", c.Name)
-	assert.Equal(t, "token", c.InitialClusterToken)
-	assert.Equal(t, "/data/test", c.DataDir)
-	assert.Equal(t, "", c.WalDir)
 	assert.Equal(t, []string{
 		"https://10.0.0.1:8080",
 	}, c.InitialAdvertisePeerURLs)

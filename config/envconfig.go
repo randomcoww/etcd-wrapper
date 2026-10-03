@@ -15,10 +15,6 @@ import (
 
 type EnvConfig struct {
 	Env                      map[string]string
-	Name                     string
-	InitialClusterToken      string
-	DataDir                  string
-	WalDir                   string
 	InitialAdvertisePeerURLs []string
 	ClusterPeerURLs          []string
 	ClientTLSConfig          *tls.Config
@@ -26,9 +22,9 @@ type EnvConfig struct {
 }
 
 func (config *EnvConfig) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	enc.AddString("Name", config.Name)
-	enc.AddString("DataDir", config.DataDir)
-	enc.AddString("WalDir", config.WalDir)
+	enc.AddString("Name", config.Env["ETCD_NAME"])
+	enc.AddString("DataDir", config.Env["ETCD_DATA_DIR"])
+	enc.AddString("WalDir", config.Env["ETCD_WAL_DIR"])
 	enc.AddString("InitialAdvertisePeerURLs", fmt.Sprintf("%v", config.InitialAdvertisePeerURLs))
 	enc.AddString("ClusterPeerURLs", fmt.Sprintf("%v", config.ClusterPeerURLs))
 	return nil
@@ -53,31 +49,27 @@ func LoadFromEnv() (*EnvConfig, error) {
 		}
 	}
 
-	config.Name, ok = config.Env["ETCD_NAME"]
-	if !ok {
+	if _, ok := config.Env["ETCD_NAME"]; !ok {
 		return nil, fmt.Errorf("env ETCD_NAME is not set")
 	}
-	config.InitialClusterToken, ok = config.Env["ETCD_INITIAL_CLUSTER_TOKEN"]
-	if !ok {
+	if _, ok := config.Env["ETCD_INITIAL_CLUSTER_TOKEN"]; !ok {
 		return nil, fmt.Errorf("env ETCD_INITIAL_CLUSTER_TOKEN is not set")
 	}
-	config.DataDir, ok = config.Env["ETCD_DATA_DIR"]
-	if !ok {
+	if _, ok := config.Env["ETCD_DATA_DIR"]; !ok {
 		return nil, fmt.Errorf("env ETCD_DATA_DIR is not set")
 	}
-	config.WalDir, _ = config.Env["ETCD_WAL_DIR"]
 
-	if v, ok := config.Env["ETCD_INITIAL_CLUSTER"]; ok {
-		for _, member := range reList.Split(v, -1) {
-			k := reMap.Split(member, 2)
-			u, err := url.Parse(k[1])
-			if err != nil {
-				return nil, fmt.Errorf("parse initial cluster peer url: %w", err)
-			}
-			config.ClusterPeerURLs = append(config.ClusterPeerURLs, fmt.Sprintf("%s://%s", u.Scheme, u.Host))
-		}
-	} else {
+	initialCluster, ok := config.Env["ETCD_INITIAL_CLUSTER"]
+	if !ok {
 		return nil, fmt.Errorf("env ETCD_INITIAL_CLUSTER not set")
+	}
+	for _, member := range reList.Split(initialCluster, -1) {
+		k := reMap.Split(member, 2)
+		u, err := url.Parse(k[1])
+		if err != nil {
+			return nil, fmt.Errorf("parse initial cluster peer url: %w", err)
+		}
+		config.ClusterPeerURLs = append(config.ClusterPeerURLs, fmt.Sprintf("%s://%s", u.Scheme, u.Host))
 	}
 
 	peerTrustedCAFile, ok := config.Env["ETCD_PEER_TRUSTED_CA_FILE"]
