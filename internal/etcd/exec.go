@@ -9,15 +9,16 @@ type Exec struct {
 }
 
 func (m *Exec) StartNew(env []string) error {
-	return syscall.Exec(m.EtcdBinary,
-		[]string{"--initial-cluster-state=new"},
-		env,
-	)
+	return m.start(env, "new")
 }
 
 func (m *Exec) StartExisting(env []string) error {
+	return m.start(env, "existing")
+}
+
+func (m *Exec) start(env []string, state string) error {
 	return syscall.Exec(m.EtcdBinary,
-		[]string{"--initial-cluster-state=existing"},
+		[]string{"--initial-cluster-state=" + state},
 		env,
 	)
 }

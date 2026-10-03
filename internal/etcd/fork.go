@@ -15,24 +15,19 @@ type Fork struct {
 }
 
 func (m *Fork) StartNew(env []string) error {
-	m.Cmd = exec.CommandContext(m.Ctx, m.EtcdBinary)
-	m.Cmd.Args = []string{
-		m.EtcdBinary,
-		"--initial-cluster-state",
-		"new",
-	}
-	m.Cmd.Env = env
-	m.Cmd.Stdout = os.Stdout
-	m.Cmd.Stderr = os.Stderr
-	return m.Cmd.Start()
+	return m.start(env, "new")
 }
 
 func (m *Fork) StartExisting(env []string) error {
+	return m.start(env, "existing")
+}
+
+func (m *Fork) start(env []string, state string) error {
 	m.Cmd = exec.CommandContext(m.Ctx, m.EtcdBinary)
 	m.Cmd.Args = []string{
 		m.EtcdBinary,
 		"--initial-cluster-state",
-		"existing",
+		state,
 	}
 	m.Cmd.Env = env
 	m.Cmd.Stdout = os.Stdout
