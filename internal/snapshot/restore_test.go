@@ -24,8 +24,8 @@ type fakeS3Client struct {
 	snapshotFiles map[string]string
 }
 
-func (c *fakeS3Client) Verify(ctx context.Context) error {
-	return nil
+func (c *fakeS3Client) VerifyBucket(ctx context.Context) (bool, error) {
+	return true, nil
 }
 
 func (c *fakeS3Client) Download(ctx context.Context, key string, handler func(context.Context, io.Reader) error) (bool, error) {
@@ -73,19 +73,24 @@ func TestRestore(t *testing.T) {
 		},
 	}
 
+	restoreDataPath := t.TempDir()
 	logger, _ := zap.NewProduction()
+	restore := &Restore{
+		logger:   logger,
+		s3Client: s3Client,
+		restoreConfig: snapshot.RestoreConfig{
+			Name:                "node0",
+			OutputDataDir:       restoreDataPath,
+			PeerURLs:            []string{"https://127.0.0.1:8080"},
+			InitialCluster:      "node0=https://127.0.0.1:8080,node1=https://127.0.0.2:8080,node2=https://127.0.0.3:8080",
+			InitialClusterToken: "test-cluster-1",
+		},
+	}
+
 	clientCtx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 
-	restoreDataPath := t.TempDir()
-	ok, err := Restore(clientCtx, logger, s3Client, "snap-", snapshot.RestoreConfig{
-		Name:                "node0",
-		OutputDataDir:       restoreDataPath,
-		PeerURLs:            []string{"https://127.0.0.1:8080"},
-		InitialCluster:      "node0=https://127.0.0.1:8080,node1=https://127.0.0.2:8080,node2=https://127.0.0.3:8080",
-		InitialClusterToken: "test-cluster-1",
-		RevisionBump:        1000,
-	})
+	ok, err := restore.Restore(clientCtx, "snap-", 1000)
 	assert.NoError(t, err)
 	assert.True(t, ok)
 
