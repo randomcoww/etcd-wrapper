@@ -26,13 +26,13 @@ func Restore(ctx context.Context, logger *zap.Logger, s3 s3util.Client, prefix s
 	for i := len(keys) - 1; i >= 0; i-- {
 		ok, err = restoreKey(ctx, logger, s3, keys[i], restoreConfig)
 		if err == nil && ok {
-			logger.Info("restored snapshot success", zap.String("key", keys[i]))
+			logger.Info("restored snapshot", zap.String("key", keys[i]))
 			break
 		}
-		logger.Error("restore failed", zap.String("key", keys[i]), zap.Error(err))
+		logger.Error("restore snapshot", zap.String("key", keys[i]), zap.Error(err))
 	}
 	if err != nil {
-		return false, fmt.Errorf("all restore failed %w", err)
+		return false, fmt.Errorf("restore snapshot: %w", err)
 	}
 	return true, nil
 }
@@ -41,15 +41,13 @@ func restoreKey(ctx context.Context, logger *zap.Logger, s3 s3util.Client, key s
 	logger.Info("attempting snapshot restore")
 	dir, err := os.MkdirTemp("", "etcd-wrapper-*")
 	if err != nil {
-		logger.Error("create path for snapshot failed", zap.Error(err))
-		return false, err
+		return false, fmt.Errorf("create path for snapshot: %w", err)
 	}
 	defer os.RemoveAll(dir)
 
 	snapshotFile, err := os.CreateTemp(dir, "snapshot-restore-*.db")
 	if err != nil {
-		logger.Error("open file for snapshot failed", zap.Error(err))
-		return false, err
+		return false, fmt.Errorf("open file for snapshot: %w", err)
 	}
 	defer os.RemoveAll(snapshotFile.Name())
 	defer snapshotFile.Close()
@@ -66,8 +64,7 @@ func restoreKey(ctx context.Context, logger *zap.Logger, s3 s3util.Client, key s
 		return nil
 	})
 	if err != nil {
-		logger.Error("download snapshot failed", zap.Error(err))
-		return false, err
+		return false, fmt.Errorf("download snapshot: %w", err)
 	}
 	if !ok {
 		logger.Info("no snapshots found")
@@ -76,8 +73,7 @@ func restoreKey(ctx context.Context, logger *zap.Logger, s3 s3util.Client, key s
 
 	restoreConfig.SnapshotPath = snapshotFile.Name()
 	if err := etcdutil.RestoreSnapshot(logger, restoreConfig); err != nil {
-		logger.Error("restore snapshot failed", zap.Error(err))
-		return false, err
+		return false, fmt.Errorf("restore snapshot to etcd data: %w", err)
 	}
 	logger.Info("finished restoring snapshot")
 	return true, nil
