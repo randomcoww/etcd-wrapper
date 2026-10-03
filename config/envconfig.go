@@ -17,6 +17,10 @@ import (
 type EnvConfig struct {
 	Env                      map[string]string
 	Logger                   *zap.Logger
+	Name                     string
+	InitialClusterToken      string
+	DataDir                  string
+	WalDir                   string
 	InitialAdvertisePeerURLs []string
 	ClusterPeerURLs          []string
 	ClientTLSConfig          *tls.Config
@@ -24,8 +28,9 @@ type EnvConfig struct {
 }
 
 func (config *EnvConfig) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	enc.AddString("Name", config.Env["ETCD_NAME"])
-	enc.AddString("DataDir", config.Env["ETCD_DATA_DIR"])
+	enc.AddString("Name", config.Name)
+	enc.AddString("DataDir", config.DataDir)
+	enc.AddString("WalDir", config.WalDir)
 	enc.AddString("InitialAdvertisePeerURLs", fmt.Sprintf("%v", config.InitialAdvertisePeerURLs))
 	enc.AddString("ClusterPeerURLs", fmt.Sprintf("%v", config.ClusterPeerURLs))
 	return nil
@@ -50,13 +55,19 @@ func LoadEnv() (*EnvConfig, error) {
 		}
 	}
 
-	if _, ok := config.Env["ETCD_NAME"]; !ok {
+	config.Name, ok = config.Env["ETCD_NAME"]
+	if !ok {
 		return nil, fmt.Errorf("env ETCD_NAME is not set")
 	}
-	if _, ok := config.Env["ETCD_INITIAL_CLUSTER_TOKEN"]; !ok {
+	config.InitialClusterToken, ok = config.Env["ETCD_INITIAL_CLUSTER_TOKEN"]
+	if !ok {
 		return nil, fmt.Errorf("env ETCD_INITIAL_CLUSTER_TOKEN is not set")
 	}
-	delete(config.Env, "ETCD_INITIAL_CLUSTER_STATE") // this is set internally
+	config.DataDir, ok = config.Env["ETCD_DATA_DIR"]
+	if !ok {
+		return nil, fmt.Errorf("env ETCD_DATA_DIR is not set")
+	}
+	config.WalDir, _ = config.Env["ETCD_WAL_DIR"]
 
 	if v, ok := config.Env["ETCD_INITIAL_CLUSTER"]; ok {
 		for _, member := range reList.Split(v, -1) {
@@ -117,10 +128,8 @@ func LoadEnv() (*EnvConfig, error) {
 	} else {
 		return nil, fmt.Errorf("env ETCD_INITIAL_ADVERTISE_PEER_URLS not set")
 	}
-	if _, ok := config.Env["ETCD_DATA_DIR"]; !ok {
-		return nil, fmt.Errorf("env ETCD_DATA_DIR is not set")
-	}
 
+	delete(config.Env, "ETCD_INITIAL_CLUSTER_STATE") // this is set internally
 	config.Env["ETCD_LOG_OUTPUTS"] = "stdout"
 	config.Env["ETCD_ENABLE_V2"] = "false"
 	config.Env["ETCD_STRICT_RECONFIG_CHECK"] = "true"
