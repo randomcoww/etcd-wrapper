@@ -6,36 +6,35 @@ import (
 	"context"
 	"os"
 	"os/exec"
-
-	c "github.com/randomcoww/etcd-wrapper/internal/config"
 )
 
 type Fork struct {
-	Cmd *exec.Cmd
-	Ctx context.Context
+	Cmd        *exec.Cmd
+	Ctx        context.Context
+	EtcdBinary string
 }
 
-func (m *Fork) StartNew(config *c.Config) error {
-	m.Cmd = exec.CommandContext(m.Ctx, config.EtcdBinaryFile)
+func (m *Fork) StartNew(env []string) error {
+	m.Cmd = exec.CommandContext(m.Ctx, m.EtcdBinary)
 	m.Cmd.Args = []string{
-		config.EtcdBinaryFile,
+		m.EtcdBinary,
 		"--initial-cluster-state",
 		"new",
 	}
-	m.Cmd.Env = config.WriteEnv()
+	m.Cmd.Env = env
 	m.Cmd.Stdout = os.Stdout
 	m.Cmd.Stderr = os.Stderr
 	return m.Cmd.Start()
 }
 
-func (m *Fork) StartExisting(config *c.Config) error {
-	m.Cmd = exec.CommandContext(m.Ctx, config.EtcdBinaryFile)
+func (m *Fork) StartExisting(env []string) error {
+	m.Cmd = exec.CommandContext(m.Ctx, m.EtcdBinary)
 	m.Cmd.Args = []string{
-		config.EtcdBinaryFile,
+		m.EtcdBinary,
 		"--initial-cluster-state",
 		"existing",
 	}
-	m.Cmd.Env = config.WriteEnv()
+	m.Cmd.Env = env
 	m.Cmd.Stdout = os.Stdout
 	m.Cmd.Stderr = os.Stderr
 	return m.Cmd.Start()

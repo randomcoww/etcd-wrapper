@@ -2,24 +2,23 @@ package etcd
 
 import (
 	"syscall"
-
-	c "github.com/randomcoww/etcd-wrapper/internal/config"
 )
 
 type Exec struct {
+	EtcdBinary string
 }
 
-func (m *Exec) StartNew(config *c.Config) error {
-	return syscall.Exec(config.EtcdBinaryFile,
+func (m *Exec) StartNew(env []string) error {
+	return syscall.Exec(m.EtcdBinary,
 		[]string{"--initial-cluster-state=new"},
-		config.WriteEnv(),
+		env,
 	)
 }
 
-func (m *Exec) StartExisting(config *c.Config) error {
-	return syscall.Exec(config.EtcdBinaryFile,
+func (m *Exec) StartExisting(env []string) error {
+	return syscall.Exec(m.EtcdBinary,
 		[]string{"--initial-cluster-state=existing"},
-		config.WriteEnv(),
+		env,
 	)
 }
 
