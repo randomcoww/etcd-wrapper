@@ -19,11 +19,7 @@ type Restore struct {
 	restoreConfig snapshot.RestoreConfig
 }
 
-func NewRestoreFromConfig(logger *zap.Logger, env *c.EnvConfig, raw *c.YamlConfig) (*Restore, error) {
-	s3Client, err := s3util.NewClientFromConfig(raw)
-	if err != nil {
-		return nil, fmt.Errorf("create s3 client: %w", err)
-	}
+func NewRestoreFromConfig(logger *zap.Logger, s3Client s3util.Client, env *c.EnvConfig) *Restore {
 	return &Restore{
 		logger:   logger,
 		s3Client: s3Client,
@@ -35,7 +31,7 @@ func NewRestoreFromConfig(logger *zap.Logger, env *c.EnvConfig, raw *c.YamlConfi
 			InitialCluster:      env.Env["ETCD_INITIAL_CLUSTER"],
 			InitialClusterToken: env.Env["ETCD_INITIAL_CLUSTER_TOKEN"],
 		},
-	}, nil
+	}
 }
 
 func (r *Restore) VerifyBucket(ctx context.Context) (bool, error) {
