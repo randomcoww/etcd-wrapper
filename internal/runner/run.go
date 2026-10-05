@@ -2,113 +2,158 @@ package runner
 
 import (
 	"context"
-	"go.uber.org/zap"
+	"fmt"
 	"os"
 	"time"
 
-	c "github.com/randomcoww/etcd-wrapper/internal/config"
-	"github.com/randomcoww/etcd-wrapper/internal/etcdclient"
+	c "github.com/randomcoww/etcd-wrapper/config"
+	"github.com/randomcoww/etcd-wrapper/internal/etcdutil"
+	"github.com/randomcoww/etcd-wrapper/internal/snapshot"
 	"github.com/randomcoww/etcd-wrapper/internal/util"
 	etcdserverpb "go.etcd.io/etcd/api/v3/etcdserverpb"
+	"go.uber.org/zap"
 )
 
 type etcdProcess interface {
-	StartNew(*c.Config) error
-	StartExisting(*c.Config) error
+	StartNew([]string) error
+	StartExisting([]string) error
 	Stop() error
 	Wait() error
 }
 
-func RunEtcd(ctx context.Context, config *c.Config, etcdRunner etcdProcess) error {
-	clusterCtx, clusterCancel := context.WithTimeout(ctx, time.Duration(config.InitialClusterTimeout))
-	defer clusterCancel()
+type Runner struct {
+	logger           *zap.Logger
+	checkQuorumDelay time.Duration
+	clientTimeout    time.Duration
+	etcdRunner       etcdProcess
+	envConfig        *c.EnvConfig
+	restore          *snapshot.Restore
+	objectPrefix     string
+}
 
-	revision, err := etcdclient.GetDataRevision(config)
+func (r *Runner) runInterval(ctx context.Context, revisionBump uint64) error {
+
+	client, err := etcdutil.NewClientFromPeers(ctx, r.logger, r.envConfig.ClusterPeerURLs, r.envConfig.PeerTLSConfig, r.envConfig.ClientTLSConfig)
 	if err != nil {
-		config.Logger.Error("get local data revision", zap.Error(err))
-		if err = clearExistingData(config); err != nil {
-			config.Logger.Error("delete local data", zap.Error(err))
-			return err
+		//
+		// get current data revision. If invalid, delete data and return revision 0
+		//
+		revision, err := r.getLocalRevision()
+		if err != nil {
+			return fmt.Errorf("get cluster revision: %w", err)
 		}
-	}
-	config.Logger.Error("got data revision", zap.Int64("revision", revision))
-
-	client, err := etcdclient.NewClientFromPeers(clusterCtx, config)
-	if err != nil {
-		config.Logger.Info("no members found")
-		config.Logger.Info("starting member existing with backup data")
-		return etcdRunner.StartExisting(config)
+		if revision == 0 {
+			revision, err = r.restoreSnapshot(ctx)
+			if err != nil {
+				return fmt.Errorf("get cluster revision: %w", err)
+			}
+		}
+		if revision == 0 {
+			r.logger.Info("start etcd new")
+			return r.etcdRunner.StartNew(r.envConfig.WriteEnv())
+		}
+		r.logger.Info("start etcd existing")
+		return r.etcdRunner.StartExisting(r.envConfig.WriteEnv())
 	}
 	defer client.Close()
+	r.logger.Info("existing quorum found")
 
-	config.Logger.Info("existing quorum found")
-	remoteRevision, err := client.GetRevision(clusterCtx)
+	if err := r.replaceMember(ctx, client); err != nil {
+		return fmt.Errorf("replace member: %w", err)
+	}
+	r.logger.Info("replaced local member")
+
+	if err := r.clearLocalData(); err != nil {
+		return fmt.Errorf("clear local data: %w", err)
+	}
+	r.logger.Info("cleared local data")
+
+	r.logger.Info("start etcd existing")
+	return r.etcdRunner.StartExisting(r.envConfig.WriteEnv())
+}
+
+func (r *Runner) replaceMember(ctx context.Context, client etcdutil.EtcdClient) error {
+	listResp, err := client.MemberList(ctx)
 	if err != nil {
-		config.Logger.Error("failed to look up cluster revision")
-		config.Logger.Info("starting member existing")
-		return etcdRunner.StartExisting(config)
+		return fmt.Errorf("list cluster members: %w", err)
 	}
-
-	config.Logger.Error("got cluster revision", zap.Int64("revision", remoteRevision))
-	if revision >= remoteRevision {
-		return etcdRunner.StartExisting(config)
-	}
-
-	clientCtx, clientCancel := context.WithTimeout(ctx, time.Duration(config.ClientTimeout*2))
-	defer clientCancel()
-
-	listResp, err := client.MemberList(clientCtx)
-	if err != nil {
-		config.Logger.Error("list member failed", zap.Error(err))
-		return err
-	}
-	localMember := findLocalMember(listResp, config)
+	localMember := findMemberInCluster(listResp, r.envConfig.Env["ETCD_NAME"], r.envConfig.InitialAdvertisePeerURLs)
 
 	// replace my node to join cluster
 	// if my node already exists, it needs to be replaced
-	if localMember != nil && len(listResp.GetMembers()) >= len(config.ClusterPeerURLs) {
-		listResp, err = client.MemberRemove(clientCtx, localMember.GetID())
+	if localMember != nil && len(listResp.GetMembers()) >= len(r.envConfig.ClusterPeerURLs) {
+		r.logger.Info("remove local member", zap.Uint64("ID", localMember.GetID()))
+
+		listResp, err = client.MemberRemove(ctx, localMember.GetID())
 		if err != nil {
-			config.Logger.Error("remove member failed", zap.Error(err))
-			return err
+			return fmt.Errorf("remove cluster member %d: %w", localMember.GetID(), err)
 		}
-		localMember = findLocalMember(listResp, config)
-		config.Logger.Info("removed local member")
+		localMember = findMemberInCluster(listResp, r.envConfig.Env["ETCD_NAME"], r.envConfig.InitialAdvertisePeerURLs)
+		r.logger.Info("removed local member")
 	}
 
-	if localMember == nil && len(listResp.GetMembers()) < len(config.ClusterPeerURLs) {
-		_, err = client.MemberAdd(clientCtx, config.InitialAdvertisePeerURLs)
+	if localMember == nil && len(listResp.GetMembers()) < len(r.envConfig.ClusterPeerURLs) {
+		listResp, err = client.MemberAdd(ctx, r.envConfig.InitialAdvertisePeerURLs)
 		if err != nil {
-			config.Logger.Error("add member failed", zap.Error(err))
-			return err
+			return fmt.Errorf("add member: %w", err)
 		}
-		config.Logger.Info("added local member")
+		localMember = findMemberInCluster(listResp, r.envConfig.Env["ETCD_NAME"], r.envConfig.InitialAdvertisePeerURLs)
+		r.logger.Info("added local member", zap.Uint64("ID", localMember.GetID()))
 	}
-
-	config.Logger.Info("starting member existing")
-	if err = clearExistingData(config); err != nil {
-		return err
-	}
-	return etcdRunner.StartExisting(config)
-}
-
-func clearExistingData(config *c.Config) error {
-	if d, ok := config.Env["ETCD_DATA_DIR"]; ok && d != "" {
-		if err := removeDir(d); err != nil {
-			config.Logger.Error("remove data dir", zap.Error(err))
-			return err
-		}
-	}
-	config.Logger.Info("cleaned out existing data")
 	return nil
 }
 
-func findLocalMember(listResp etcdclient.Members, config *c.Config) *etcdserverpb.Member {
+func (r *Runner) clearLocalData() error {
+	if err := removeDir(r.envConfig.Env["ETCD_DATA_DIR"]); err != nil {
+		return fmt.Errorf("remove data dir: %w", err)
+	}
+	if err := removeDir(r.envConfig.Env["ETCD_WAL_DIR"]); err != nil {
+		return fmt.Errorf("remove data dir: %w", err)
+	}
+	r.logger.Info("cleaned out existing data")
+	return nil
+}
+
+func (r *Runner) getLocalRevision() (int64, error) {
+	revision, err := etcdutil.GetDataRevision(r.envConfig.Env["ETCD_DATA_DIR"], r.logger)
+	if err != nil {
+		r.logger.Error("get local data revision", zap.Error(err))
+		if err := r.clearLocalData(); err != nil {
+			return 0, fmt.Errorf("clear local data: %w", err)
+		}
+		r.logger.Info("cleared local data")
+	}
+	r.logger.Info("local data", zap.Int64("revision", revision))
+	return revision, nil
+}
+
+func (r *Runner) restoreSnapshot(ctx context.Context) (int64, error) {
+	if err := r.clearLocalData(); err != nil {
+		return 0, err
+	}
+	ok, err := r.restore.VerifyBucket(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("verify backup bucket: %w", err)
+	}
+	if !ok {
+		return 0, fmt.Errorf("verify backup bucket")
+	}
+	ok, err = r.restore.Restore(ctx, r.objectPrefix, 10000)
+	if err != nil {
+		return 0, fmt.Errorf("restore snapshot: %w", err)
+	}
+	if ok {
+		return r.getLocalRevision()
+	}
+	return 0, nil
+}
+
+func findMemberInCluster(listResp etcdutil.Members, name string, peerURLs []string) *etcdserverpb.Member {
 	for _, member := range listResp.GetMembers() {
-		if member.GetName() == config.Env["ETCD_NAME"] {
+		if member.GetName() == name {
 			return member
 		}
-		if util.HasMatchingElement(member.GetPeerURLs(), config.InitialAdvertisePeerURLs) {
+		if util.HasMatchingElement(member.GetPeerURLs(), peerURLs) {
 			return member
 		}
 	}
@@ -121,7 +166,7 @@ func removeDir(path string) error {
 	case os.IsNotExist(err):
 		return nil
 	case err != nil:
-		return err
+		return fmt.Errorf("remove path %s: %w", path, err)
 	}
 	return os.RemoveAll(path)
 }

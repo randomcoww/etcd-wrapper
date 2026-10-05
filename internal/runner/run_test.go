@@ -2,302 +2,332 @@ package runner
 
 import (
 	"context"
+	"fmt"
+	"io"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/randomcoww/etcd-wrapper/clienttest"
-	c "github.com/randomcoww/etcd-wrapper/internal/config"
+	c "github.com/randomcoww/etcd-wrapper/config"
 	"github.com/randomcoww/etcd-wrapper/internal/etcd"
-	"github.com/randomcoww/etcd-wrapper/internal/etcdclient"
+	"github.com/randomcoww/etcd-wrapper/internal/etcdutil"
+	"github.com/randomcoww/etcd-wrapper/internal/s3util"
+	"github.com/randomcoww/etcd-wrapper/internal/snapshot"
+	"github.com/randomcoww/etcd-wrapper/internal/tlsutil"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/zap"
 )
 
 var (
-	testSnapshot    string = filepath.Join(clienttest.BaseTestPath, "../rev3-snap.db")
-	testSnapshotOld string = filepath.Join(clienttest.BaseTestPath, "../rev2-snap.db")
+	baseTestPath string = "../../test/outputs"
 )
 
+type fakeS3Client struct {
+	objectsList   []string
+	objectsErrors map[string]error
+	snapshotFiles map[string]string
+}
+
+func (c *fakeS3Client) VerifyBucket(ctx context.Context) (bool, error) {
+	return true, nil
+}
+
+func (c *fakeS3Client) Download(ctx context.Context, key string, handler func(context.Context, io.Reader) error) (bool, error) {
+	file, err := os.Open(c.snapshotFiles[key])
+	if err != nil {
+		return false, err
+	}
+	defer file.Close()
+	return true, handler(ctx, file)
+}
+
+func (c *fakeS3Client) List(ctx context.Context, prefix string) ([]string, map[string]error) {
+	return c.objectsList, c.objectsErrors
+}
+
+type member struct {
+	name       string
+	clientPort int
+	peerPort   int
+}
+
 func TestCreateFromRestore(t *testing.T) {
-	dataPath := t.TempDir()
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	configs, err := clienttest.MockConfig(dataPath)
-	if err != nil {
-		t.Fatal("generate etcd mock configs: %w", err)
+	logger, _ := zap.NewProduction()
+	s3Client := &fakeS3Client{
+		objectsList: []string{
+			"snap-3",
+		},
+		objectsErrors: make(map[string]error),
+		snapshotFiles: map[string]string{
+			"snap-3": filepath.Join(baseTestPath, "../rev3-snap.db"), // good data
+		},
 	}
 
-	etcdPs, err := createTestEtcdCluster(t, ctx, configs, testSnapshot)
-	if err != nil {
-		t.Fatal("create test etcd cluster: %w", err)
+	etcdRunner := &etcd.Fork{
+		Ctx:        ctx,
+		EtcdBinary: "/etcd/usr/local/bin/etcd",
 	}
-	for _, p := range etcdPs {
-		defer p.Wait()
-		defer p.Stop()
+
+	members := []member{
+		{
+			name:       "node0",
+			clientPort: 8080,
+			peerPort:   8090,
+		},
+		{
+			name:       "node1",
+			clientPort: 8081,
+			peerPort:   8091,
+		},
+		{
+			name:       "node2",
+			clientPort: 8082,
+			peerPort:   8092,
+		},
+	}
+	dataPath := t.TempDir()
+
+	runners, err := newRunners(t, logger, s3Client, etcdRunner, members, dataPath, "snap-")
+	if err != nil {
+		t.Fatal("create etcd runners: %w", err)
+	}
+
+	for _, runner := range runners {
+		defer runner.etcdRunner.Wait()
+		defer runner.etcdRunner.Stop()
+
+		c, cancel := context.WithTimeout(ctx, time.Duration(8*time.Second))
+		defer cancel()
+
+		runner.runInterval(c, 10000)
+		time.Sleep(4 * time.Second)
 	}
 
 	// verify quorum, nodes, and backup
-	for _, config := range configs {
-		val, err := verifyTestData(t, ctx, config, "test-rev3")
+	for _, runner := range runners {
+		c, cancel := context.WithTimeout(ctx, time.Duration(4*time.Second))
+		defer cancel()
+
+		err := verifyTestStatus(t, c, runner)
+		assert.NoError(t, err)
+
+		val, err := verifyTestData(t, c, runner, "test-rev3")
 		assert.NoError(t, err)
 		assert.Equal(t, "test-rev3-val", val) // match value that should exist in the test data
 	}
 }
 
-func TestReplaceOneMember(t *testing.T) {
-	tests := []struct {
-		label                   string
-		restoreLocalRevision    string
-		testKey                 string
-		expectedClusterRevision string
-	}{
-		{
-			label:                   "old revions replace member path",
-			restoreLocalRevision:    testSnapshot,
-			testKey:                 "test-rev3",
-			expectedClusterRevision: "test-rev3-val",
-		},
-		{
-			label:                   "matching or greater revision path",
-			restoreLocalRevision:    testSnapshotOld,
-			testKey:                 "test-rev3",
-			expectedClusterRevision: "test-rev3-val",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.label, func(t *testing.T) {
-
-			dataPath := t.TempDir()
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-
-			configs, err := clienttest.MockConfig(dataPath)
-			if err != nil {
-				t.Fatal("generate etcd mock configs: %w", err)
-			}
-
-			etcdPs, err := createTestEtcdCluster(t, ctx, configs, testSnapshot)
-			if err != nil {
-				t.Fatal("create test etcd cluster: %w", err)
-			}
-			for _, p := range etcdPs {
-				defer p.Wait()
-				defer p.Stop()
-			}
-
-			// stop one node
-			for i, config := range configs[:1] {
-				etcdPs[i].Stop()
-				etcdPs[i].Wait()
-				if err := clearExistingData(config); err != nil { // node restart and data loss
-					t.Fatal("clear test data: %w", err)
-				}
-			}
-			for i, config := range configs[:1] {
-				if err := etcdclient.RestoreSnapshot(tt.restoreLocalRevision, config); err != nil { // restored old snapshot
-					t.Fatal("add test snapshot: %w", err)
-				}
-				err := RunEtcd(ctx, config, etcdPs[i])
-				assert.NoError(t, err)
-				time.Sleep(config.InitialClusterTimeout + 2*time.Second)
-			}
-
-			// verify quorum, nodes, and backup
-			for _, config := range configs {
-				err := verifyTestStatus(t, ctx, config)
-				assert.NoError(t, err)
-			}
-
-			// verify quorum, nodes, and backup
-			for _, config := range configs {
-				val, err := verifyTestData(t, ctx, config, tt.testKey)
-				assert.NoError(t, err)
-				assert.Equal(t, tt.expectedClusterRevision, val) // match value that should exist in the test data
-			}
-		})
-	}
-}
-
-func TestReplaceTwoMembers(t *testing.T) {
-	tests := []struct {
-		label                   string
-		restoreLocalRevision    string
-		testKey                 string
-		expectedClusterRevision string
-	}{
-		{
-			label:                   "old revions replace member path",
-			restoreLocalRevision:    testSnapshot,
-			testKey:                 "test-rev3",
-			expectedClusterRevision: "test-rev3-val",
-		},
-		{
-			label:                   "matching or greater revision path",
-			restoreLocalRevision:    testSnapshotOld,
-			testKey:                 "test-rev2",
-			expectedClusterRevision: "test-rev2-val", // reverts to older revision
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.label, func(t *testing.T) {
-
-			dataPath := t.TempDir()
-			ctx, cancel := context.WithCancel(context.Background())
-			defer cancel()
-
-			configs, err := clienttest.MockConfig(dataPath)
-			if err != nil {
-				t.Fatal("generate etcd mock configs: %w", err)
-			}
-
-			etcdPs, err := createTestEtcdCluster(t, ctx, configs, testSnapshot)
-			if err != nil {
-				t.Fatal("create test etcd cluster: %w", err)
-			}
-			for _, p := range etcdPs {
-				defer p.Wait()
-				defer p.Stop()
-			}
-
-			// stop two nodes
-			for i, config := range configs[:2] {
-				etcdPs[i].Stop()
-				etcdPs[i].Wait()
-				if err := clearExistingData(config); err != nil { // node restart and data loss
-					t.Fatal("clear test data: %w", err)
-				}
-			}
-			for i, config := range configs[:2] {
-				if err := etcdclient.RestoreSnapshot(tt.restoreLocalRevision, config); err != nil { // restored old snapshot
-					t.Fatal("add test snapshot: %w", err)
-				}
-				err := RunEtcd(ctx, config, etcdPs[i])
-				assert.NoError(t, err)
-				time.Sleep(config.InitialClusterTimeout + 2*time.Second)
-			}
-
-			// verify quorum, nodes, and backup
-			for _, config := range configs {
-				err := verifyTestStatus(t, ctx, config)
-				assert.NoError(t, err)
-			}
-
-			// verify quorum, nodes, and backup
-			for _, config := range configs {
-				val, err := verifyTestData(t, ctx, config, tt.testKey)
-				assert.NoError(t, err)
-				assert.Equal(t, tt.expectedClusterRevision, val) // match value that should exist in the test data
-			}
-		})
-	}
-}
-
-func TestRestartWithoutDataWipe(t *testing.T) {
-	dataPath := t.TempDir()
+func TestReplaceMember(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	configs, err := clienttest.MockConfig(dataPath)
-	if err != nil {
-		t.Fatal("generate etcd mock configs: %w", err)
+	logger, _ := zap.NewProduction()
+	s3Client := &fakeS3Client{
+		objectsList: []string{
+			"snap-3",
+		},
+		objectsErrors: make(map[string]error),
+		snapshotFiles: map[string]string{
+			"snap-3": filepath.Join(baseTestPath, "../rev3-snap.db"), // good data
+		},
 	}
 
-	etcdPs, err := createTestEtcdCluster(t, ctx, configs, testSnapshot)
-	if err != nil {
-		t.Fatal("create test etcd cluster: %w", err)
-	}
-	for _, p := range etcdPs {
-		defer p.Wait()
-		defer p.Stop()
+	etcdRunner := &etcd.Fork{
+		Ctx:        ctx,
+		EtcdBinary: "/etcd/usr/local/bin/etcd",
 	}
 
-	// stop all nodes
-	for i, _ := range configs {
-		etcdPs[i].Stop()
-		etcdPs[i].Wait()
+	members := []member{
+		{
+			name:       "node0",
+			clientPort: 8080,
+			peerPort:   8090,
+		},
+		{
+			name:       "node1",
+			clientPort: 8081,
+			peerPort:   8091,
+		},
+		{
+			name:       "node2",
+			clientPort: 8082,
+			peerPort:   8092,
+		},
 	}
-	for i, config := range configs {
-		err := RunEtcd(ctx, config, etcdPs[i])
-		assert.NoError(t, err)
-		time.Sleep(config.InitialClusterTimeout + 2*time.Second)
+	dataPath := t.TempDir()
+
+	runners, err := newRunners(t, logger, s3Client, etcdRunner, members, dataPath, "snap-")
+	if err != nil {
+		t.Fatal("create etcd runners: %w", err)
+	}
+
+	for _, runner := range runners {
+		defer runner.etcdRunner.Wait()
+		defer runner.etcdRunner.Stop()
+
+		c, cancel := context.WithTimeout(ctx, time.Duration(8*time.Second))
+		defer cancel()
+
+		runner.runInterval(c, 10000)
+		time.Sleep(4 * time.Second)
 	}
 
 	// verify quorum, nodes, and backup
-	for _, config := range configs {
-		err := verifyTestStatus(t, ctx, config)
+	for _, runner := range runners {
+		c, cancel := context.WithTimeout(ctx, time.Duration(4*time.Second))
+		defer cancel()
+
+		err := verifyTestStatus(t, c, runner)
 		assert.NoError(t, err)
+
+		val, err := verifyTestData(t, c, runner, "test-rev3")
+		assert.NoError(t, err)
+		assert.Equal(t, "test-rev3-val", val) // match value that should exist in the test data
+	}
+
+	// --- stop one node ---
+
+	for _, runner := range runners[2:] {
+		if err := runner.etcdRunner.Stop(); err != nil {
+			t.Fatal("stop test client: %w", err)
+		}
+		if err := runner.etcdRunner.Wait(); err != nil {
+			t.Fatal("wait stop test client: %w", err)
+		}
+		t.Logf("stopped %s", runner.envConfig.Env["ETCD_NAME"])
+	}
+	t.Log("stopped nodes")
+	time.Sleep(4 * time.Second)
+
+	// --- start replacement node ---
+
+	for _, runner := range runners[2:] {
+		c, cancel := context.WithTimeout(ctx, time.Duration(8*time.Second))
+		defer cancel()
+
+		if err := runner.runInterval(c, 10000); err != nil {
+			t.Fatal("call etcd runner: %w", err)
+		}
+		time.Sleep(4 * time.Second)
 	}
 
 	// verify quorum, nodes, and backup
-	for _, config := range configs {
-		val, err := verifyTestData(t, ctx, config, "test-rev3") // reverts to older revision
+	for _, runner := range runners {
+		c, cancel := context.WithTimeout(ctx, time.Duration(4*time.Second))
+		defer cancel()
+
+		err := verifyTestStatus(t, c, runner)
+		assert.NoError(t, err)
+
+		val, err := verifyTestData(t, c, runner, "test-rev3")
 		assert.NoError(t, err)
 		assert.Equal(t, "test-rev3-val", val) // match value that should exist in the test data
 	}
 }
 
-func verifyTestStatus(t *testing.T, ctx context.Context, config *c.Config) error {
+// --- helper ---
+
+func verifyTestStatus(t *testing.T, ctx context.Context, r *Runner) error {
 	t.Helper()
-	clientCtx, clientCancel := context.WithTimeout(ctx, time.Duration(config.ClientTimeout))
-	defer clientCancel()
 
-	client, err := etcdclient.NewClientFromPeers(clientCtx, config)
+	client, err := etcdutil.NewClient(ctx, r.logger, r.envConfig.ListenClientURLs, r.envConfig.ClientTLSConfig)
 	if err != nil {
 		return err
 	}
-
-	statusCtx, statusCancel := context.WithTimeout(ctx, time.Duration(config.ClientTimeout))
-	defer statusCancel()
-	if _, err := client.Status(statusCtx, config.LocalClientURL); err != nil {
+	if _, err := client.Status(ctx, r.envConfig.ListenClientURLs[0]); err != nil {
 		return err
 	}
 	return nil
 }
 
-func verifyTestData(t *testing.T, ctx context.Context, config *c.Config, key string) (string, error) {
+func verifyTestData(t *testing.T, ctx context.Context, r *Runner, key string) (string, error) {
 	t.Helper()
-	clusterCtx, clusterCancel := context.WithTimeout(ctx, time.Duration(config.InitialClusterTimeout))
-	defer clusterCancel()
 
-	client, err := etcdclient.NewClientFromPeers(clusterCtx, config)
+	client, err := etcdutil.NewClient(ctx, r.logger, r.envConfig.ListenClientURLs, r.envConfig.ClientTLSConfig)
 	if err != nil {
 		return "", err
 	}
-
-	clientCtx, clientCancel := context.WithTimeout(ctx, 2*time.Second)
-	defer clientCancel()
-	resp, err := client.C().KV.Get(clientCtx, key)
+	resp, err := client.C().KV.Get(ctx, key)
 	if err != nil {
 		return "", err
 	}
 	return string(resp.Kvs[0].Value), nil
 }
 
-func createTestEtcdCluster(t *testing.T, ctx context.Context, configs []*c.Config, restoreFile string) ([]*etcd.Fork, error) {
+func newRunners(t *testing.T, logger *zap.Logger, s3Client s3util.Client, etcdRunner etcdProcess, members []member, dataPath string, objectPrefix string) ([]*Runner, error) {
 	t.Helper()
-	ps := make([]*etcd.Fork, len(configs))
 
-	for i, config := range configs {
-		p := &etcd.Fork{Ctx: ctx}
-		ps[i] = p
+	var runners []*Runner
+	for _, member := range members {
+		var err error
+		config := &c.EnvConfig{
+			Env: map[string]string{
+				"ETCD_NAME":                        member.name,
+				"ETCD_DATA_DIR":                    filepath.Join(dataPath, member.name+"_etcd"),
+				"ETCD_CLIENT_CERT_AUTH":            "true",
+				"ETCD_PEER_CLIENT_CERT_AUTH":       "true",
+				"ETCD_STRICT_RECONFIG_CHECK":       "true",
+				"ETCD_TRUSTED_CA_FILE":             filepath.Join(baseTestPath, "client", "ca.crt"),
+				"ETCD_CERT_FILE":                   filepath.Join(baseTestPath, member.name, "client", "tls.crt"),
+				"ETCD_KEY_FILE":                    filepath.Join(baseTestPath, member.name, "client", "tls.key"),
+				"ETCD_PEER_TRUSTED_CA_FILE":        filepath.Join(baseTestPath, "peer", "ca.crt"),
+				"ETCD_PEER_CERT_FILE":              filepath.Join(baseTestPath, member.name, "peer", "tls.crt"),
+				"ETCD_PEER_KEY_FILE":               filepath.Join(baseTestPath, member.name, "peer", "tls.key"),
+				"ETCD_LISTEN_CLIENT_URLS":          fmt.Sprintf("https://127.0.0.1:%d", member.clientPort),
+				"ETCD_ADVERTISE_CLIENT_URLS":       fmt.Sprintf("https://127.0.0.1:%d", member.clientPort),
+				"ETCD_LISTEN_PEER_URLS":            fmt.Sprintf("https://127.0.0.1:%d", member.peerPort),
+				"ETCD_INITIAL_ADVERTISE_PEER_URLS": fmt.Sprintf("https://127.0.0.1:%d", member.peerPort),
+				"ETCD_INITIAL_CLUSTER_TOKEN":       "test",
+				"ETCD_AUTO_COMPACTION_RETENTION":   "1",
+				"ETCD_AUTO_COMPACTION_MODE":        "revision",
+				"ETCD_SOCKET_REUSE_ADDRESS":        "true",
+				"ETCD_SOCKET_REUSE_PORT":           "true",
+				"ETCD_ENABLE_V2":                   "false",
+				"ETCDCTL_API":                      "3",
+			},
+			InitialAdvertisePeerURLs: []string{fmt.Sprintf("https://127.0.0.1:%d", member.peerPort)},
+		}
 
-		if err := etcdclient.RestoreSnapshot(restoreFile, config); err != nil {
+		var initialCluster []string
+		for _, member := range members {
+			initialCluster = append(initialCluster, fmt.Sprintf("%s=https://127.0.0.1:%d", member.name, member.peerPort))
+			config.ClusterPeerURLs = append(config.ClusterPeerURLs, fmt.Sprintf("https://127.0.0.1:%d", member.peerPort))
+		}
+		config.Env["ETCD_INITIAL_CLUSTER"] = strings.Join(initialCluster, ",")
+
+		config.ListenClientURLs = []string{fmt.Sprintf("https://127.0.0.1:%d", member.clientPort)}
+
+		config.ClientTLSConfig, err = tlsutil.BuildTLSClientConfig(
+			filepath.Join(baseTestPath, member.name, "client", "tls.crt"),
+			filepath.Join(baseTestPath, member.name, "client", "tls.key"),
+			[]string{filepath.Join(baseTestPath, "client", "ca.crt")},
+		)
+		if err != nil {
 			return nil, err
 		}
-		if err := RunEtcd(ctx, config, p); err != nil {
+		config.PeerTLSConfig, err = tlsutil.BuildTLSClientConfig(
+			filepath.Join(baseTestPath, member.name, "peer", "tls.crt"),
+			filepath.Join(baseTestPath, member.name, "peer", "tls.key"),
+			[]string{filepath.Join(baseTestPath, "peer", "ca.crt")},
+		)
+		if err != nil {
 			return nil, err
 		}
-		time.Sleep(config.InitialClusterTimeout + 2*time.Second)
+
+		runners = append(runners, &Runner{
+			logger:           logger,
+			checkQuorumDelay: 8 * time.Second,
+			clientTimeout:    4 * time.Second,
+			etcdRunner:       etcdRunner,
+			envConfig:        config,
+			restore:          snapshot.NewRestoreFromConfig(logger, s3Client, config),
+			objectPrefix:     objectPrefix,
+		})
 	}
-	for _, config := range configs {
-		if err := verifyTestStatus(t, ctx, config); err != nil {
-			for _, p := range ps {
-				defer p.Wait()
-				defer p.Stop()
-			}
-			return nil, err
-		}
-	}
-	return ps, nil
+	return runners, nil
 }
