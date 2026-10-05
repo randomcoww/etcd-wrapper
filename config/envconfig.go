@@ -142,6 +142,8 @@ func LoadFromEnv() (*EnvConfig, error) {
 	config.Env["ETCD_STRICT_RECONFIG_CHECK"] = "true"
 	config.Env["ETCD_CLIENT_CERT_AUTH"] = "true"
 	config.Env["ETCD_PEER_CLIENT_CERT_AUTH"] = "true"
+	config.Env["ETCD_SOCKET_REUSE_ADDRESS"] = "true"
+	config.Env["ETCD_SOCKET_REUSE_PORT"] = "true"
 
 	return config, nil
 }
