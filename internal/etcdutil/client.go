@@ -82,6 +82,7 @@ func NewClientFromPeers(ctx context.Context, logger *zap.Logger, peerURLs []stri
 		if err == nil {
 			client, err := NewClient(ctx, logger, pcluster.ClientURLs(), clienTLSConfig)
 			if err == nil {
+				logger.Info("found cluster", zap.String("URLs", fmt.Sprintf("%v", pcluster.ClientURLs())))
 				return client, nil
 			}
 		}
@@ -164,19 +165,41 @@ func (client *Client) AggregateStatus(ctx context.Context, endpoints []string) (
 }
 
 func (client *Client) MemberAdd(ctx context.Context, peerURLs []string) (Members, error) {
-	resp, err := client.Cluster.MemberAdd(ctx, peerURLs)
-	if err != nil {
-		return nil, fmt.Errorf("add member: %w", err)
+	for {
+		resp, err := client.Cluster.MemberAdd(ctx, peerURLs)
+		switch {
+		case err == nil:
+			return (*etcdserverpb.MemberAddResponse)(resp), nil
+		default:
+		}
+
+		timer := time.NewTimer(backoffWaitBetween)
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("add member %w: %w", ctx.Err(), err)
+		case <-timer.C:
+			continue
+		}
 	}
-	return (*etcdserverpb.MemberAddResponse)(resp), nil
 }
 
 func (client *Client) MemberRemove(ctx context.Context, id uint64) (Members, error) {
-	resp, err := client.Cluster.MemberRemove(ctx, id)
-	if err != nil {
-		return nil, fmt.Errorf("add remove: %w", err)
+	for {
+		resp, err := client.Cluster.MemberRemove(ctx, id)
+		switch {
+		case err == nil:
+			return (*etcdserverpb.MemberRemoveResponse)(resp), nil
+		default:
+		}
+
+		timer := time.NewTimer(backoffWaitBetween)
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("remove member %w: %w", ctx.Err(), err)
+		case <-timer.C:
+			continue
+		}
 	}
-	return (*etcdserverpb.MemberRemoveResponse)(resp), nil
 }
 
 func (client *Client) GetRevision(ctx context.Context) (int64, error) {
