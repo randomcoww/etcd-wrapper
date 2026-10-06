@@ -13,11 +13,11 @@ import (
 	c "github.com/randomcoww/etcd-wrapper/config"
 	"github.com/randomcoww/etcd-wrapper/internal/etcd"
 	"github.com/randomcoww/etcd-wrapper/internal/etcdutil"
-	"github.com/randomcoww/etcd-wrapper/internal/s3util"
-	"github.com/randomcoww/etcd-wrapper/internal/snapshot"
+	// "github.com/randomcoww/etcd-wrapper/internal/s3util"
+	// "github.com/randomcoww/etcd-wrapper/internal/snapshot"
 	"github.com/randomcoww/etcd-wrapper/internal/tlsutil"
 	"github.com/stretchr/testify/assert"
-	s "go.etcd.io/etcd/etcdutl/v3/snapshot"
+	// s "go.etcd.io/etcd/etcdutl/v3/snapshot"
 	"go.uber.org/zap"
 )
 
@@ -90,15 +90,28 @@ func TestCreateFromRestore(t *testing.T) {
 		},
 	}
 	dataPath := t.TempDir()
-
-	runners, err := newRunners(t, ctx, logger, s3Client, members, dataPath, "snap-")
+	configs, err := newConfigs(t, members, dataPath)
 	if err != nil {
-		t.Fatal("create etcd runners: %w", err)
+		t.Fatal("generate test configs: %w", err)
 	}
 
-	for _, runner := range runners {
+	var runners []*Runner
+	for _, config := range configs {
+		runner := &Runner{
+			logger:           logger,
+			checkQuorumDelay: 8 * time.Second,
+			clientTimeout:    4 * time.Second,
+			etcdRunner: &etcd.Fork{
+				Ctx:        ctx,
+				EtcdBinary: "/etcd/usr/local/bin/etcd",
+			},
+			s3Client:     s3Client,
+			envConfig:    config,
+			objectPrefix: "snap-",
+		}
 		defer runner.etcdRunner.Wait()
 		defer runner.etcdRunner.Stop()
+		runners = append(runners, runner)
 
 		c, cancel := context.WithTimeout(ctx, time.Duration(8*time.Second))
 		defer cancel()
@@ -158,16 +171,30 @@ func TestReplaceMembers(t *testing.T) {
 		},
 	}
 	dataPath := t.TempDir()
-
-	runners, err := newRunners(t, ctx, logger, s3Client, members, dataPath, "snap-")
+	configs, err := newConfigs(t, members, dataPath)
 	if err != nil {
-		t.Fatal("create etcd runners: %w", err)
+		t.Fatal("generate test configs: %w", err)
 	}
 
-	for _, runner := range runners {
+	var runners []*Runner
+	for _, config := range configs {
+		runner := &Runner{
+			logger:           logger,
+			checkQuorumDelay: 8 * time.Second,
+			clientTimeout:    4 * time.Second,
+			etcdRunner: &etcd.Fork{
+				Ctx:        ctx,
+				EtcdBinary: "/etcd/usr/local/bin/etcd",
+			},
+			s3Client:     s3Client,
+			envConfig:    config,
+			objectPrefix: "snap-",
+		}
 		defer runner.etcdRunner.Wait()
 		defer runner.etcdRunner.Stop()
+		runners = append(runners, runner)
 	}
+
 	if err := newDummyCluster(t, ctx, runners); err != nil {
 		t.Fatal("create dummy cluster: %w", err)
 	}
@@ -243,10 +270,10 @@ func verifyTestData(t *testing.T, ctx context.Context, r *Runner, key string) (s
 	return string(resp.Kvs[0].Value), nil
 }
 
-func newRunners(t *testing.T, ctx context.Context, logger *zap.Logger, s3Client s3util.Client, members []member, dataPath string, objectPrefix string) ([]*Runner, error) {
+func newConfigs(t *testing.T, members []member, dataPath string) ([]*c.EnvConfig, error) {
 	t.Helper()
 
-	var runners []*Runner
+	var configs []*c.EnvConfig
 	for _, member := range members {
 		var err error
 		config := &c.EnvConfig{
@@ -303,37 +330,17 @@ func newRunners(t *testing.T, ctx context.Context, logger *zap.Logger, s3Client 
 		if err != nil {
 			return nil, err
 		}
-		etcdRunner := &etcd.Fork{
-			Ctx:        ctx,
-			EtcdBinary: "/etcd/usr/local/bin/etcd",
-		}
-
-		runners = append(runners, &Runner{
-			logger:           logger,
-			checkQuorumDelay: 8 * time.Second,
-			clientTimeout:    4 * time.Second,
-			etcdRunner:       etcdRunner,
-			envConfig:        config,
-			restore:          snapshot.NewRestoreFromConfig(logger, s3Client, config),
-			objectPrefix:     objectPrefix,
-		})
+		configs = append(configs, config)
 	}
-	return runners, nil
+	return configs, nil
 }
 
 func newDummyCluster(t *testing.T, ctx context.Context, runners []*Runner) error {
 	t.Helper()
 
 	for _, r := range runners {
-		if err := etcdutil.RestoreSnapshot(r.logger, s.RestoreConfig{
-			Name:                r.envConfig.Env["ETCD_NAME"],
-			OutputDataDir:       r.envConfig.Env["ETCD_DATA_DIR"],
-			OutputWALDir:        r.envConfig.Env["ETCD_WAL_DIR"],
-			PeerURLs:            r.envConfig.InitialAdvertisePeerURLs,
-			InitialCluster:      r.envConfig.Env["ETCD_INITIAL_CLUSTER"],
-			InitialClusterToken: r.envConfig.Env["ETCD_INITIAL_CLUSTER_TOKEN"],
-			SnapshotPath:        filepath.Join(baseTestPath, "../rev3-snap.db"),
-		}); err != nil {
+		// preseed data into etcd path
+		if err := etcdutil.RestoreSnapshot(r.logger, r.envConfig.RestoreConfig(filepath.Join(baseTestPath, "../rev3-snap.db"), 0)); err != nil {
 			return fmt.Errorf("dummy cluster data restore: %w", err)
 		}
 		if err := r.etcdRunner.StartExisting(r.envConfig.WriteEnv()); err != nil {

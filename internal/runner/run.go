@@ -8,6 +8,7 @@ import (
 
 	c "github.com/randomcoww/etcd-wrapper/config"
 	"github.com/randomcoww/etcd-wrapper/internal/etcdutil"
+	"github.com/randomcoww/etcd-wrapper/internal/s3util"
 	"github.com/randomcoww/etcd-wrapper/internal/snapshot"
 	"github.com/randomcoww/etcd-wrapper/internal/util"
 	etcdserverpb "go.etcd.io/etcd/api/v3/etcdserverpb"
@@ -27,7 +28,7 @@ type Runner struct {
 	clientTimeout    time.Duration
 	etcdRunner       etcdProcess
 	envConfig        *c.EnvConfig
-	restore          *snapshot.Restore
+	s3Client         s3util.Client
 	objectPrefix     string
 }
 
@@ -138,14 +139,14 @@ func (r *Runner) restoreSnapshot(ctx context.Context) (int64, error) {
 	if err := r.clearLocalData(); err != nil {
 		return 0, err
 	}
-	ok, err := r.restore.VerifyBucket(ctx)
+	ok, err := snapshot.VerifyBucket(ctx, r.s3Client)
 	if err != nil {
 		return 0, fmt.Errorf("verify backup bucket: %w", err)
 	}
 	if !ok {
 		return 0, fmt.Errorf("verify backup bucket")
 	}
-	ok, err = r.restore.Restore(ctx, r.objectPrefix, 10000)
+	ok, err = snapshot.Restore(ctx, r.logger, r.s3Client, r.objectPrefix, r.envConfig.RestoreConfig("", 10000))
 	if err != nil {
 		return 0, fmt.Errorf("restore snapshot: %w", err)
 	}
