@@ -32,7 +32,6 @@ type Runner struct {
 }
 
 func (r *Runner) runInterval(ctx context.Context, revisionBump uint64) error {
-
 	client, err := etcdutil.NewClientFromPeers(ctx, r.logger, r.envConfig.ClusterPeerURLs, r.envConfig.PeerTLSConfig, r.envConfig.ClientTLSConfig)
 	if err != nil {
 		//

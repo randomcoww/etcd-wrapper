@@ -48,9 +48,10 @@ func (c *fakeS3Client) List(ctx context.Context, prefix string) ([]string, map[s
 }
 
 type member struct {
-	name       string
-	clientPort int
-	peerPort   int
+	name        string
+	clientPort  int
+	peerPort    int
+	metricsPort int
 }
 
 func TestCreateFromRestore(t *testing.T) {
@@ -67,32 +68,29 @@ func TestCreateFromRestore(t *testing.T) {
 			"snap-3": filepath.Join(baseTestPath, "../rev3-snap.db"), // good data
 		},
 	}
-
-	etcdRunner := &etcd.Fork{
-		Ctx:        ctx,
-		EtcdBinary: "/etcd/usr/local/bin/etcd",
-	}
-
 	members := []member{
 		{
-			name:       "node0",
-			clientPort: 8080,
-			peerPort:   8090,
+			name:        "node0",
+			clientPort:  8080,
+			peerPort:    8090,
+			metricsPort: 8100,
 		},
 		{
-			name:       "node1",
-			clientPort: 8081,
-			peerPort:   8091,
+			name:        "node1",
+			clientPort:  8081,
+			peerPort:    8091,
+			metricsPort: 8101,
 		},
 		{
-			name:       "node2",
-			clientPort: 8082,
-			peerPort:   8092,
+			name:        "node2",
+			clientPort:  8082,
+			peerPort:    8092,
+			metricsPort: 8102,
 		},
 	}
 	dataPath := t.TempDir()
 
-	runners, err := newRunners(t, logger, s3Client, etcdRunner, members, dataPath, "snap-")
+	runners, err := newRunners(t, ctx, logger, s3Client, members, dataPath, "snap-")
 	if err != nil {
 		t.Fatal("create etcd runners: %w", err)
 	}
@@ -136,32 +134,29 @@ func TestReplaceMember(t *testing.T) {
 			"snap-3": filepath.Join(baseTestPath, "../rev3-snap.db"), // good data
 		},
 	}
-
-	etcdRunner := &etcd.Fork{
-		Ctx:        ctx,
-		EtcdBinary: "/etcd/usr/local/bin/etcd",
-	}
-
 	members := []member{
 		{
-			name:       "node0",
-			clientPort: 8080,
-			peerPort:   8090,
+			name:        "node0",
+			clientPort:  8080,
+			peerPort:    8090,
+			metricsPort: 8100,
 		},
 		{
-			name:       "node1",
-			clientPort: 8081,
-			peerPort:   8091,
+			name:        "node1",
+			clientPort:  8081,
+			peerPort:    8091,
+			metricsPort: 8101,
 		},
 		{
-			name:       "node2",
-			clientPort: 8082,
-			peerPort:   8092,
+			name:        "node2",
+			clientPort:  8082,
+			peerPort:    8092,
+			metricsPort: 8102,
 		},
 	}
 	dataPath := t.TempDir()
 
-	runners, err := newRunners(t, logger, s3Client, etcdRunner, members, dataPath, "snap-")
+	runners, err := newRunners(t, ctx, logger, s3Client, members, dataPath, "snap-")
 	if err != nil {
 		t.Fatal("create etcd runners: %w", err)
 	}
@@ -182,8 +177,9 @@ func TestReplaceMember(t *testing.T) {
 		c, cancel := context.WithTimeout(ctx, time.Duration(4*time.Second))
 		defer cancel()
 
-		err := verifyTestStatus(t, c, runner)
-		assert.NoError(t, err)
+		if err := verifyTestStatus(t, c, runner); err != nil {
+			t.Fatal("test cluster: %w", err)
+		}
 
 		val, err := verifyTestData(t, c, runner, "test-rev3")
 		assert.NoError(t, err)
@@ -192,7 +188,8 @@ func TestReplaceMember(t *testing.T) {
 
 	// --- stop one node ---
 
-	for _, runner := range runners[2:] {
+	t.Log("stopping nodes")
+	for _, runner := range runners[1:2] {
 		if err := runner.etcdRunner.Stop(); err != nil {
 			t.Fatal("stop test client: %w", err)
 		}
@@ -201,12 +198,10 @@ func TestReplaceMember(t *testing.T) {
 		}
 		t.Logf("stopped %s", runner.envConfig.Env["ETCD_NAME"])
 	}
-	t.Log("stopped nodes")
-	time.Sleep(4 * time.Second)
 
 	// --- start replacement node ---
 
-	for _, runner := range runners[2:] {
+	for _, runner := range runners[1:2] {
 		c, cancel := context.WithTimeout(ctx, time.Duration(8*time.Second))
 		defer cancel()
 
@@ -239,9 +234,11 @@ func verifyTestStatus(t *testing.T, ctx context.Context, r *Runner) error {
 	if err != nil {
 		return err
 	}
-	if _, err := client.Status(ctx, r.envConfig.ListenClientURLs[0]); err != nil {
+	status, err := client.Status(ctx, r.envConfig.ListenClientURLs[0])
+	if err != nil {
 		return err
 	}
+	t.Logf("status: %+v", status)
 	return nil
 }
 
@@ -259,7 +256,7 @@ func verifyTestData(t *testing.T, ctx context.Context, r *Runner, key string) (s
 	return string(resp.Kvs[0].Value), nil
 }
 
-func newRunners(t *testing.T, logger *zap.Logger, s3Client s3util.Client, etcdRunner etcdProcess, members []member, dataPath string, objectPrefix string) ([]*Runner, error) {
+func newRunners(t *testing.T, ctx context.Context, logger *zap.Logger, s3Client s3util.Client, members []member, dataPath string, objectPrefix string) ([]*Runner, error) {
 	t.Helper()
 
 	var runners []*Runner
@@ -268,6 +265,7 @@ func newRunners(t *testing.T, logger *zap.Logger, s3Client s3util.Client, etcdRu
 		config := &c.EnvConfig{
 			Env: map[string]string{
 				"ETCD_NAME":                        member.name,
+				"ETCD_LOG_LEVEL":                   "info",
 				"ETCD_DATA_DIR":                    filepath.Join(dataPath, member.name+"_etcd"),
 				"ETCD_CLIENT_CERT_AUTH":            "true",
 				"ETCD_PEER_CLIENT_CERT_AUTH":       "true",
@@ -282,12 +280,12 @@ func newRunners(t *testing.T, logger *zap.Logger, s3Client s3util.Client, etcdRu
 				"ETCD_ADVERTISE_CLIENT_URLS":       fmt.Sprintf("https://127.0.0.1:%d", member.clientPort),
 				"ETCD_LISTEN_PEER_URLS":            fmt.Sprintf("https://127.0.0.1:%d", member.peerPort),
 				"ETCD_INITIAL_ADVERTISE_PEER_URLS": fmt.Sprintf("https://127.0.0.1:%d", member.peerPort),
+				"ETCD_LISTEN_METRICS_URLS":         fmt.Sprintf("http://127.0.0.1:%d", member.metricsPort),
 				"ETCD_INITIAL_CLUSTER_TOKEN":       "test",
 				"ETCD_AUTO_COMPACTION_RETENTION":   "1",
 				"ETCD_AUTO_COMPACTION_MODE":        "revision",
 				"ETCD_SOCKET_REUSE_ADDRESS":        "true",
 				"ETCD_SOCKET_REUSE_PORT":           "true",
-				"ETCD_ENABLE_V2":                   "false",
 				"ETCDCTL_API":                      "3",
 			},
 			InitialAdvertisePeerURLs: []string{fmt.Sprintf("https://127.0.0.1:%d", member.peerPort)},
@@ -317,6 +315,10 @@ func newRunners(t *testing.T, logger *zap.Logger, s3Client s3util.Client, etcdRu
 		)
 		if err != nil {
 			return nil, err
+		}
+		etcdRunner := &etcd.Fork{
+			Ctx:        ctx,
+			EtcdBinary: "/etcd/usr/local/bin/etcd",
 		}
 
 		runners = append(runners, &Runner{
