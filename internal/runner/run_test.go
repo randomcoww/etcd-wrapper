@@ -17,6 +17,7 @@ import (
 	"github.com/randomcoww/etcd-wrapper/internal/snapshot"
 	"github.com/randomcoww/etcd-wrapper/internal/tlsutil"
 	"github.com/stretchr/testify/assert"
+	s "go.etcd.io/etcd/etcdutl/v3/snapshot"
 	"go.uber.org/zap"
 )
 
@@ -61,11 +62,11 @@ func TestCreateFromRestore(t *testing.T) {
 	logger, _ := zap.NewProduction()
 	s3Client := &fakeS3Client{
 		objectsList: []string{
-			"snap-3",
+			"snap-2",
 		},
 		objectsErrors: make(map[string]error),
 		snapshotFiles: map[string]string{
-			"snap-3": filepath.Join(baseTestPath, "../rev3-snap.db"), // good data
+			"snap-2": filepath.Join(baseTestPath, "../rev2-snap.db"), // good data
 		},
 	}
 	members := []member{
@@ -116,9 +117,9 @@ func TestCreateFromRestore(t *testing.T) {
 		err := verifyTestStatus(t, c, runner)
 		assert.NoError(t, err)
 
-		val, err := verifyTestData(t, c, runner, "test-rev3")
+		val, err := verifyTestData(t, c, runner, "test-rev2")
 		assert.NoError(t, err)
-		assert.Equal(t, "test-rev3-val", val) // match value that should exist in the test data
+		assert.Equal(t, "test-rev2-val", val) // match value that should exist in the test data
 	}
 }
 
@@ -129,11 +130,11 @@ func TestReplaceMembers(t *testing.T) {
 	logger, _ := zap.NewProduction()
 	s3Client := &fakeS3Client{
 		objectsList: []string{
-			"snap-3",
+			"snap-2",
 		},
 		objectsErrors: make(map[string]error),
 		snapshotFiles: map[string]string{
-			"snap-3": filepath.Join(baseTestPath, "../rev3-snap.db"), // good data
+			"snap-2": filepath.Join(baseTestPath, "../rev2-snap.db"), // good data
 		},
 	}
 	members := []member{
@@ -166,28 +167,9 @@ func TestReplaceMembers(t *testing.T) {
 	for _, runner := range runners {
 		defer runner.etcdRunner.Wait()
 		defer runner.etcdRunner.Stop()
-
-		c, cancel := context.WithTimeout(ctx, time.Duration(8*time.Second))
-		defer cancel()
-
-		if err := runner.runInterval(c, 10000); err != nil {
-			t.Fatal("call etcd runner: %w", err)
-		}
-		time.Sleep(4 * time.Second)
 	}
-
-	// verify quorum, nodes, and backup
-	for _, runner := range runners {
-		c, cancel := context.WithTimeout(ctx, time.Duration(4*time.Second))
-		defer cancel()
-
-		if err := verifyTestStatus(t, c, runner); err != nil {
-			t.Fatal("test cluster: %w", err)
-		}
-
-		val, err := verifyTestData(t, c, runner, "test-rev3")
-		assert.NoError(t, err)
-		assert.Equal(t, "test-rev3-val", val) // match value that should exist in the test data
+	if err := newDummyCluster(t, ctx, runners); err != nil {
+		t.Fatal("create dummy cluster: %w", err)
 	}
 
 	// --- stop two nodes ---
@@ -337,4 +319,43 @@ func newRunners(t *testing.T, ctx context.Context, logger *zap.Logger, s3Client 
 		})
 	}
 	return runners, nil
+}
+
+func newDummyCluster(t *testing.T, ctx context.Context, runners []*Runner) error {
+	t.Helper()
+
+	for _, r := range runners {
+		if err := etcdutil.RestoreSnapshot(r.logger, s.RestoreConfig{
+			Name:                r.envConfig.Env["ETCD_NAME"],
+			OutputDataDir:       r.envConfig.Env["ETCD_DATA_DIR"],
+			OutputWALDir:        r.envConfig.Env["ETCD_WAL_DIR"],
+			PeerURLs:            r.envConfig.InitialAdvertisePeerURLs,
+			InitialCluster:      r.envConfig.Env["ETCD_INITIAL_CLUSTER"],
+			InitialClusterToken: r.envConfig.Env["ETCD_INITIAL_CLUSTER_TOKEN"],
+			SnapshotPath:        filepath.Join(baseTestPath, "../rev3-snap.db"),
+		}); err != nil {
+			return fmt.Errorf("dummy cluster data restore: %w", err)
+		}
+		if err := r.etcdRunner.StartExisting(r.envConfig.WriteEnv()); err != nil {
+			return fmt.Errorf("dummy cluster: %w", err)
+		}
+		time.Sleep(4 * time.Second)
+	}
+
+	for _, r := range runners {
+		c, cancel := context.WithTimeout(ctx, time.Duration(4*time.Second))
+		defer cancel()
+
+		if err := verifyTestStatus(t, c, r); err != nil {
+			return fmt.Errorf("test dummy cluster: %w", err)
+		}
+		val, err := verifyTestData(t, c, r, "test-rev3")
+		if err != nil {
+			return fmt.Errorf("test dummy data: %w", err)
+		}
+		if val != "test-rev3-val" {
+			return fmt.Errorf("test dummy data")
+		}
+	}
+	return nil
 }
