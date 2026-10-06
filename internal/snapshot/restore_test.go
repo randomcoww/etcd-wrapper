@@ -43,6 +43,7 @@ func (c *fakeS3Client) List(ctx context.Context, prefix string) ([]string, map[s
 
 func TestRestore(t *testing.T) {
 	dataPath := t.TempDir()
+	restoreDataPath := t.TempDir()
 
 	fakeSnapshotFile6, _ := os.CreateTemp(dataPath, "snap-5")
 	defer os.RemoveAll(fakeSnapshotFile6.Name())
@@ -55,6 +56,15 @@ func TestRestore(t *testing.T) {
 	defer os.RemoveAll(fakeSnapshotFile4.Name())
 	defer fakeSnapshotFile4.Close()
 
+	envConfig := &c.EnvConfig{
+		Env: map[string]string{
+			"ETCD_NAME":                  "node0",
+			"ETCD_DATA_DIR":              restoreDataPath,
+			"ETCD_INITIAL_CLUSTER":       "node0=https://127.0.0.1:8080,node1=https://127.0.0.2:8080,node2=https://127.0.0.3:8080",
+			"ETCD_INITIAL_CLUSTER_TOEKN": "test-cluster-1",
+		},
+		InitialAdvertisePeerURLs: []string{"https://127.0.0.1:8080"},
+	}
 	s3Client := &fakeS3Client{
 		objectsList: []string{
 			"snap-2",
@@ -73,17 +83,8 @@ func TestRestore(t *testing.T) {
 		},
 	}
 
-	restoreDataPath := t.TempDir()
 	logger, _ := zap.NewProduction()
-	restoreConfig := NewRestoreConfig(&c.EnvConfig{
-		Env: map[string]string{
-			"ETCD_NAME":                  "node0",
-			"ETCD_DATA_DIR":              restoreDataPath,
-			"ETCD_INITIAL_CLUSTER":       "node0=https://127.0.0.1:8080,node1=https://127.0.0.2:8080,node2=https://127.0.0.3:8080",
-			"ETCD_INITIAL_CLUSTER_TOEKN": "test-cluster-1",
-		},
-		InitialAdvertisePeerURLs: []string{"https://127.0.0.1:8080"},
-	}, "", 1000)
+	restoreConfig := envConfig.RestoreConfig("", 1000)
 
 	clientCtx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()

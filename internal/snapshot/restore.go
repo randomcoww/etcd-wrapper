@@ -6,32 +6,14 @@ import (
 	"io"
 	"os"
 
-	c "github.com/randomcoww/etcd-wrapper/config"
 	"github.com/randomcoww/etcd-wrapper/internal/etcdutil"
 	"github.com/randomcoww/etcd-wrapper/internal/s3util"
 	"go.etcd.io/etcd/etcdutl/v3/snapshot"
 	"go.uber.org/zap"
 )
 
-func NewRestoreConfig(config *c.EnvConfig, snapshotPath string, revisionBump uint64) snapshot.RestoreConfig {
-	return snapshot.RestoreConfig{
-		Name:                config.Env["ETCD_NAME"],
-		OutputDataDir:       config.Env["ETCD_DATA_DIR"],
-		OutputWALDir:        config.Env["ETCD_WAL_DIR"],
-		PeerURLs:            config.InitialAdvertisePeerURLs,
-		InitialCluster:      config.Env["ETCD_INITIAL_CLUSTER"],
-		InitialClusterToken: config.Env["ETCD_INITIAL_CLUSTER_TOKEN"],
-		RevisionBump:        revisionBump,
-		SnapshotPath:        snapshotPath,
-	}
-}
-
 func VerifyBucket(ctx context.Context, s3Client s3util.Client) (bool, error) {
 	return s3Client.VerifyBucket(ctx)
-}
-
-func RestoreSnapshot(logger *zap.Logger, restoreConfig snapshot.RestoreConfig) error {
-	return etcdutil.RestoreSnapshot(logger, restoreConfig)
 }
 
 func Restore(ctx context.Context, logger *zap.Logger, s3Client s3util.Client, objectPrefix string, restoreConfig snapshot.RestoreConfig) (bool, error) {
@@ -100,7 +82,7 @@ func RestoreKey(ctx context.Context, logger *zap.Logger, s3Client s3util.Client,
 	}
 
 	restoreConfig.SnapshotPath = snapshotFile.Name()
-	if err := RestoreSnapshot(logger, restoreConfig); err != nil {
+	if err := etcdutil.RestoreSnapshot(logger, restoreConfig); err != nil {
 		return false, fmt.Errorf("restore snapshot to etcd data: %w", err)
 	}
 	logger.Info("finished restoring snapshot")
