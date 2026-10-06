@@ -33,7 +33,14 @@ type Runner struct {
 
 func (r *Runner) runInterval(ctx context.Context, revisionBump uint64) error {
 	client, err := etcdutil.NewClientFromPeers(ctx, r.logger, r.envConfig.ClusterPeerURLs, r.envConfig.PeerTLSConfig, r.envConfig.ClientTLSConfig)
+
+	if err == nil {
+		c, cancel := context.WithTimeout(ctx, 4*time.Second)
+		defer cancel()
+		err = client.CheckQuorum(c)
+	}
 	if err != nil {
+		r.logger.Info("quorum not found")
 		//
 		// get current data revision. If invalid, delete data and return revision 0
 		//
@@ -46,14 +53,15 @@ func (r *Runner) runInterval(ctx context.Context, revisionBump uint64) error {
 			if err != nil {
 				return fmt.Errorf("get cluster revision: %w", err)
 			}
-		}
-		if revision == 0 {
-			r.logger.Info("start etcd new")
-			return r.etcdRunner.StartNew(r.envConfig.WriteEnv())
+			if revision == 0 {
+				r.logger.Info("start etcd new")
+				return r.etcdRunner.StartNew(r.envConfig.WriteEnv())
+			}
 		}
 		r.logger.Info("start etcd existing")
 		return r.etcdRunner.StartExisting(r.envConfig.WriteEnv())
 	}
+
 	defer client.Close()
 	r.logger.Info("existing quorum found")
 

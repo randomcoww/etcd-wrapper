@@ -57,6 +57,7 @@ type EtcdClient interface {
 	MemberAdd(context.Context, []string) (Members, error)
 	MemberRemove(context.Context, uint64) (Members, error)
 	GetRevision(context.Context) (int64, error)
+	CheckQuorum(context.Context) error
 	Defragment(context.Context, string) error
 	Snapshot(context.Context) (io.Reader, error)
 	Close() error
@@ -208,6 +209,13 @@ func (client *Client) GetRevision(ctx context.Context) (int64, error) {
 		return 0, fmt.Errorf("get cluster revision: %w", err)
 	}
 	return resp.Header.Revision, nil
+}
+
+func (client *Client) CheckQuorum(ctx context.Context) error {
+	if _, err := client.GetRevision(ctx); err != nil {
+		return fmt.Errorf("check quorum: %w", err)
+	}
+	return nil
 }
 
 func (client *Client) Defragment(ctx context.Context, endpoint string) error {
