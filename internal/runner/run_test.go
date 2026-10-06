@@ -102,7 +102,9 @@ func TestCreateFromRestore(t *testing.T) {
 		c, cancel := context.WithTimeout(ctx, time.Duration(8*time.Second))
 		defer cancel()
 
-		runner.runInterval(c, 10000)
+		if err := runner.runInterval(c, 10000); err != nil {
+			t.Fatal("call etcd runner: %w", err)
+		}
 		time.Sleep(4 * time.Second)
 	}
 
@@ -120,7 +122,7 @@ func TestCreateFromRestore(t *testing.T) {
 	}
 }
 
-func TestReplaceMember(t *testing.T) {
+func TestReplaceMembers(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -168,7 +170,9 @@ func TestReplaceMember(t *testing.T) {
 		c, cancel := context.WithTimeout(ctx, time.Duration(8*time.Second))
 		defer cancel()
 
-		runner.runInterval(c, 10000)
+		if err := runner.runInterval(c, 10000); err != nil {
+			t.Fatal("call etcd runner: %w", err)
+		}
 		time.Sleep(4 * time.Second)
 	}
 
@@ -186,10 +190,10 @@ func TestReplaceMember(t *testing.T) {
 		assert.Equal(t, "test-rev3-val", val) // match value that should exist in the test data
 	}
 
-	// --- stop one node ---
+	// --- stop two nodes ---
 
-	t.Log("stopping nodes")
-	for _, runner := range runners[1:2] {
+	t.Logf("stopping nodes")
+	for _, runner := range runners[:2] {
 		if err := runner.etcdRunner.Stop(); err != nil {
 			t.Fatal("stop test client: %w", err)
 		}
@@ -199,12 +203,13 @@ func TestReplaceMember(t *testing.T) {
 		t.Logf("stopped %s", runner.envConfig.Env["ETCD_NAME"])
 	}
 
-	// --- start replacement node ---
+	// --- start replacement nodes ---
 
-	for _, runner := range runners[1:2] {
+	for _, runner := range runners[:2] {
 		c, cancel := context.WithTimeout(ctx, time.Duration(8*time.Second))
 		defer cancel()
 
+		t.Logf("starting %s", runner.envConfig.Env["ETCD_NAME"])
 		if err := runner.runInterval(c, 10000); err != nil {
 			t.Fatal("call etcd runner: %w", err)
 		}
