@@ -13,11 +13,8 @@ import (
 	c "github.com/randomcoww/etcd-wrapper/config"
 	"github.com/randomcoww/etcd-wrapper/internal/etcd"
 	"github.com/randomcoww/etcd-wrapper/internal/etcdutil"
-	// "github.com/randomcoww/etcd-wrapper/internal/s3util"
-	// "github.com/randomcoww/etcd-wrapper/internal/snapshot"
 	"github.com/randomcoww/etcd-wrapper/internal/tlsutil"
 	"github.com/stretchr/testify/assert"
-	// s "go.etcd.io/etcd/etcdutl/v3/snapshot"
 	"go.uber.org/zap"
 )
 

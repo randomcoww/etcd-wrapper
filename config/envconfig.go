@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/randomcoww/etcd-wrapper/internal/tlsutil"
+	"go.etcd.io/etcd/etcdutl/v3/snapshot"
 	"go.uber.org/zap/zapcore"
 )
 
@@ -138,7 +139,6 @@ func LoadFromEnv() (*EnvConfig, error) {
 
 	delete(config.Env, "ETCD_INITIAL_CLUSTER_STATE") // this is set internally
 	config.Env["ETCD_LOG_OUTPUTS"] = "stdout"
-	config.Env["ETCD_ENABLE_V2"] = "false"
 	config.Env["ETCD_STRICT_RECONFIG_CHECK"] = "true"
 	config.Env["ETCD_CLIENT_CERT_AUTH"] = "true"
 	config.Env["ETCD_PEER_CLIENT_CERT_AUTH"] = "true"
@@ -155,4 +155,21 @@ func (config *EnvConfig) WriteEnv() []string {
 	}
 	sort.Strings(envs)
 	return envs
+}
+
+func (config *EnvConfig) RestoreConfig(snapshotPath string, revisionBump uint64) snapshot.RestoreConfig {
+	r := snapshot.RestoreConfig{
+		Name:                config.Env["ETCD_NAME"],
+		OutputDataDir:       config.Env["ETCD_DATA_DIR"],
+		OutputWALDir:        config.Env["ETCD_WAL_DIR"],
+		PeerURLs:            config.InitialAdvertisePeerURLs,
+		InitialCluster:      config.Env["ETCD_INITIAL_CLUSTER"],
+		InitialClusterToken: config.Env["ETCD_INITIAL_CLUSTER_TOKEN"],
+		RevisionBump:        revisionBump,
+		SnapshotPath:        snapshotPath,
+	}
+	if r.RevisionBump > 0 {
+		r.MarkCompacted = true
+	}
+	return r
 }
