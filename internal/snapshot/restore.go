@@ -13,33 +13,29 @@ import (
 	"go.uber.org/zap"
 )
 
-type Restore struct {
-	logger        *zap.Logger
-	s3Client      s3util.Client
-	restoreConfig snapshot.RestoreConfig
-}
-
-func NewRestoreFromConfig(logger *zap.Logger, s3Client s3util.Client, env *c.EnvConfig) *Restore {
-	return &Restore{
-		logger:   logger,
-		s3Client: s3Client,
-		restoreConfig: snapshot.RestoreConfig{
-			Name:                env.Env["ETCD_NAME"],
-			OutputDataDir:       env.Env["ETCD_DATA_DIR"],
-			OutputWALDir:        env.Env["ETCD_WAL_DIR"],
-			PeerURLs:            env.InitialAdvertisePeerURLs,
-			InitialCluster:      env.Env["ETCD_INITIAL_CLUSTER"],
-			InitialClusterToken: env.Env["ETCD_INITIAL_CLUSTER_TOKEN"],
-		},
+func NewRestoreConfig(config *c.EnvConfig, snapshotPath string, revisionBump uint64) snapshot.RestoreConfig {
+	return snapshot.RestoreConfig{
+		Name:                config.Env["ETCD_NAME"],
+		OutputDataDir:       config.Env["ETCD_DATA_DIR"],
+		OutputWALDir:        config.Env["ETCD_WAL_DIR"],
+		PeerURLs:            config.InitialAdvertisePeerURLs,
+		InitialCluster:      config.Env["ETCD_INITIAL_CLUSTER"],
+		InitialClusterToken: config.Env["ETCD_INITIAL_CLUSTER_TOKEN"],
+		RevisionBump:        revisionBump,
+		SnapshotPath:        snapshotPath,
 	}
 }
 
-func (r *Restore) VerifyBucket(ctx context.Context) (bool, error) {
-	return r.s3Client.VerifyBucket(ctx)
+func VerifyBucket(ctx context.Context, s3Client s3util.Client) (bool, error) {
+	return s3Client.VerifyBucket(ctx)
 }
 
-func (r *Restore) Restore(ctx context.Context, objectPrefix string, revisionBump uint64) (bool, error) {
-	ok, err := r.s3Client.VerifyBucket(ctx)
+func RestoreSnapshot(logger *zap.Logger, restoreConfig snapshot.RestoreConfig) error {
+	return etcdutil.RestoreSnapshot(logger, restoreConfig)
+}
+
+func Restore(ctx context.Context, logger *zap.Logger, s3Client s3util.Client, objectPrefix string, restoreConfig snapshot.RestoreConfig) (bool, error) {
+	ok, err := VerifyBucket(ctx, s3Client)
 	if err != nil {
 		return false, fmt.Errorf("verify bucket: %w", err)
 	}
@@ -47,22 +43,21 @@ func (r *Restore) Restore(ctx context.Context, objectPrefix string, revisionBump
 		return false, nil
 	}
 
-	keys, errors := r.s3Client.List(ctx, objectPrefix)
+	keys, errors := s3Client.List(ctx, objectPrefix)
 	if len(keys) == 0 {
 		return false, nil
 	}
 	for object, err := range errors {
-		r.logger.Error("list", zap.String("object", object), zap.Error(err))
+		logger.Error("list", zap.String("object", object), zap.Error(err))
 	}
 
-	r.restoreConfig.RevisionBump = revisionBump
 	for i := len(keys) - 1; i >= 0; i-- {
-		ok, err = r.restoreKey(ctx, keys[i], revisionBump)
+		ok, err = RestoreKey(ctx, logger, s3Client, keys[i], restoreConfig)
 		if err == nil && ok {
-			r.logger.Info("restored snapshot", zap.String("key", keys[i]))
+			logger.Info("restored snapshot", zap.String("key", keys[i]))
 			break
 		}
-		r.logger.Error("restore snapshot", zap.String("key", keys[i]), zap.Error(err))
+		logger.Error("restore snapshot", zap.String("key", keys[i]), zap.Error(err))
 	}
 	if err != nil {
 		return false, fmt.Errorf("restore snapshot: %w", err)
@@ -70,8 +65,8 @@ func (r *Restore) Restore(ctx context.Context, objectPrefix string, revisionBump
 	return true, nil
 }
 
-func (r *Restore) restoreKey(ctx context.Context, key string, revisionBump uint64) (bool, error) {
-	r.logger.Info("attempting snapshot restore")
+func RestoreKey(ctx context.Context, logger *zap.Logger, s3Client s3util.Client, key string, restoreConfig snapshot.RestoreConfig) (bool, error) {
+	logger.Info("attempting snapshot restore")
 	dir, err := os.MkdirTemp("", "etcd-wrapper-*")
 	if err != nil {
 		return false, fmt.Errorf("create path for snapshot: %w", err)
@@ -84,9 +79,9 @@ func (r *Restore) restoreKey(ctx context.Context, key string, revisionBump uint6
 	}
 	defer os.RemoveAll(snapshotFile.Name())
 	defer snapshotFile.Close()
-	r.logger.Info("opened file for snapshot")
+	logger.Info("opened file for snapshot")
 
-	ok, err := r.s3Client.Download(ctx, key, func(ctx context.Context, reader io.Reader) error {
+	ok, err := s3Client.Download(ctx, key, func(ctx context.Context, reader io.Reader) error {
 		b, err := io.Copy(snapshotFile, reader)
 		if err != nil {
 			return err
@@ -100,14 +95,14 @@ func (r *Restore) restoreKey(ctx context.Context, key string, revisionBump uint6
 		return false, fmt.Errorf("download snapshot: %w", err)
 	}
 	if !ok {
-		r.logger.Info("no snapshots found")
+		logger.Info("no snapshots found")
 		return false, nil
 	}
 
-	r.restoreConfig.SnapshotPath = snapshotFile.Name()
-	if err := etcdutil.RestoreSnapshot(r.logger, r.restoreConfig); err != nil {
+	restoreConfig.SnapshotPath = snapshotFile.Name()
+	if err := RestoreSnapshot(logger, restoreConfig); err != nil {
 		return false, fmt.Errorf("restore snapshot to etcd data: %w", err)
 	}
-	r.logger.Info("finished restoring snapshot")
+	logger.Info("finished restoring snapshot")
 	return true, nil
 }

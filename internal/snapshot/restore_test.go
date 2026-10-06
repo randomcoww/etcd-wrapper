@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
+	c "github.com/randomcoww/etcd-wrapper/config"
 	"github.com/randomcoww/etcd-wrapper/internal/etcdutil"
 	"github.com/stretchr/testify/assert"
-	"go.etcd.io/etcd/etcdutl/v3/snapshot"
 	"go.uber.org/zap"
 )
 
@@ -75,22 +75,20 @@ func TestRestore(t *testing.T) {
 
 	restoreDataPath := t.TempDir()
 	logger, _ := zap.NewProduction()
-	restore := &Restore{
-		logger:   logger,
-		s3Client: s3Client,
-		restoreConfig: snapshot.RestoreConfig{
-			Name:                "node0",
-			OutputDataDir:       restoreDataPath,
-			PeerURLs:            []string{"https://127.0.0.1:8080"},
-			InitialCluster:      "node0=https://127.0.0.1:8080,node1=https://127.0.0.2:8080,node2=https://127.0.0.3:8080",
-			InitialClusterToken: "test-cluster-1",
+	restoreConfig := NewRestoreConfig(&c.EnvConfig{
+		Env: map[string]string{
+			"ETCD_NAME":                  "node0",
+			"ETCD_DATA_DIR":              restoreDataPath,
+			"ETCD_INITIAL_CLUSTER":       "node0=https://127.0.0.1:8080,node1=https://127.0.0.2:8080,node2=https://127.0.0.3:8080",
+			"ETCD_INITIAL_CLUSTER_TOEKN": "test-cluster-1",
 		},
-	}
+		InitialAdvertisePeerURLs: []string{"https://127.0.0.1:8080"},
+	}, "", 1000)
 
 	clientCtx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 
-	ok, err := restore.Restore(clientCtx, "snap-", 1000)
+	ok, err := Restore(clientCtx, logger, s3Client, "snap-", restoreConfig)
 	assert.NoError(t, err)
 	assert.True(t, ok)
 
