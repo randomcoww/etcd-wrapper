@@ -162,13 +162,21 @@ func LoadFromEnv() (*EnvConfig, error) {
 	return config, nil
 }
 
-func (config *EnvConfig) WriteEnv() []string {
+func (config *EnvConfig) InitialClusterEnv() string {
 	var initialClusterParts []string
 	for name, peerURLs := range config.InitialCluster {
 		initialClusterParts = append(initialClusterParts, fmt.Sprintf("%s=%s", name, strings.Join(peerURLs, ",")))
 	}
-	config.Env["ETCD_INITIAL_CLUSTER"] = strings.Join(initialClusterParts, ",")
-	config.Env["ETCD_INITIAL_ADVERTISE_PEER_URLS"] = strings.Join(config.InitialAdvertisePeerURLs, ",")
+	return strings.Join(initialClusterParts, ",")
+}
+
+func (config *EnvConfig) InitialAdvertisePeerURLsEnv() string {
+	return strings.Join(config.InitialAdvertisePeerURLs, ",")
+}
+
+func (config *EnvConfig) WriteEnv() []string {
+	config.Env["ETCD_INITIAL_CLUSTER"] = config.InitialClusterEnv()
+	config.Env["ETCD_INITIAL_ADVERTISE_PEER_URLS"] = config.InitialAdvertisePeerURLsEnv()
 
 	var envs []string
 	for k, v := range config.Env {
@@ -184,7 +192,7 @@ func (config *EnvConfig) RestoreConfig(snapshotPath string, revisionBump uint64)
 		OutputDataDir:       config.Env["ETCD_DATA_DIR"],
 		OutputWALDir:        config.Env["ETCD_WAL_DIR"],
 		PeerURLs:            config.InitialAdvertisePeerURLs,
-		InitialCluster:      config.Env["ETCD_INITIAL_CLUSTER"],
+		InitialCluster:      config.InitialClusterEnv(),
 		InitialClusterToken: config.Env["ETCD_INITIAL_CLUSTER_TOKEN"],
 		RevisionBump:        revisionBump,
 		SnapshotPath:        snapshotPath,
