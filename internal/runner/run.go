@@ -36,6 +36,8 @@ func (r *Runner) runInterval(ctx context.Context, revisionBump uint64) error {
 	client, err := etcdutil.NewClientFromPeers(ctx, r.logger, r.envConfig.ClusterPeerURLs, r.envConfig.PeerTLSConfig, r.envConfig.ClientTLSConfig)
 
 	if err == nil {
+		defer client.Close()
+
 		c, cancel := context.WithTimeout(ctx, 4*time.Second)
 		defer cancel()
 		err = client.CheckQuorum(c)
@@ -62,8 +64,6 @@ func (r *Runner) runInterval(ctx context.Context, revisionBump uint64) error {
 		r.logger.Info("start etcd existing")
 		return r.etcdRunner.StartExisting(r.envConfig.WriteEnv())
 	}
-
-	defer client.Close()
 	r.logger.Info("existing quorum found")
 
 	if err := r.replaceMember(ctx, client); err != nil {
