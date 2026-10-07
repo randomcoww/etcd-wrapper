@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"net/url"
 	"os"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -19,6 +18,7 @@ type EnvConfig struct {
 	InitialAdvertisePeerURLs []string
 	ListenClientURLs         []string
 	ClusterPeerURLs          []string
+	InitialCluster           map[string][]string
 	ClientTLSConfig          *tls.Config
 	PeerTLSConfig            *tls.Config
 }
@@ -34,14 +34,13 @@ func (config *EnvConfig) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 
 func LoadFromEnv() (*EnvConfig, error) {
 	var (
-		err    error
-		ok     bool
-		reList = regexp.MustCompile(`\s*,\s*`)
-		reMap  = regexp.MustCompile(`\s*=\s*`)
+		err error
+		ok  bool
 	)
 
 	config := &EnvConfig{
-		Env: make(map[string]string),
+		Env:            make(map[string]string),
+		InitialCluster: make(map[string][]string),
 	}
 
 	for _, e := range os.Environ() {
@@ -99,12 +98,27 @@ func LoadFromEnv() (*EnvConfig, error) {
 	}
 
 	if v, ok := config.Env["ETCD_INITIAL_CLUSTER"]; ok {
-		for _, member := range reList.Split(v, -1) {
-			k := reMap.Split(member, 2)
-			u, err := url.Parse(k[1])
+		var node string
+		for _, p := range strings.Split(v, ",") {
+			var peerURL string
+			c := strings.Split(p, "=")
+			switch len(c) {
+			case 2:
+				node = c[0]
+				peerURL = c[1]
+			case 1:
+				peerURL = c[0]
+			default:
+				return nil, fmt.Errorf("malformed initial cluster")
+			}
+			if node == "" {
+				return nil, fmt.Errorf("malformed initial cluster")
+			}
+			u, err := url.Parse(peerURL)
 			if err != nil {
 				return nil, fmt.Errorf("parse initial cluster peer url: %w", err)
 			}
+			config.InitialCluster[node] = append(config.InitialCluster[node], fmt.Sprintf("%s://%s", u.Scheme, u.Host))
 			config.ClusterPeerURLs = append(config.ClusterPeerURLs, fmt.Sprintf("%s://%s", u.Scheme, u.Host))
 		}
 	} else {
@@ -112,7 +126,7 @@ func LoadFromEnv() (*EnvConfig, error) {
 	}
 
 	if v, ok := config.Env["ETCD_INITIAL_ADVERTISE_PEER_URLS"]; ok {
-		for _, member := range reList.Split(v, -1) {
+		for _, member := range strings.Split(v, ",") {
 			u, err := url.Parse(member)
 			if err != nil {
 				return nil, fmt.Errorf("parse initial advertise peer url: %w", err)
@@ -125,7 +139,7 @@ func LoadFromEnv() (*EnvConfig, error) {
 	}
 
 	if v, ok := config.Env["ETCD_LISTEN_CLIENT_URLS"]; ok {
-		for _, member := range reList.Split(v, -1) {
+		for _, member := range strings.Split(v, ",") {
 			u, err := url.Parse(member)
 			if err != nil {
 				return nil, fmt.Errorf("parse listen client url: %w", err)
@@ -149,6 +163,13 @@ func LoadFromEnv() (*EnvConfig, error) {
 }
 
 func (config *EnvConfig) WriteEnv() []string {
+	var initialClusterParts []string
+	for name, peerURLs := range config.InitialCluster {
+		initialClusterParts = append(initialClusterParts, fmt.Sprintf("%s=%s", name, strings.Join(peerURLs, ",")))
+	}
+	config.Env["ETCD_INITIAL_CLUSTER"] = strings.Join(initialClusterParts, ",")
+	config.Env["ETCD_INITIAL_ADVERTISE_PEER_URLS"] = strings.Join(config.InitialAdvertisePeerURLs, ",")
+
 	var envs []string
 	for k, v := range config.Env {
 		envs = append(envs, k+"="+v)

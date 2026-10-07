@@ -16,8 +16,8 @@ func TestRunConfig(t *testing.T) {
 	t.Setenv("ETCD_NAME", "test")
 	t.Setenv("ETCD_LISTEN_CLIENT_URLS", "https://10.1.0.1:9080,https://127.0.0.1:9080,https://10.0.0.1:9080")
 	t.Setenv("ETCD_ADVERTISE_CLIENT_URLS", "https://10.1.0.1:9080")
-	t.Setenv("ETCD_INITIAL_ADVERTISE_PEER_URLS", "https://10.0.0.1:8080")
-	t.Setenv("ETCD_INITIAL_CLUSTER", "node0=https://10.0.0.1:8080,node1=https://10.0.0.2:8080")
+	t.Setenv("ETCD_INITIAL_ADVERTISE_PEER_URLS", "https://10.0.0.1:8080,https://10.0.1.1:8080")
+	t.Setenv("ETCD_INITIAL_CLUSTER", "node0=https://10.0.0.1:8080,https://10.0.1.1:8080,node1=https://10.0.0.2:8080")
 	t.Setenv("ETCD_INITIAL_CLUSTER_TOKEN", "token")
 	t.Setenv("ETCD_TRUSTED_CA_FILE", filepath.Join(baseTestPath, "client", "ca.crt"))
 	t.Setenv("ETCD_CERT_FILE", filepath.Join(baseTestPath, member, "client", "tls.crt"))
@@ -35,8 +35,8 @@ func TestRunConfig(t *testing.T) {
 		"ETCD_NAME":                        "test",
 		"ETCD_LISTEN_CLIENT_URLS":          "https://10.1.0.1:9080,https://127.0.0.1:9080,https://10.0.0.1:9080",
 		"ETCD_ADVERTISE_CLIENT_URLS":       "https://10.1.0.1:9080",
-		"ETCD_INITIAL_ADVERTISE_PEER_URLS": "https://10.0.0.1:8080",
-		"ETCD_INITIAL_CLUSTER":             "node0=https://10.0.0.1:8080,node1=https://10.0.0.2:8080",
+		"ETCD_INITIAL_ADVERTISE_PEER_URLS": "https://10.0.0.1:8080,https://10.0.1.1:8080",
+		"ETCD_INITIAL_CLUSTER":             "node0=https://10.0.0.1:8080,https://10.0.1.1:8080,node1=https://10.0.0.2:8080",
 		"ETCD_INITIAL_CLUSTER_TOKEN":       "token",
 		"ETCD_CLIENT_CERT_AUTH":            "true",
 		"ETCD_TRUSTED_CA_FILE":             filepath.Join(baseTestPath, "client", "ca.crt"),
@@ -47,29 +47,39 @@ func TestRunConfig(t *testing.T) {
 		"ETCD_PEER_CERT_FILE":              filepath.Join(baseTestPath, member, "peer", "tls.crt"),
 		"ETCD_PEER_KEY_FILE":               filepath.Join(baseTestPath, member, "peer", "tls.key"),
 		"ETCD_LOG_OUTPUTS":                 "stdout",
-		"ETCD_ENABLE_V2":                   "false",
 		"ETCD_STRICT_RECONFIG_CHECK":       "true",
+		"ETCD_SOCKET_REUSE_ADDRESS":        "true",
+		"ETCD_SOCKET_REUSE_PORT":           "true",
 		"ETCD_DATA_DIR":                    "/data/test",
 	}, c.Env)
 
 	assert.Equal(t, []string{
 		"https://10.0.0.1:8080",
+		"https://10.0.1.1:8080",
 	}, c.InitialAdvertisePeerURLs)
 	assert.Equal(t, []string{
-		"https://10.0.0.1:8080", "https://10.0.0.2:8080",
+		"https://10.0.0.1:8080", "https://10.0.1.1:8080", "https://10.0.0.2:8080",
 	}, c.ClusterPeerURLs)
+	assert.Equal(t, map[string][]string{
+		"node0": []string{"https://10.0.0.1:8080", "https://10.0.1.1:8080"},
+		"node1": []string{"https://10.0.0.2:8080"},
+	}, c.InitialCluster)
 	assert.Equal(t, []string{
 		"https://10.0.0.1:9080", "https://10.1.0.1:9080", "https://127.0.0.1:9080",
 	}, c.ListenClientURLs)
+
+	// --- test updating config
+
+	c.InitialCluster["node1"] = append(c.InitialCluster["node1"], "https://10.0.1.2:8080")
+	c.InitialAdvertisePeerURLs = append(c.InitialAdvertisePeerURLs, "https://10.1.1.1:8080")
 
 	assert.Equal(t, []string{
 		"ETCD_ADVERTISE_CLIENT_URLS=https://10.1.0.1:9080",
 		"ETCD_CERT_FILE=" + filepath.Join(baseTestPath, member, "client", "tls.crt"),
 		"ETCD_CLIENT_CERT_AUTH=true",
 		"ETCD_DATA_DIR=/data/test",
-		"ETCD_ENABLE_V2=false",
-		"ETCD_INITIAL_ADVERTISE_PEER_URLS=https://10.0.0.1:8080",
-		"ETCD_INITIAL_CLUSTER=node0=https://10.0.0.1:8080,node1=https://10.0.0.2:8080",
+		"ETCD_INITIAL_ADVERTISE_PEER_URLS=https://10.0.0.1:8080,https://10.0.1.1:8080,https://10.1.1.1:8080",
+		"ETCD_INITIAL_CLUSTER=node0=https://10.0.0.1:8080,https://10.0.1.1:8080,node1=https://10.0.0.2:8080,https://10.0.1.2:8080",
 		"ETCD_INITIAL_CLUSTER_TOKEN=token",
 		"ETCD_KEY_FILE=" + filepath.Join(baseTestPath, member, "client", "tls.key"),
 		"ETCD_LISTEN_CLIENT_URLS=https://10.1.0.1:9080,https://127.0.0.1:9080,https://10.0.0.1:9080",
@@ -79,6 +89,8 @@ func TestRunConfig(t *testing.T) {
 		"ETCD_PEER_CLIENT_CERT_AUTH=true",
 		"ETCD_PEER_KEY_FILE=" + filepath.Join(baseTestPath, member, "peer", "tls.key"),
 		"ETCD_PEER_TRUSTED_CA_FILE=" + filepath.Join(baseTestPath, "peer", "ca.crt"),
+		"ETCD_SOCKET_REUSE_ADDRESS=true",
+		"ETCD_SOCKET_REUSE_PORT=true",
 		"ETCD_STRICT_RECONFIG_CHECK=true",
 		"ETCD_TRUSTED_CA_FILE=" + filepath.Join(baseTestPath, "client", "ca.crt"),
 	}, c.WriteEnv())
