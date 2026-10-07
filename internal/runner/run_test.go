@@ -119,7 +119,8 @@ func TestCreateFromRestore(t *testing.T) {
 		time.Sleep(4 * time.Second)
 	}
 
-	// verify quorum, nodes, and backup
+	// --- verify quorum, nodes, and backup ---
+
 	for _, runner := range runners {
 		c, cancel := context.WithTimeout(ctx, time.Duration(4*time.Second))
 		defer cancel()
@@ -222,7 +223,135 @@ func TestReplaceMembers(t *testing.T) {
 		time.Sleep(4 * time.Second)
 	}
 
-	// verify quorum, nodes, and backup
+	// --- verify quorum, nodes, and backup ---
+
+	for _, runner := range runners {
+		c, cancel := context.WithTimeout(ctx, time.Duration(4*time.Second))
+		defer cancel()
+
+		err := verifyTestStatus(t, c, runner)
+		assert.NoError(t, err)
+
+		val, err := verifyTestData(t, c, runner, "test-rev3")
+		assert.NoError(t, err)
+		assert.Equal(t, "test-rev3-val", val) // match value that should exist in the test data
+	}
+}
+
+func TestRollingMemberReplace(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	logger, _ := zap.NewProduction()
+	s3Client := &fakeS3Client{
+		objectsList: []string{
+			"snap-3",
+		},
+		objectsErrors: make(map[string]error),
+		snapshotFiles: map[string]string{
+			"snap-3": filepath.Join(baseTestPath, "../rev3-snap.db"), // good data
+		},
+	}
+	members := []member{
+		{
+			name:        "node0",
+			clientPort:  8080,
+			peerPort:    8090,
+			metricsPort: 8100,
+		},
+		{
+			name:        "node1",
+			clientPort:  8081,
+			peerPort:    8091,
+			metricsPort: 8101,
+		},
+		{
+			name:        "node2",
+			clientPort:  8082,
+			peerPort:    8092,
+			metricsPort: 8102,
+		},
+	}
+	membersAfter := []member{
+		{
+			name:        "node0", // update URLs
+			clientPort:  8083,
+			peerPort:    8093,
+			metricsPort: 8103,
+		},
+		{
+			name:        "node1",
+			clientPort:  8081,
+			peerPort:    8091,
+			metricsPort: 8101,
+		},
+		{
+			name:        "node2",
+			clientPort:  8082,
+			peerPort:    8092,
+			metricsPort: 8102,
+		},
+	}
+
+	dataPath := t.TempDir()
+	configs, err := newConfigs(t, members, dataPath)
+	if err != nil {
+		t.Fatal("generate test configs: %w", err)
+	}
+	configsAfter, err := newConfigs(t, membersAfter, dataPath)
+	if err != nil {
+		t.Fatal("generate test configs: %w", err)
+	}
+
+	var runners []*Runner
+	for _, config := range configs {
+		runner := &Runner{
+			logger:           logger,
+			checkQuorumDelay: 8 * time.Second,
+			clientTimeout:    4 * time.Second,
+			etcdRunner: &etcd.Fork{
+				Ctx:        ctx,
+				EtcdBinary: "/etcd/usr/local/bin/etcd",
+			},
+			s3Client:     s3Client,
+			envConfig:    config,
+			objectPrefix: "snap-",
+		}
+		defer runner.etcdRunner.Wait()
+		defer runner.etcdRunner.Stop()
+		runners = append(runners, runner)
+	}
+
+	if err := newDummyCluster(t, ctx, runners); err != nil {
+		t.Fatal("create dummy cluster: %w", err)
+	}
+
+	// --- replace each node ---
+
+	t.Logf("rolling restart")
+	for i, runner := range runners {
+		if err := runner.etcdRunner.Stop(); err != nil {
+			t.Fatal("stop test client: %w", err)
+		}
+		if err := runner.etcdRunner.Wait(); err != nil {
+			t.Fatal("wait stop test client: %w", err)
+		}
+
+		// update config
+		runner.envConfig = configsAfter[i]
+
+		t.Logf("restarting %s", runner.envConfig.Env["ETCD_NAME"])
+		c, cancel := context.WithTimeout(ctx, time.Duration(8*time.Second))
+		defer cancel()
+
+		if err := runner.runInterval(c, 10000); err != nil {
+			t.Fatal("call etcd runner: %w", err)
+		}
+		time.Sleep(16 * time.Second)
+	}
+
+	// --- verify quorum, nodes, and backup ---
+
 	for _, runner := range runners {
 		c, cancel := context.WithTimeout(ctx, time.Duration(4*time.Second))
 		defer cancel()
@@ -276,7 +405,7 @@ func newConfigs(t *testing.T, members []member, dataPath string) ([]*c.EnvConfig
 		config := &c.EnvConfig{
 			Env: map[string]string{
 				"ETCD_NAME":                        member.name,
-				"ETCD_LOG_LEVEL":                   "info",
+				"ETCD_LOG_LEVEL":                   "error",
 				"ETCD_DATA_DIR":                    filepath.Join(dataPath, member.name+"_etcd"),
 				"ETCD_CLIENT_CERT_AUTH":            "true",
 				"ETCD_PEER_CLIENT_CERT_AUTH":       "true",
