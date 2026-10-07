@@ -55,6 +55,7 @@ type EtcdClient interface {
 	AggregateStatus(context.Context, []string) ([]Status, error)
 	MemberList(context.Context) (Members, error)
 	MemberAdd(context.Context, []string) (Members, error)
+	MemberUpdate(context.Context, uint64, []string) (Members, error)
 	MemberRemove(context.Context, uint64) (Members, error)
 	GetRevision(context.Context) (int64, error)
 	CheckQuorum(context.Context) error
@@ -197,6 +198,25 @@ func (client *Client) MemberRemove(ctx context.Context, id uint64) (Members, err
 		select {
 		case <-ctx.Done():
 			return nil, fmt.Errorf("remove member %w: %w", ctx.Err(), err)
+		case <-timer.C:
+			continue
+		}
+	}
+}
+
+func (client *Client) MemberUpdate(ctx context.Context, id uint64, peerURLs []string) (Members, error) {
+	for {
+		resp, err := client.Cluster.MemberUpdate(ctx, id, peerURLs)
+		switch {
+		case err == nil:
+			return (*etcdserverpb.MemberPromoteResponse)(resp), nil
+		default:
+		}
+
+		timer := time.NewTimer(backoffWaitBetween)
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("update member %w: %w", ctx.Err(), err)
 		case <-timer.C:
 			continue
 		}
