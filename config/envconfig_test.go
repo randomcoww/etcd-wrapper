@@ -57,21 +57,19 @@ func TestRunConfig(t *testing.T) {
 		"https://10.0.0.1:8080",
 		"https://10.0.1.1:8080",
 	}, c.InitialAdvertisePeerURLs)
-	assert.Equal(t, []string{
-		"https://10.0.0.1:8080", "https://10.0.1.1:8080", "https://10.0.0.2:8080",
-	}, c.ClusterPeerURLs)
 	assert.Equal(t, map[string][]string{
 		"node0": []string{"https://10.0.0.1:8080", "https://10.0.1.1:8080"},
 		"node1": []string{"https://10.0.0.2:8080"},
 	}, c.InitialCluster)
-	assert.Equal(t, []string{
-		"https://10.0.0.1:9080", "https://10.1.0.1:9080", "https://127.0.0.1:9080",
-	}, c.ListenClientURLs)
 
-	// --- test updating config
+	// --- test updating config ---
 
 	c.InitialCluster["node1"] = append(c.InitialCluster["node1"], "https://10.0.1.2:8080")
 	c.InitialAdvertisePeerURLs = append(c.InitialAdvertisePeerURLs, "https://10.1.1.1:8080")
+
+	assert.Equal(t, []string{
+		"https://10.0.0.1:8080", "https://10.0.0.2:8080", "https://10.0.1.1:8080", "https://10.0.1.2:8080",
+	}, c.ClusterPeerURLs())
 
 	assert.Equal(t, []string{
 		"ETCD_ADVERTISE_CLIENT_URLS=https://10.1.0.1:9080",

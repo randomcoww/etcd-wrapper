@@ -16,8 +16,6 @@ import (
 type EnvConfig struct {
 	Env                      map[string]string
 	InitialAdvertisePeerURLs []string
-	ListenClientURLs         []string
-	ClusterPeerURLs          []string
 	InitialCluster           map[string][]string
 	ClientTLSConfig          *tls.Config
 	PeerTLSConfig            *tls.Config
@@ -28,7 +26,6 @@ func (config *EnvConfig) MarshalLogObject(enc zapcore.ObjectEncoder) error {
 	enc.AddString("DataDir", config.Env["ETCD_DATA_DIR"])
 	enc.AddString("WalDir", config.Env["ETCD_WAL_DIR"])
 	enc.AddString("InitialAdvertisePeerURLs", fmt.Sprintf("%v", config.InitialAdvertisePeerURLs))
-	enc.AddString("ClusterPeerURLs", fmt.Sprintf("%v", config.ClusterPeerURLs))
 	return nil
 }
 
@@ -61,6 +58,9 @@ func LoadFromEnv() (*EnvConfig, error) {
 	}
 	if _, ok := config.Env["ETCD_ADVERTISE_CLIENT_URLS"]; !ok {
 		return nil, fmt.Errorf("env ETCD_ADVERTISE_CLIENT_URLS is not set")
+	}
+	if _, ok := config.Env["ETCD_LISTEN_CLIENT_URLS"]; !ok {
+		return nil, fmt.Errorf("env ETCD_LISTEN_CLIENT_URLS is not set")
 	}
 
 	peerTrustedCAFile, ok := config.Env["ETCD_PEER_TRUSTED_CA_FILE"]
@@ -112,7 +112,6 @@ func LoadFromEnv() (*EnvConfig, error) {
 					return nil, fmt.Errorf("parse initial cluster peer url: %w", err)
 				}
 				config.InitialCluster[node] = append(config.InitialCluster[node], fmt.Sprintf("%s://%s", u.Scheme, u.Host))
-				config.ClusterPeerURLs = append(config.ClusterPeerURLs, fmt.Sprintf("%s://%s", u.Scheme, u.Host))
 			default:
 				return nil, fmt.Errorf("malformed initial cluster")
 			}
@@ -134,19 +133,6 @@ func LoadFromEnv() (*EnvConfig, error) {
 		return nil, fmt.Errorf("env ETCD_INITIAL_ADVERTISE_PEER_URLS not set")
 	}
 
-	if v, ok := config.Env["ETCD_LISTEN_CLIENT_URLS"]; ok {
-		for _, member := range strings.Split(v, ",") {
-			u, err := url.Parse(member)
-			if err != nil {
-				return nil, fmt.Errorf("parse listen client url: %w", err)
-			}
-			config.ListenClientURLs = append(config.ListenClientURLs, fmt.Sprintf("%s://%s", u.Scheme, u.Host))
-		}
-		sort.Strings(config.ListenClientURLs)
-	} else {
-		return nil, fmt.Errorf("env ETCD_LISTEN_CLIENT_URLS is not set")
-	}
-
 	delete(config.Env, "ETCD_INITIAL_CLUSTER_STATE") // this is set internally
 	config.Env["ETCD_LOG_OUTPUTS"] = "stdout"
 	config.Env["ETCD_STRICT_RECONFIG_CHECK"] = "true"
@@ -158,6 +144,15 @@ func LoadFromEnv() (*EnvConfig, error) {
 	return config, nil
 }
 
+func (config *EnvConfig) ClusterPeerURLs() []string {
+	var peerURLs []string
+	for _, urls := range config.InitialCluster {
+		peerURLs = append(peerURLs, urls...)
+	}
+	sort.Strings(peerURLs)
+	return peerURLs
+}
+
 func (config *EnvConfig) InitialClusterEnv() string {
 	var initialClusterParts []string
 	for name, peerURLs := range config.InitialCluster {
@@ -165,6 +160,7 @@ func (config *EnvConfig) InitialClusterEnv() string {
 			initialClusterParts = append(initialClusterParts, fmt.Sprintf("%s=%s", name, peerURL))
 		}
 	}
+	sort.Strings(initialClusterParts)
 	return strings.Join(initialClusterParts, ",")
 }
 
