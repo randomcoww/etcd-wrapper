@@ -275,15 +275,15 @@ func TestRollingMemberReplace(t *testing.T) {
 	membersAfter := []member{
 		{
 			name:        "node0", // update URLs
-			clientPort:  8083,
-			peerPort:    8093,
-			metricsPort: 8103,
+			clientPort:  8080,
+			peerPort:    8090,
+			metricsPort: 8100,
 		},
 		{
 			name:        "node1",
-			clientPort:  8081,
-			peerPort:    8091,
-			metricsPort: 8101,
+			clientPort:  8083,
+			peerPort:    8093,
+			metricsPort: 8103,
 		},
 		{
 			name:        "node2",
@@ -347,7 +347,7 @@ func TestRollingMemberReplace(t *testing.T) {
 		if err := runner.runInterval(c, 10000); err != nil {
 			t.Fatal("call etcd runner: %w", err)
 		}
-		time.Sleep(16 * time.Second)
+		time.Sleep(4 * time.Second)
 	}
 
 	// --- verify quorum, nodes, and backup ---
@@ -370,11 +370,12 @@ func TestRollingMemberReplace(t *testing.T) {
 func verifyTestStatus(t *testing.T, ctx context.Context, r *Runner) error {
 	t.Helper()
 
-	client, err := etcdutil.NewClient(ctx, r.logger, r.envConfig.ListenClientURLs, r.envConfig.ClientTLSConfig)
+	memberClientURLs := memberClientURLs(t, r)
+	client, err := etcdutil.NewClient(ctx, r.logger, memberClientURLs, r.envConfig.ClientTLSConfig)
 	if err != nil {
 		return err
 	}
-	status, err := client.Status(ctx, r.envConfig.ListenClientURLs[0])
+	status, err := client.Status(ctx, memberClientURLs[0])
 	if err != nil {
 		return err
 	}
@@ -385,7 +386,8 @@ func verifyTestStatus(t *testing.T, ctx context.Context, r *Runner) error {
 func verifyTestData(t *testing.T, ctx context.Context, r *Runner, key string) (string, error) {
 	t.Helper()
 
-	client, err := etcdutil.NewClient(ctx, r.logger, r.envConfig.ListenClientURLs, r.envConfig.ClientTLSConfig)
+	memberClientURLs := memberClientURLs(t, r)
+	client, err := etcdutil.NewClient(ctx, r.logger, memberClientURLs, r.envConfig.ClientTLSConfig)
 	if err != nil {
 		return "", err
 	}
@@ -432,13 +434,12 @@ func newConfigs(t *testing.T, members []member, dataPath string) ([]*c.EnvConfig
 		}
 
 		var initialCluster []string
+		config.InitialCluster = make(map[string][]string)
 		for _, member := range members {
 			initialCluster = append(initialCluster, fmt.Sprintf("%s=https://127.0.0.1:%d", member.name, member.peerPort))
-			config.ClusterPeerURLs = append(config.ClusterPeerURLs, fmt.Sprintf("https://127.0.0.1:%d", member.peerPort))
+			config.InitialCluster[member.name] = []string{fmt.Sprintf("https://127.0.0.1:%d", member.peerPort)}
 		}
 		config.Env["ETCD_INITIAL_CLUSTER"] = strings.Join(initialCluster, ",")
-
-		config.ListenClientURLs = []string{fmt.Sprintf("https://127.0.0.1:%d", member.clientPort)}
 
 		config.ClientTLSConfig, err = tlsutil.BuildTLSClientConfig(
 			filepath.Join(baseTestPath, member.name, "client", "tls.crt"),
@@ -472,8 +473,8 @@ func newDummyCluster(t *testing.T, ctx context.Context, runners []*Runner) error
 		if err := r.etcdRunner.StartExisting(r.envConfig.WriteEnv()); err != nil {
 			return fmt.Errorf("dummy cluster: %w", err)
 		}
-		time.Sleep(4 * time.Second)
 	}
+	time.Sleep(4 * time.Second)
 
 	for _, r := range runners {
 		c, cancel := context.WithTimeout(ctx, time.Duration(4*time.Second))
@@ -491,4 +492,16 @@ func newDummyCluster(t *testing.T, ctx context.Context, runners []*Runner) error
 		}
 	}
 	return nil
+}
+
+func memberClientURLs(t *testing.T, r *Runner) []string {
+	t.Helper()
+
+	var urls []string
+	if v, ok := r.envConfig.Env["ETCD_LISTEN_CLIENT_URLS"]; ok {
+		for _, u := range strings.Split(v, ",") {
+			urls = append(urls, u)
+		}
+	}
+	return urls
 }
