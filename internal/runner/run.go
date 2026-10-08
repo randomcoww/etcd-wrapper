@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"time"
 
 	c "github.com/randomcoww/etcd-wrapper/config"
@@ -33,7 +34,7 @@ type Runner struct {
 }
 
 func (r *Runner) runInterval(ctx context.Context, revisionBump uint64) error {
-	client, err := etcdutil.NewClientFromPeers(ctx, r.logger, r.envConfig.ClusterPeerURLs, r.envConfig.PeerTLSConfig, r.envConfig.ClientTLSConfig)
+	client, err := etcdutil.NewClientFromPeers(ctx, r.logger, r.envConfig.ClusterPeerURLs(), r.envConfig.PeerTLSConfig, r.envConfig.ClientTLSConfig)
 
 	if err == nil {
 		defer client.Close()
@@ -66,6 +67,9 @@ func (r *Runner) runInterval(ctx context.Context, revisionBump uint64) error {
 	}
 	r.logger.Info("existing quorum found")
 
+	if err := r.updateMembers(ctx, client); err != nil {
+		return fmt.Errorf("sync peerURLs: %w", err)
+	}
 	if err := r.replaceMember(ctx, client); err != nil {
 		return fmt.Errorf("replace member: %w", err)
 	}
@@ -89,7 +93,7 @@ func (r *Runner) replaceMember(ctx context.Context, client etcdutil.EtcdClient) 
 
 	// replace my node to join cluster
 	// if my node already exists, it needs to be replaced
-	if localMember != nil && len(listResp.GetMembers()) >= len(r.envConfig.ClusterPeerURLs) {
+	if localMember != nil && len(listResp.GetMembers()) >= len(r.envConfig.InitialCluster) {
 		r.logger.Info("remove local member", zap.Uint64("ID", localMember.GetID()))
 
 		listResp, err = client.MemberRemove(ctx, localMember.GetID())
@@ -100,13 +104,64 @@ func (r *Runner) replaceMember(ctx context.Context, client etcdutil.EtcdClient) 
 		r.logger.Info("removed local member")
 	}
 
-	if localMember == nil && len(listResp.GetMembers()) < len(r.envConfig.ClusterPeerURLs) {
+	if localMember == nil && len(listResp.GetMembers()) < len(r.envConfig.InitialCluster) {
 		listResp, err = client.MemberAdd(ctx, r.envConfig.InitialAdvertisePeerURLs)
 		if err != nil {
 			return fmt.Errorf("add member: %w", err)
 		}
 		localMember = findMemberInCluster(listResp, r.envConfig.Env["ETCD_NAME"], r.envConfig.InitialAdvertisePeerURLs)
 		r.logger.Info("added local member", zap.Uint64("ID", localMember.GetID()))
+	}
+	return nil
+}
+
+func (r *Runner) updateMembers(ctx context.Context, client etcdutil.EtcdClient) error {
+	listResp, err := client.MemberList(ctx)
+	if err != nil {
+		return fmt.Errorf("list cluster members: %w", err)
+	}
+
+	for _, member := range listResp.GetMembers() {
+		switch {
+		case member.GetID() == 0:
+		case member.GetName() == r.envConfig.Env["ETCD_NAME"], util.HasMatchingElement(member.GetPeerURLs(), r.envConfig.InitialAdvertisePeerURLs):
+			if !slices.Equal(member.GetPeerURLs(), r.envConfig.InitialAdvertisePeerURLs) {
+				listResp, err = client.MemberUpdate(ctx, member.GetID(), r.envConfig.InitialAdvertisePeerURLs)
+				if err != nil {
+					return err
+				}
+				r.logger.Info("update local member", zap.Uint64("ID", member.GetID()), zap.String("peerURLs", fmt.Sprintf("%+v", r.envConfig.InitialAdvertisePeerURLs)))
+			}
+			r.envConfig.InitialCluster[r.envConfig.Env["ETCD_NAME"]] = r.envConfig.InitialAdvertisePeerURLs
+
+		case member.GetName() == "":
+		default:
+			memberPeerURLs, ok := r.envConfig.InitialCluster[member.GetName()]
+			if !ok {
+				break
+			}
+
+			peerURLsMap := make(map[string]struct{})
+			for _, u := range member.GetPeerURLs() {
+				peerURLsMap[u] = struct{}{}
+			}
+
+			var newMemberPeerURLs []string
+			for _, memberPeerURL := range memberPeerURLs {
+				if _, ok := peerURLsMap[memberPeerURL]; !ok {
+					newMemberPeerURLs = append(newMemberPeerURLs, memberPeerURL)
+				}
+			}
+			if len(newMemberPeerURLs) > 0 {
+				newMemberPeerURLs = append(newMemberPeerURLs, member.GetPeerURLs()...)
+				_, err := client.MemberUpdate(ctx, member.GetID(), newMemberPeerURLs)
+				if err != nil {
+					return err
+				}
+				r.envConfig.InitialCluster[member.GetName()] = newMemberPeerURLs
+				r.logger.Info("update member", zap.Uint64("ID", member.GetID()), zap.String("peerURLs", fmt.Sprintf("%+v", newMemberPeerURLs)))
+			}
+		}
 	}
 	return nil
 }
