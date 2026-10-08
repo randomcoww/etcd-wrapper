@@ -98,28 +98,24 @@ func LoadFromEnv() (*EnvConfig, error) {
 	}
 
 	if v, ok := config.Env["ETCD_INITIAL_CLUSTER"]; ok {
-		var node string
 		for _, p := range strings.Split(v, ",") {
-			var peerURL string
 			c := strings.Split(p, "=")
 			switch len(c) {
 			case 2:
-				node = c[0]
-				peerURL = c[1]
-			case 1:
-				peerURL = c[0]
+				node := c[0]
+				peerURL := c[1]
+				if node == "" {
+					return nil, fmt.Errorf("malformed initial cluster")
+				}
+				u, err := url.Parse(peerURL)
+				if err != nil {
+					return nil, fmt.Errorf("parse initial cluster peer url: %w", err)
+				}
+				config.InitialCluster[node] = append(config.InitialCluster[node], fmt.Sprintf("%s://%s", u.Scheme, u.Host))
+				config.ClusterPeerURLs = append(config.ClusterPeerURLs, fmt.Sprintf("%s://%s", u.Scheme, u.Host))
 			default:
 				return nil, fmt.Errorf("malformed initial cluster")
 			}
-			if node == "" {
-				return nil, fmt.Errorf("malformed initial cluster")
-			}
-			u, err := url.Parse(peerURL)
-			if err != nil {
-				return nil, fmt.Errorf("parse initial cluster peer url: %w", err)
-			}
-			config.InitialCluster[node] = append(config.InitialCluster[node], fmt.Sprintf("%s://%s", u.Scheme, u.Host))
-			config.ClusterPeerURLs = append(config.ClusterPeerURLs, fmt.Sprintf("%s://%s", u.Scheme, u.Host))
 		}
 	} else {
 		return nil, fmt.Errorf("env ETCD_INITIAL_CLUSTER not set")
@@ -165,7 +161,9 @@ func LoadFromEnv() (*EnvConfig, error) {
 func (config *EnvConfig) InitialClusterEnv() string {
 	var initialClusterParts []string
 	for name, peerURLs := range config.InitialCluster {
-		initialClusterParts = append(initialClusterParts, fmt.Sprintf("%s=%s", name, strings.Join(peerURLs, ",")))
+		for _, peerURL := range peerURLs {
+			initialClusterParts = append(initialClusterParts, fmt.Sprintf("%s=%s", name, peerURL))
+		}
 	}
 	return strings.Join(initialClusterParts, ",")
 }
