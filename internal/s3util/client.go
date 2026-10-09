@@ -22,7 +22,7 @@ type s3client struct {
 
 type Client interface {
 	VerifyBucket(context.Context) (bool, error)
-	Download(context.Context, string, func(context.Context, io.Reader) error) (bool, error)
+	Download(context.Context, string, func(context.Context, io.ReadCloser) error) (bool, error)
 	List(context.Context, string) ([]string, map[string]error)
 }
 
@@ -67,7 +67,7 @@ func (c *s3client) VerifyBucket(ctx context.Context) (bool, error) {
 	return c.client.BucketExists(ctx, c.bucket)
 }
 
-func (c *s3client) Download(ctx context.Context, key string, handler func(context.Context, io.Reader) error) (bool, error) {
+func (c *s3client) Download(ctx context.Context, key string, handler func(context.Context, io.ReadCloser) error) (bool, error) {
 	object, err := c.client.GetObject(ctx, c.bucket, key, minio.GetObjectOptions{})
 	if err != nil {
 		return false, fmt.Errorf("get snapshot object: %w", err)

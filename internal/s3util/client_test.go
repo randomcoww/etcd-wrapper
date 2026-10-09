@@ -70,7 +70,7 @@ func TestS3Client(t *testing.T) {
 	defer os.RemoveAll(snapshotFile.Name())
 	defer snapshotFile.Close()
 
-	ok, err = client.Download(clientCtx, "snap-2", func(ctx context.Context, reader io.Reader) error {
+	ok, err = client.Download(clientCtx, "snap-2", func(ctx context.Context, reader io.ReadCloser) error {
 		b, err := io.Copy(snapshotFile, reader)
 		if err != nil {
 			return err
@@ -95,7 +95,7 @@ func TestS3Client(t *testing.T) {
 	defer os.RemoveAll(snapshotBad.Name())
 	defer snapshotBad.Close()
 
-	ok, err = client.Download(clientCtx, "snap-3", func(ctx context.Context, reader io.Reader) error {
+	ok, err = client.Download(clientCtx, "snap-3", func(ctx context.Context, reader io.ReadCloser) error {
 		b, err := io.Copy(snapshotBad, reader)
 		if err != nil {
 			return err
@@ -110,7 +110,7 @@ func TestS3Client(t *testing.T) {
 
 	// --- download non existent ---
 
-	ok, err = client.Download(clientCtx, "non-existent", func(ctx context.Context, reader io.Reader) error {
+	ok, err = client.Download(clientCtx, "non-existent", func(ctx context.Context, reader io.ReadCloser) error {
 		b, err := io.Copy(snapshotBad, reader)
 		if err != nil {
 			return err
