@@ -53,12 +53,12 @@ func (r *Runner) runInterval(ctx context.Context, revisionBump uint64) error {
 		if err != nil {
 			return fmt.Errorf("get cluster revision: %w", err)
 		}
-		if revision == 0 {
+		if revision <= 1 {
 			revision, err = r.restoreSnapshot(ctx)
 			if err != nil {
 				return fmt.Errorf("get cluster revision: %w", err)
 			}
-			if revision == 0 {
+			if revision <= 1 {
 				r.logger.Info("start etcd new")
 				return r.etcdRunner.StartNew(r.envConfig.WriteEnv())
 			}
@@ -183,7 +183,7 @@ func (r *Runner) getLocalRevision() (int64, error) {
 	if err != nil {
 		r.logger.Error("get local data revision", zap.Error(err))
 		if err := r.clearLocalData(); err != nil {
-			return 0, fmt.Errorf("clear local data: %w", err)
+			return 1, fmt.Errorf("clear local data: %w", err)
 		}
 		r.logger.Info("cleared local data")
 	}
@@ -193,23 +193,23 @@ func (r *Runner) getLocalRevision() (int64, error) {
 
 func (r *Runner) restoreSnapshot(ctx context.Context) (int64, error) {
 	if err := r.clearLocalData(); err != nil {
-		return 0, err
+		return 1, err
 	}
 	ok, err := snapshot.VerifyBucket(ctx, r.s3Client)
 	if err != nil {
-		return 0, fmt.Errorf("verify backup bucket: %w", err)
+		return 1, fmt.Errorf("verify backup bucket: %w", err)
 	}
 	if !ok {
-		return 0, fmt.Errorf("verify backup bucket")
+		return 1, fmt.Errorf("verify backup bucket")
 	}
 	ok, err = snapshot.Restore(ctx, r.logger, r.s3Client, r.objectPrefix, r.envConfig.RestoreConfig("", 10000), r.SnapshotEncryptionKey)
 	if err != nil {
-		return 0, fmt.Errorf("restore snapshot: %w", err)
+		return 1, fmt.Errorf("restore snapshot: %w", err)
 	}
 	if ok {
 		return r.getLocalRevision()
 	}
-	return 0, nil
+	return 1, nil
 }
 
 func findMemberInCluster(listResp etcdutil.Members, name string, peerURLs []string) *etcdserverpb.Member {
