@@ -11,7 +11,6 @@ import (
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
-	c "github.com/randomcoww/etcd-wrapper/config"
 	"github.com/randomcoww/etcd-wrapper/internal/tlsutil"
 )
 
@@ -26,26 +25,26 @@ type Client interface {
 	List(context.Context, string) ([]string, map[string]error)
 }
 
-func NewClientFromConfig(raw *c.YamlConfig) (*s3client, error) {
-	if raw.S3Bucket == "" {
+func NewClient(endpoint, region, bucket, accessKeyID, secretAccessKey string, trustedCAs []string) (*s3client, error) {
+	if bucket == "" {
 		return nil, fmt.Errorf("missing s3Bucket")
 	}
-	u, err := url.Parse(raw.S3Endpoint)
+	u, err := url.Parse(endpoint)
 	if err != nil {
 		return nil, fmt.Errorf("parse advertise url: %w", err)
 	}
 	if u.Scheme != "https" {
 		return nil, fmt.Errorf("S3 URL scheme must be HTTPS")
 	}
-	tlsConfig, err := tlsutil.BuildTLSCAConfig(raw.S3TrustedCAs)
+	tlsConfig, err := tlsutil.BuildTLSCAConfig(trustedCAs)
 	if err != nil {
 		return nil, fmt.Errorf("building S3 TLS config: %w", err)
 	}
 
 	opts := &minio.Options{
-		Creds:  credentials.NewStaticV4(raw.S3AccessKeyID, raw.S3SecretAccessKey, ""),
+		Creds:  credentials.NewStaticV4(accessKeyID, secretAccessKey, ""),
 		Secure: true,
-		Region: raw.S3Region,
+		Region: region,
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
@@ -60,7 +59,7 @@ func NewClientFromConfig(raw *c.YamlConfig) (*s3client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("creating S3 client: %w", err)
 	}
-	return &s3client{client: client, bucket: raw.S3Bucket}, nil
+	return &s3client{client: client, bucket: bucket}, nil
 }
 
 func (c *s3client) VerifyBucket(ctx context.Context) (bool, error) {

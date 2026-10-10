@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/minio/minio-go/v7"
-	"github.com/randomcoww/etcd-wrapper/config"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -26,16 +25,7 @@ const (
 )
 
 func TestS3Client(t *testing.T) {
-	yamlConfig := &config.YamlConfig{
-		S3Endpoint:        "https://127.0.0.1:9000",
-		S3Bucket:          minioBucket,
-		S3Region:          "us-east-1",
-		S3TrustedCAs:      []string{filepath.Join(baseTestPath, "minio", "certs", "CAs", "ca.crt")},
-		S3AccessKeyID:     minioUser,
-		S3SecretAccessKey: minioPassword,
-	}
-
-	client, err := NewClientFromConfig(yamlConfig)
+	client, err := NewClient("https://127.0.0.1:9000", "us-east-1", minioBucket, minioUser, minioPassword, []string{filepath.Join(baseTestPath, "minio", "certs", "CAs", "ca.crt")})
 	assert.NoError(t, err)
 
 	clientCtx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
