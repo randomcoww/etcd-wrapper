@@ -52,7 +52,6 @@ type Header interface {
 
 type EtcdClient interface {
 	Status(context.Context, string) (Status, error)
-	AggregateStatus(context.Context, []string) ([]Status, error)
 	MemberList(context.Context) (Members, error)
 	MemberAdd(context.Context, []string) (Members, error)
 	MemberUpdate(context.Context, uint64, []string) (Members, error)
@@ -133,37 +132,6 @@ func (client *Client) Status(ctx context.Context, endpoint string) (Status, erro
 		return nil, fmt.Errorf("get node status: %w", err)
 	}
 	return (*etcdserverpb.StatusResponse)(resp), nil
-}
-
-func (client *Client) AggregateStatus(ctx context.Context, endpoints []string) ([]Status, error) {
-	res := make([]Status, len(endpoints))
-	ch := make(chan struct {
-		index  int
-		status Status
-	})
-
-	for i, url := range endpoints {
-		go func(index int) {
-			s, err := client.Status(ctx, url)
-			if err == nil {
-				ch <- struct {
-					index  int
-					status Status
-				}{i, s}
-			} else {
-				ch <- struct {
-					index  int
-					status Status
-				}{i, nil}
-			}
-		}(i)
-	}
-
-	for i := 0; i < len(endpoints); i++ {
-		c := <-ch
-		res[c.index] = c.status
-	}
-	return res, nil
 }
 
 func (client *Client) MemberAdd(ctx context.Context, peerURLs []string) (Members, error) {
