@@ -10,15 +10,16 @@ import (
 )
 
 type YamlConfig struct {
-	CheckQuorumDelay  time.Duration `yaml:"checkQuorumDelay,omitempty"`
-	ClientTimeout     time.Duration `yaml:"clusterTimeout,omitempty"`
-	EtcdBinaryFile    string        `yaml:"etcdBinaryFile,omitempty"`
-	S3Endpoint        string        `yaml:"s3Endpoint"`
-	S3Region          string        `yaml:"s3Region,omitempty"`
-	S3Bucket          string        `yaml:"s3Bucket"`
-	S3TrustedCAs      []string      `yaml:"s3TrustedCAs,omitempty"`
-	S3AccessKeyID     string        `yaml:"s3AccessKeyID"`
-	S3SecretAccessKey string        `yaml:"s3SecretAccessKey"`
+	CheckQuorumDelay      time.Duration `yaml:"checkQuorumDelay,omitempty"`
+	ClientTimeout         time.Duration `yaml:"clusterTimeout,omitempty"`
+	EtcdBinaryFile        string        `yaml:"etcdBinaryFile,omitempty"`
+	S3Endpoint            string        `yaml:"s3Endpoint"`
+	S3Region              string        `yaml:"s3Region,omitempty"`
+	S3Bucket              string        `yaml:"s3Bucket"`
+	S3TrustedCAs          []string      `yaml:"s3TrustedCAs,omitempty"`
+	S3AccessKeyID         string        `yaml:"s3AccessKeyID"`
+	S3SecretAccessKey     string        `yaml:"s3SecretAccessKey"`
+	SnapshotEncryptionKey string        `yaml:"snapshotEncryptionKey"`
 }
 
 func (config *YamlConfig) MarshalLogObject(enc zapcore.ObjectEncoder) error {

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 
+	"filippo.io/age"
 	"github.com/randomcoww/etcd-wrapper/internal/etcdutil"
 	"github.com/randomcoww/etcd-wrapper/internal/s3util"
 	"go.etcd.io/etcd/etcdutl/v3/snapshot"
@@ -16,7 +17,7 @@ func VerifyBucket(ctx context.Context, s3Client s3util.Client) (bool, error) {
 	return s3Client.VerifyBucket(ctx)
 }
 
-func Restore(ctx context.Context, logger *zap.Logger, s3Client s3util.Client, objectPrefix string, restoreConfig snapshot.RestoreConfig) (bool, error) {
+func Restore(ctx context.Context, logger *zap.Logger, s3Client s3util.Client, objectPrefix string, restoreConfig snapshot.RestoreConfig, decryptionPassword string) (bool, error) {
 	ok, err := VerifyBucket(ctx, s3Client)
 	if err != nil {
 		return false, fmt.Errorf("verify bucket: %w", err)
@@ -34,7 +35,7 @@ func Restore(ctx context.Context, logger *zap.Logger, s3Client s3util.Client, ob
 	}
 
 	for i := len(keys) - 1; i >= 0; i-- {
-		ok, err = RestoreKey(ctx, logger, s3Client, keys[i], restoreConfig)
+		ok, err = RestoreKey(ctx, logger, s3Client, keys[i], restoreConfig, decryptionPassword)
 		if err == nil && ok {
 			logger.Info("restored snapshot", zap.String("key", keys[i]))
 			break
@@ -47,7 +48,7 @@ func Restore(ctx context.Context, logger *zap.Logger, s3Client s3util.Client, ob
 	return true, nil
 }
 
-func RestoreKey(ctx context.Context, logger *zap.Logger, s3Client s3util.Client, key string, restoreConfig snapshot.RestoreConfig) (bool, error) {
+func RestoreKey(ctx context.Context, logger *zap.Logger, s3Client s3util.Client, key string, restoreConfig snapshot.RestoreConfig, decryptionPassword string) (bool, error) {
 	logger.Info("attempting snapshot restore")
 	dir, err := os.MkdirTemp("", "etcd-wrapper-*")
 	if err != nil {
@@ -63,10 +64,23 @@ func RestoreKey(ctx context.Context, logger *zap.Logger, s3Client s3util.Client,
 	defer snapshotFile.Close()
 	logger.Info("opened file for snapshot")
 
-	ok, err := s3Client.Download(ctx, key, func(ctx context.Context, reader io.Reader) error {
-		b, err := io.Copy(snapshotFile, reader)
+	ok, err := s3Client.Download(ctx, key, func(ctx context.Context, reader io.ReadCloser) error {
+		defer reader.Close()
+
+		// --- assume age enryption, decrypt
+		identity, err := age.NewScryptIdentity(decryptionPassword)
 		if err != nil {
-			return err
+			return fmt.Errorf("decrypt identity: %w", err)
+		}
+		decryptedReader, err := age.Decrypt(reader, identity)
+		if err != nil {
+			return fmt.Errorf("decrypt reader: %w", err)
+		}
+		// ---
+
+		b, err := io.Copy(snapshotFile, decryptedReader)
+		if err != nil {
+			return fmt.Errorf("copy reader: %w", err)
 		}
 		if b == 0 {
 			return fmt.Errorf("snapshot file download size was 0")

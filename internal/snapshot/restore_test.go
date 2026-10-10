@@ -1,13 +1,16 @@
 package snapshot
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"testing"
 	"time"
 
+	"filippo.io/age"
 	c "github.com/randomcoww/etcd-wrapper/config"
 	"github.com/randomcoww/etcd-wrapper/internal/etcdutil"
 	"github.com/stretchr/testify/assert"
@@ -15,7 +18,8 @@ import (
 )
 
 const (
-	baseTestPath string = "../../test/outputs"
+	baseTestPath      string = "../../test/outputs"
+	testEncryptionKey string = "test-snapshot-encryption"
 )
 
 type fakeS3Client struct {
@@ -28,13 +32,31 @@ func (c *fakeS3Client) VerifyBucket(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
-func (c *fakeS3Client) Download(ctx context.Context, key string, handler func(context.Context, io.Reader) error) (bool, error) {
+func (c *fakeS3Client) Download(ctx context.Context, key string, handler func(context.Context, io.ReadCloser) error) (bool, error) {
 	file, err := os.Open(c.snapshotFiles[key])
 	if err != nil {
 		return false, err
 	}
 	defer file.Close()
-	return true, handler(ctx, file)
+
+	var buf bytes.Buffer
+
+	// --- simluate encrypted file ---
+	recipient, err := age.NewScryptRecipient(testEncryptionKey)
+	if err != nil {
+		return false, fmt.Errorf("create scrypt recipient: %w", err)
+	}
+	ageWriter, err := age.Encrypt(&buf, recipient)
+	if err != nil {
+		return false, fmt.Errorf("encryption writer: %w", err)
+	}
+	_, err = io.Copy(ageWriter, file)
+	if err := ageWriter.Close(); err != nil {
+		return false, fmt.Errorf("close age writer: %w", err)
+	}
+	// ---
+
+	return true, handler(ctx, io.NopCloser(&buf))
 }
 
 func (c *fakeS3Client) List(ctx context.Context, prefix string) ([]string, map[string]error) {
@@ -60,10 +82,14 @@ func TestRestore(t *testing.T) {
 		Env: map[string]string{
 			"ETCD_NAME":                  "node0",
 			"ETCD_DATA_DIR":              restoreDataPath,
-			"ETCD_INITIAL_CLUSTER":       "node0=https://127.0.0.1:8080,node1=https://127.0.0.2:8080,node2=https://127.0.0.3:8080",
 			"ETCD_INITIAL_CLUSTER_TOEKN": "test-cluster-1",
 		},
 		InitialAdvertisePeerURLs: []string{"https://127.0.0.1:8080"},
+		InitialCluster: map[string][]string{
+			"node0": []string{"https://127.0.0.1:8080"},
+			"node1": []string{"https://127.0.0.2:8080"},
+			"node2": []string{"https://127.0.0.3:8080"},
+		},
 	}
 	s3Client := &fakeS3Client{
 		objectsList: []string{
@@ -89,7 +115,7 @@ func TestRestore(t *testing.T) {
 	clientCtx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 
-	ok, err := Restore(clientCtx, logger, s3Client, "snap-", restoreConfig)
+	ok, err := Restore(clientCtx, logger, s3Client, "snap-", restoreConfig, testEncryptionKey)
 	assert.NoError(t, err)
 	assert.True(t, ok)
 
