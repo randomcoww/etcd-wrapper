@@ -24,13 +24,14 @@ type etcdProcess interface {
 }
 
 type Runner struct {
-	logger           *zap.Logger
-	checkQuorumDelay time.Duration
-	clientTimeout    time.Duration
-	etcdRunner       etcdProcess
-	envConfig        *c.EnvConfig
-	s3Client         s3util.Client
-	objectPrefix     string
+	logger                *zap.Logger
+	checkQuorumDelay      time.Duration
+	clientTimeout         time.Duration
+	etcdRunner            etcdProcess
+	envConfig             *c.EnvConfig
+	s3Client              s3util.Client
+	objectPrefix          string
+	SnapshotEncryptionKey string
 }
 
 func (r *Runner) runInterval(ctx context.Context, revisionBump uint64) error {
@@ -201,7 +202,7 @@ func (r *Runner) restoreSnapshot(ctx context.Context) (int64, error) {
 	if !ok {
 		return 0, fmt.Errorf("verify backup bucket")
 	}
-	ok, err = snapshot.Restore(ctx, r.logger, r.s3Client, r.objectPrefix, r.envConfig.RestoreConfig("", 10000))
+	ok, err = snapshot.Restore(ctx, r.logger, r.s3Client, r.objectPrefix, r.envConfig.RestoreConfig("", 10000), r.SnapshotEncryptionKey)
 	if err != nil {
 		return 0, fmt.Errorf("restore snapshot: %w", err)
 	}

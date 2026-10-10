@@ -65,8 +65,6 @@ func RestoreKey(ctx context.Context, logger *zap.Logger, s3Client s3util.Client,
 	logger.Info("opened file for snapshot")
 
 	ok, err := s3Client.Download(ctx, key, func(ctx context.Context, reader io.ReadCloser) error {
-		defer reader.Close()
-
 		// --- assume age enryption, decrypt
 		identity, err := age.NewScryptIdentity(decryptionPassword)
 		if err != nil {

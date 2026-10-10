@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"filippo.io/age"
 	c "github.com/randomcoww/etcd-wrapper/config"
 	"github.com/randomcoww/etcd-wrapper/internal/etcd"
 	"github.com/randomcoww/etcd-wrapper/internal/etcdutil"
@@ -19,7 +21,8 @@ import (
 )
 
 var (
-	baseTestPath string = "../../test/outputs"
+	baseTestPath      string = "../../test/outputs"
+	testEncryptionKey string = "test-snapshot-encryption"
 )
 
 type fakeS3Client struct {
@@ -32,13 +35,31 @@ func (c *fakeS3Client) VerifyBucket(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
-func (c *fakeS3Client) Download(ctx context.Context, key string, handler func(context.Context, io.Reader) error) (bool, error) {
+func (c *fakeS3Client) Download(ctx context.Context, key string, handler func(context.Context, io.ReadCloser) error) (bool, error) {
 	file, err := os.Open(c.snapshotFiles[key])
 	if err != nil {
 		return false, err
 	}
 	defer file.Close()
-	return true, handler(ctx, file)
+
+	var buf bytes.Buffer
+
+	// --- simluate encrypted file ---
+	recipient, err := age.NewScryptRecipient(testEncryptionKey)
+	if err != nil {
+		return false, fmt.Errorf("create scrypt recipient: %w", err)
+	}
+	ageWriter, err := age.Encrypt(&buf, recipient)
+	if err != nil {
+		return false, fmt.Errorf("encryption writer: %w", err)
+	}
+	_, err = io.Copy(ageWriter, file)
+	if err := ageWriter.Close(); err != nil {
+		return false, fmt.Errorf("close age writer: %w", err)
+	}
+	// ---
+
+	return true, handler(ctx, io.NopCloser(&buf))
 }
 
 func (c *fakeS3Client) List(ctx context.Context, prefix string) ([]string, map[string]error) {
@@ -102,9 +123,10 @@ func TestCreateFromRestore(t *testing.T) {
 				Ctx:        ctx,
 				EtcdBinary: "/etcd/usr/local/bin/etcd",
 			},
-			s3Client:     s3Client,
-			envConfig:    config,
-			objectPrefix: "snap-",
+			s3Client:              s3Client,
+			envConfig:             config,
+			objectPrefix:          "snap-",
+			SnapshotEncryptionKey: testEncryptionKey,
 		}
 		defer runner.etcdRunner.Wait()
 		defer runner.etcdRunner.Stop()
@@ -184,9 +206,10 @@ func TestReplaceMembers(t *testing.T) {
 				Ctx:        ctx,
 				EtcdBinary: "/etcd/usr/local/bin/etcd",
 			},
-			s3Client:     s3Client,
-			envConfig:    config,
-			objectPrefix: "snap-",
+			s3Client:              s3Client,
+			envConfig:             config,
+			objectPrefix:          "snap-",
+			SnapshotEncryptionKey: testEncryptionKey,
 		}
 		defer runner.etcdRunner.Wait()
 		defer runner.etcdRunner.Stop()
@@ -313,9 +336,10 @@ func TestRollingMemberReplace(t *testing.T) {
 				Ctx:        ctx,
 				EtcdBinary: "/etcd/usr/local/bin/etcd",
 			},
-			s3Client:     s3Client,
-			envConfig:    config,
-			objectPrefix: "snap-",
+			s3Client:              s3Client,
+			envConfig:             config,
+			objectPrefix:          "snap-",
+			SnapshotEncryptionKey: testEncryptionKey,
 		}
 		defer runner.etcdRunner.Wait()
 		defer runner.etcdRunner.Stop()
