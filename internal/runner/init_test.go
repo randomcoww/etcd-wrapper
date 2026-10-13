@@ -92,9 +92,11 @@ func TestCreateFromRestore(t *testing.T) {
 		c, cancel := context.WithTimeout(ctx, time.Duration(8*time.Second))
 		defer cancel()
 
-		if _, err := runner.init(c, 10000); err != nil {
+		ok, err := runner.init(c, 10000)
+		if err != nil {
 			t.Fatal("call etcd runner: %w", err)
 		}
+		assert.True(t, ok)
 		time.Sleep(4 * time.Second)
 	}
 
@@ -198,9 +200,12 @@ func TestReplaceMembers(t *testing.T) {
 		defer cancel()
 
 		t.Logf("starting %s", runner.envConfig.Env["ETCD_NAME"])
-		if _, err := runner.init(c, 10000); err != nil {
+
+		ok, err := runner.init(c, 10000)
+		if err != nil {
 			t.Fatal("call etcd runner: %w", err)
 		}
+		assert.True(t, ok)
 		time.Sleep(4 * time.Second)
 	}
 
@@ -327,9 +332,11 @@ func TestRollingMemberReplace(t *testing.T) {
 		c, cancel := context.WithTimeout(ctx, time.Duration(8*time.Second))
 		defer cancel()
 
-		if _, err := runner.init(c, 10000); err != nil {
+		ok, err := runner.init(c, 10000)
+		if err != nil {
 			t.Fatal("call etcd runner: %w", err)
 		}
+		assert.True(t, ok)
 		time.Sleep(4 * time.Second)
 	}
 
@@ -345,6 +352,66 @@ func TestRollingMemberReplace(t *testing.T) {
 		val, err := verifyTestData(t, c, runner, "test-rev3")
 		assert.NoError(t, err)
 		assert.Equal(t, "test-rev3-val", val) // match value that should exist in the test data
+	}
+}
+
+func TestNoQuorumNoData(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	logger, _ := zap.NewProduction()
+	s3Client := &s3test.FakeS3Client{
+		ObjectsList:       []string{},
+		ObjectsErrors:     make(map[string]error),
+		SnapshotFiles:     map[string]string{},
+		TestEncryptionKey: testEncryptionKey,
+	}
+	members := []member{
+		{
+			name:        "node0",
+			clientPort:  8080,
+			peerPort:    8090,
+			metricsPort: 8100,
+		},
+		{
+			name:        "node1",
+			clientPort:  8081,
+			peerPort:    8091,
+			metricsPort: 8101,
+		},
+		{
+			name:        "node2",
+			clientPort:  8082,
+			peerPort:    8092,
+			metricsPort: 8102,
+		},
+	}
+	dataPath := t.TempDir()
+	configs, err := newConfigs(t, members, dataPath)
+	if err != nil {
+		t.Fatal("generate test configs: %w", err)
+	}
+
+	for _, config := range configs {
+		runner := &Runner{
+			logger:           logger,
+			checkQuorumDelay: 8 * time.Second,
+			clientTimeout:    4 * time.Second,
+			etcdRunner: &etcd.Fork{
+				Ctx:        ctx,
+				EtcdBinary: "/etcd/usr/local/bin/etcd",
+			},
+			s3Client:              s3Client,
+			envConfig:             config,
+			objectPrefix:          "snap-",
+			SnapshotEncryptionKey: testEncryptionKey,
+		}
+		c, cancel := context.WithTimeout(ctx, time.Duration(8*time.Second))
+		defer cancel()
+
+		ok, err := runner.init(c, 10000)
+		assert.NoError(t, err)
+		assert.False(t, ok)
 	}
 }
 
