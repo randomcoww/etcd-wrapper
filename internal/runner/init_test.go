@@ -1,21 +1,18 @@
 package runner
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"io"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"filippo.io/age"
 	c "github.com/randomcoww/etcd-wrapper/config"
 	"github.com/randomcoww/etcd-wrapper/internal/etcd"
 	"github.com/randomcoww/etcd-wrapper/internal/etcdutil"
 	"github.com/randomcoww/etcd-wrapper/internal/tlsutil"
+	"github.com/randomcoww/etcd-wrapper/s3test"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/zap"
 )
@@ -24,47 +21,6 @@ var (
 	baseTestPath      string = "../../test/outputs"
 	testEncryptionKey string = "test-snapshot-encryption"
 )
-
-type fakeS3Client struct {
-	objectsList   []string
-	objectsErrors map[string]error
-	snapshotFiles map[string]string
-}
-
-func (c *fakeS3Client) VerifyBucket(ctx context.Context) (bool, error) {
-	return true, nil
-}
-
-func (c *fakeS3Client) Download(ctx context.Context, key string, handler func(context.Context, io.ReadCloser) error) (bool, error) {
-	file, err := os.Open(c.snapshotFiles[key])
-	if err != nil {
-		return false, err
-	}
-	defer file.Close()
-
-	var buf bytes.Buffer
-
-	// --- simluate encrypted file ---
-	recipient, err := age.NewScryptRecipient(testEncryptionKey)
-	if err != nil {
-		return false, fmt.Errorf("create scrypt recipient: %w", err)
-	}
-	ageWriter, err := age.Encrypt(&buf, recipient)
-	if err != nil {
-		return false, fmt.Errorf("encryption writer: %w", err)
-	}
-	_, err = io.Copy(ageWriter, file)
-	if err := ageWriter.Close(); err != nil {
-		return false, fmt.Errorf("close age writer: %w", err)
-	}
-	// ---
-
-	return true, handler(ctx, io.NopCloser(&buf))
-}
-
-func (c *fakeS3Client) List(ctx context.Context, prefix string) ([]string, map[string]error) {
-	return c.objectsList, c.objectsErrors
-}
 
 type member struct {
 	name        string
@@ -78,14 +34,15 @@ func TestCreateFromRestore(t *testing.T) {
 	defer cancel()
 
 	logger, _ := zap.NewProduction()
-	s3Client := &fakeS3Client{
-		objectsList: []string{
+	s3Client := &s3test.FakeS3Client{
+		ObjectsList: []string{
 			"snap-2",
 		},
-		objectsErrors: make(map[string]error),
-		snapshotFiles: map[string]string{
+		ObjectsErrors: make(map[string]error),
+		SnapshotFiles: map[string]string{
 			"snap-2": filepath.Join(baseTestPath, "../rev2-snap.db"), // good data
 		},
+		TestEncryptionKey: testEncryptionKey,
 	}
 	members := []member{
 		{
@@ -135,7 +92,7 @@ func TestCreateFromRestore(t *testing.T) {
 		c, cancel := context.WithTimeout(ctx, time.Duration(8*time.Second))
 		defer cancel()
 
-		if err := runner.runInterval(c, 10000); err != nil {
+		if _, err := runner.init(c, 10000); err != nil {
 			t.Fatal("call etcd runner: %w", err)
 		}
 		time.Sleep(4 * time.Second)
@@ -161,14 +118,15 @@ func TestReplaceMembers(t *testing.T) {
 	defer cancel()
 
 	logger, _ := zap.NewProduction()
-	s3Client := &fakeS3Client{
-		objectsList: []string{
+	s3Client := &s3test.FakeS3Client{
+		ObjectsList: []string{
 			"snap-2",
 		},
-		objectsErrors: make(map[string]error),
-		snapshotFiles: map[string]string{
+		ObjectsErrors: make(map[string]error),
+		SnapshotFiles: map[string]string{
 			"snap-2": filepath.Join(baseTestPath, "../rev2-snap.db"), // good data
 		},
+		TestEncryptionKey: testEncryptionKey,
 	}
 	members := []member{
 		{
@@ -240,7 +198,7 @@ func TestReplaceMembers(t *testing.T) {
 		defer cancel()
 
 		t.Logf("starting %s", runner.envConfig.Env["ETCD_NAME"])
-		if err := runner.runInterval(c, 10000); err != nil {
+		if _, err := runner.init(c, 10000); err != nil {
 			t.Fatal("call etcd runner: %w", err)
 		}
 		time.Sleep(4 * time.Second)
@@ -266,14 +224,15 @@ func TestRollingMemberReplace(t *testing.T) {
 	defer cancel()
 
 	logger, _ := zap.NewProduction()
-	s3Client := &fakeS3Client{
-		objectsList: []string{
+	s3Client := &s3test.FakeS3Client{
+		ObjectsList: []string{
 			"snap-3",
 		},
-		objectsErrors: make(map[string]error),
-		snapshotFiles: map[string]string{
+		ObjectsErrors: make(map[string]error),
+		SnapshotFiles: map[string]string{
 			"snap-3": filepath.Join(baseTestPath, "../rev3-snap.db"), // good data
 		},
+		TestEncryptionKey: testEncryptionKey,
 	}
 	members := []member{
 		{
@@ -368,7 +327,7 @@ func TestRollingMemberReplace(t *testing.T) {
 		c, cancel := context.WithTimeout(ctx, time.Duration(8*time.Second))
 		defer cancel()
 
-		if err := runner.runInterval(c, 10000); err != nil {
+		if _, err := runner.init(c, 10000); err != nil {
 			t.Fatal("call etcd runner: %w", err)
 		}
 		time.Sleep(4 * time.Second)

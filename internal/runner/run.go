@@ -16,6 +16,11 @@ import (
 	"go.uber.org/zap"
 )
 
+var (
+	intervalDuration time.Duration = 4 * time.Second
+	defaultRevision  int64         = 1
+)
+
 type etcdProcess interface {
 	StartNew([]string) error
 	StartExisting([]string) error
@@ -34,38 +39,70 @@ type Runner struct {
 	SnapshotEncryptionKey string
 }
 
-func (r *Runner) runInterval(ctx context.Context, revisionBump uint64) error {
+func (r *Runner) init(ctx context.Context, revisionBump uint64) (bool, error) {
 	client, err := etcdutil.NewClientFromPeers(ctx, r.logger, r.envConfig.ClusterPeerURLs(), r.envConfig.PeerTLSConfig, r.envConfig.ClientTLSConfig)
-
 	if err == nil {
 		defer client.Close()
 
-		c, cancel := context.WithTimeout(ctx, 4*time.Second)
+		c, cancel := context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
 		err = client.CheckQuorum(c)
 	}
 	if err != nil {
 		r.logger.Info("quorum not found")
-		//
-		// get current data revision. If invalid, delete data and return revision 0
-		//
 		revision, err := r.getLocalRevision()
 		if err != nil {
-			return fmt.Errorf("get cluster revision: %w", err)
+			return false, fmt.Errorf("init cluster: %w", err)
 		}
-		if revision <= 1 {
+		if revision == defaultRevision {
 			revision, err = r.restoreSnapshot(ctx)
 			if err != nil {
-				return fmt.Errorf("get cluster revision: %w", err)
+				return false, fmt.Errorf("init cluster: %w", err)
 			}
-			if revision <= 1 {
-				r.logger.Info("start etcd new")
-				return r.etcdRunner.StartNew(r.envConfig.WriteEnv())
+			if revision == defaultRevision {
+				return false, nil
 			}
 		}
 		r.logger.Info("start etcd existing")
-		return r.etcdRunner.StartExisting(r.envConfig.WriteEnv())
+		if err := r.etcdRunner.StartExisting(r.envConfig.WriteEnv()); err != nil {
+			return false, err
+		}
+		return true, nil
 	}
+	if err := r.addMemberToQuorum(ctx, client); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (r *Runner) loop(ctx context.Context) error {
+	ticker := time.NewTicker(intervalDuration)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			client, err := etcdutil.NewClientFromPeers(ctx, r.logger, r.envConfig.ClusterPeerURLs(), r.envConfig.PeerTLSConfig, r.envConfig.ClientTLSConfig)
+			if err == nil {
+				defer client.Close()
+
+				c, cancel := context.WithTimeout(ctx, 2*time.Second)
+				defer cancel()
+				err = client.CheckQuorum(c)
+			}
+
+			if err != nil {
+				r.logger.Info("quorum not found")
+				continue
+			}
+			return r.addMemberToQuorum(ctx, client)
+		case <-ctx.Done():
+			return nil
+		}
+	}
+}
+
+func (r *Runner) addMemberToQuorum(ctx context.Context, client etcdutil.EtcdClient) error {
 	r.logger.Info("existing quorum found")
 
 	if err := r.updateMembers(ctx, client); err != nil {
@@ -183,9 +220,12 @@ func (r *Runner) getLocalRevision() (int64, error) {
 	if err != nil {
 		r.logger.Error("get local data revision", zap.Error(err))
 		if err := r.clearLocalData(); err != nil {
-			return 1, fmt.Errorf("clear local data: %w", err)
+			return defaultRevision, fmt.Errorf("clear local data: %w", err)
 		}
 		r.logger.Info("cleared local data")
+	}
+	if revision == 0 {
+		revision = defaultRevision
 	}
 	r.logger.Info("local data", zap.Int64("revision", revision))
 	return revision, nil
@@ -193,23 +233,23 @@ func (r *Runner) getLocalRevision() (int64, error) {
 
 func (r *Runner) restoreSnapshot(ctx context.Context) (int64, error) {
 	if err := r.clearLocalData(); err != nil {
-		return 1, err
+		return defaultRevision, err
 	}
 	ok, err := snapshot.VerifyBucket(ctx, r.s3Client)
 	if err != nil {
-		return 1, fmt.Errorf("verify backup bucket: %w", err)
+		return defaultRevision, fmt.Errorf("verify backup bucket: %w", err)
 	}
 	if !ok {
-		return 1, fmt.Errorf("verify backup bucket")
+		return defaultRevision, fmt.Errorf("verify backup bucket")
 	}
 	ok, err = snapshot.Restore(ctx, r.logger, r.s3Client, r.objectPrefix, r.envConfig.RestoreConfig("", 10000), r.SnapshotEncryptionKey)
 	if err != nil {
-		return 1, fmt.Errorf("restore snapshot: %w", err)
+		return defaultRevision, fmt.Errorf("restore snapshot: %w", err)
 	}
 	if ok {
 		return r.getLocalRevision()
 	}
-	return 1, nil
+	return defaultRevision, nil
 }
 
 func findMemberInCluster(listResp etcdutil.Members, name string, peerURLs []string) *etcdserverpb.Member {
