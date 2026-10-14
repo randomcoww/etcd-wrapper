@@ -64,33 +64,33 @@ func RestoreKey(ctx context.Context, logger *zap.Logger, s3Client s3util.Client,
 	defer snapshotFile.Close()
 	logger.Info("opened file for snapshot")
 
-	ok, err := s3Client.Download(ctx, key, func(ctx context.Context, reader io.ReadCloser) error {
-		// --- assume age enryption, decrypt
-		identity, err := age.NewScryptIdentity(decryptionPassword)
-		if err != nil {
-			return fmt.Errorf("decrypt identity: %w", err)
-		}
-		decryptedReader, err := age.Decrypt(reader, identity)
-		if err != nil {
-			return fmt.Errorf("decrypt reader: %w", err)
-		}
-		// ---
-
-		b, err := io.Copy(snapshotFile, decryptedReader)
-		if err != nil {
-			return fmt.Errorf("copy reader: %w", err)
-		}
-		if b == 0 {
-			return fmt.Errorf("snapshot file download size was 0")
-		}
-		return nil
-	})
+	reader, ok, err := s3Client.Download(ctx, key)
 	if err != nil {
 		return false, fmt.Errorf("download snapshot: %w", err)
 	}
+	defer reader.Close()
 	if !ok {
 		logger.Info("no snapshots found")
 		return false, nil
+	}
+
+	// --- assume age enryption, decrypt
+	identity, err := age.NewScryptIdentity(decryptionPassword)
+	if err != nil {
+		return false, fmt.Errorf("decrypt identity: %w", err)
+	}
+	decryptedReader, err := age.Decrypt(reader, identity)
+	if err != nil {
+		return false, fmt.Errorf("decrypt reader: %w", err)
+	}
+	// ---
+
+	b, err := io.Copy(snapshotFile, decryptedReader)
+	if err != nil {
+		return false, fmt.Errorf("copy reader: %w", err)
+	}
+	if b == 0 {
+		return false, fmt.Errorf("snapshot file download size was 0")
 	}
 
 	restoreConfig.SnapshotPath = snapshotFile.Name()

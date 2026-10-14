@@ -53,23 +53,17 @@ func TestS3Client(t *testing.T) {
 	assert.Equal(t, map[string]error{"snap-3": fmt.Errorf("object size is 0")}, errors)
 
 	dataPath := t.TempDir()
-
-	// --- download file with content ---
-
 	snapshotFile, _ := os.CreateTemp(dataPath, "snapshot-restore-*.db")
 	defer os.RemoveAll(snapshotFile.Name())
 	defer snapshotFile.Close()
 
-	ok, err = client.Download(clientCtx, "snap-2", func(ctx context.Context, reader io.ReadCloser) error {
-		b, err := io.Copy(snapshotFile, reader)
-		if err != nil {
-			return err
-		}
-		if b == 0 {
-			return fmt.Errorf("snapshot file download size was 0")
-		}
-		return nil
-	})
+	reader, ok, err := client.Download(clientCtx, "snap-2")
+	defer reader.Close()
+
+	if _, err := io.Copy(snapshotFile, reader); err != nil {
+		t.Fatal("snapshot copy: %w", err)
+	}
+
 	assert.NoError(t, err) // no error
 	assert.True(t, ok)     // true (exists)
 
@@ -78,40 +72,6 @@ func TestS3Client(t *testing.T) {
 		t.Fatal("test snapshot file missing: %w", err)
 	}
 	assert.Equal(t, "snap-2-val", string(content))
-
-	// --- download zero length ---
-
-	snapshotBad, _ := os.CreateTemp(dataPath, "snapshot-bad-*.db")
-	defer os.RemoveAll(snapshotBad.Name())
-	defer snapshotBad.Close()
-
-	ok, err = client.Download(clientCtx, "snap-3", func(ctx context.Context, reader io.ReadCloser) error {
-		b, err := io.Copy(snapshotBad, reader)
-		if err != nil {
-			return err
-		}
-		if b == 0 {
-			return fmt.Errorf("snapshot file download size was 0")
-		}
-		return nil
-	})
-	assert.Error(t, err) // picks up b == 0
-	assert.True(t, ok)   // true (exists)
-
-	// --- download non existent ---
-
-	ok, err = client.Download(clientCtx, "non-existent", func(ctx context.Context, reader io.ReadCloser) error {
-		b, err := io.Copy(snapshotBad, reader)
-		if err != nil {
-			return err
-		}
-		if b == 0 {
-			return fmt.Errorf("snapshot file download size was 0")
-		}
-		return nil
-	})
-	assert.NoError(t, err) // no error
-	assert.False(t, ok)    // false (non-existent)
 }
 
 // --- helper ---

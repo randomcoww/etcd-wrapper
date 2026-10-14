@@ -12,7 +12,7 @@ import (
 	"go.uber.org/zap"
 )
 
-var (
+const (
 	baseTestPath string = "../../test/outputs"
 )
 

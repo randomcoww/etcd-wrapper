@@ -21,10 +21,10 @@ func (c *FakeS3Client) VerifyBucket(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
-func (c *FakeS3Client) Download(ctx context.Context, key string, handler func(context.Context, io.ReadCloser) error) (bool, error) {
+func (c *FakeS3Client) Download(ctx context.Context, key string) (io.ReadCloser, bool, error) {
 	file, err := os.Open(c.SnapshotFiles[key])
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
 	defer file.Close()
 
@@ -33,19 +33,19 @@ func (c *FakeS3Client) Download(ctx context.Context, key string, handler func(co
 	// --- simluate encrypted file ---
 	recipient, err := age.NewScryptRecipient(c.TestEncryptionKey)
 	if err != nil {
-		return false, fmt.Errorf("create scrypt recipient: %w", err)
+		return nil, false, fmt.Errorf("create scrypt recipient: %w", err)
 	}
 	ageWriter, err := age.Encrypt(&buf, recipient)
 	if err != nil {
-		return false, fmt.Errorf("encryption writer: %w", err)
+		return nil, false, fmt.Errorf("encryption writer: %w", err)
 	}
 	_, err = io.Copy(ageWriter, file)
 	if err := ageWriter.Close(); err != nil {
-		return false, fmt.Errorf("close age writer: %w", err)
+		return nil, false, fmt.Errorf("close age writer: %w", err)
 	}
 	// ---
 
-	return true, handler(ctx, io.NopCloser(&buf))
+	return io.NopCloser(&buf), true, nil
 }
 
 func (c *FakeS3Client) List(ctx context.Context, prefix string) ([]string, map[string]error) {
