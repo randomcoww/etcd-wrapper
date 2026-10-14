@@ -34,7 +34,7 @@ func TestRestore(t *testing.T) {
 	defer os.RemoveAll(fakeSnapshotFile4.Name())
 	defer fakeSnapshotFile4.Close()
 
-	envConfig := &c.EnvConfig{
+	envConfig := &c.EtcdConfig{
 		Env: map[string]string{
 			"ETCD_NAME":                  "node0",
 			"ETCD_DATA_DIR":              restoreDataPath,

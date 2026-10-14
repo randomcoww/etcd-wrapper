@@ -74,7 +74,7 @@ func TestCreateFromRestore(t *testing.T) {
 
 	var runners []*Runner
 	for _, config := range configs {
-		runner := &Runner{
+		r := &Runner{
 			logger:                 logger,
 			checkQuorumTimeout:     8 * time.Second,
 			memberTimeout:          8 * time.Second,
@@ -84,18 +84,18 @@ func TestCreateFromRestore(t *testing.T) {
 				EtcdBinary: "/etcd/usr/local/bin/etcd",
 			},
 			s3Client:              s3Client,
-			envConfig:             config,
-			objectPrefix:          "snap-",
-			SnapshotEncryptionKey: testEncryptionKey,
+			etcdConfig:            config,
+			snapshotObjectPrefix:  "snap-",
+			snapshotEncryptionKey: testEncryptionKey,
 		}
-		defer runner.etcdRunner.Wait()
-		defer runner.etcdRunner.Stop()
-		runners = append(runners, runner)
+		defer r.etcdRunner.Wait()
+		defer r.etcdRunner.Stop()
+		runners = append(runners, r)
 
 		c, cancel := context.WithTimeout(ctx, time.Duration(8*time.Second))
 		defer cancel()
 
-		ok, err := runner.StartInit(c)
+		ok, err := r.StartInit(c)
 		if err != nil {
 			t.Fatal("call etcd runner: %w", err)
 		}
@@ -105,14 +105,14 @@ func TestCreateFromRestore(t *testing.T) {
 
 	// --- verify quorum, nodes, and backup ---
 
-	for _, runner := range runners {
+	for _, r := range runners {
 		c, cancel := context.WithTimeout(ctx, time.Duration(4*time.Second))
 		defer cancel()
 
-		err := verifyTestStatus(t, c, runner)
+		err := verifyTestStatus(t, c, r)
 		assert.NoError(t, err)
 
-		val, err := verifyTestData(t, c, runner, "test-rev2")
+		val, err := verifyTestData(t, c, r, "test-rev2")
 		assert.NoError(t, err)
 		assert.Equal(t, "test-rev2-val", val) // match value that should exist in the test data
 	}
@@ -161,7 +161,7 @@ func TestReplaceMembers(t *testing.T) {
 
 	var runners []*Runner
 	for _, config := range configs {
-		runner := &Runner{
+		r := &Runner{
 			logger:                 logger,
 			checkQuorumTimeout:     8 * time.Second,
 			memberTimeout:          8 * time.Second,
@@ -171,13 +171,13 @@ func TestReplaceMembers(t *testing.T) {
 				EtcdBinary: "/etcd/usr/local/bin/etcd",
 			},
 			s3Client:              s3Client,
-			envConfig:             config,
-			objectPrefix:          "snap-",
-			SnapshotEncryptionKey: testEncryptionKey,
+			etcdConfig:            config,
+			snapshotObjectPrefix:  "snap-",
+			snapshotEncryptionKey: testEncryptionKey,
 		}
-		defer runner.etcdRunner.Wait()
-		defer runner.etcdRunner.Stop()
-		runners = append(runners, runner)
+		defer r.etcdRunner.Wait()
+		defer r.etcdRunner.Stop()
+		runners = append(runners, r)
 	}
 
 	if err := newDummyCluster(t, ctx, runners); err != nil {
@@ -187,25 +187,25 @@ func TestReplaceMembers(t *testing.T) {
 	// --- stop two nodes ---
 
 	t.Logf("stopping nodes")
-	for _, runner := range runners[:2] {
-		if err := runner.etcdRunner.Stop(); err != nil {
+	for _, r := range runners[:2] {
+		if err := r.etcdRunner.Stop(); err != nil {
 			t.Fatal("stop test client: %w", err)
 		}
-		if err := runner.etcdRunner.Wait(); err != nil {
+		if err := r.etcdRunner.Wait(); err != nil {
 			t.Fatal("wait stop test client: %w", err)
 		}
-		t.Logf("stopped %s", runner.envConfig.Env["ETCD_NAME"])
+		t.Logf("stopped %s", r.etcdConfig.Env["ETCD_NAME"])
 	}
 
 	// --- start replacement nodes ---
 
-	for _, runner := range runners[:2] {
+	for _, r := range runners[:2] {
 		c, cancel := context.WithTimeout(ctx, time.Duration(8*time.Second))
 		defer cancel()
 
-		t.Logf("starting %s", runner.envConfig.Env["ETCD_NAME"])
+		t.Logf("starting %s", r.etcdConfig.Env["ETCD_NAME"])
 
-		ok, err := runner.StartInit(c)
+		ok, err := r.StartInit(c)
 		if err != nil {
 			t.Fatal("call etcd runner: %w", err)
 		}
@@ -215,14 +215,14 @@ func TestReplaceMembers(t *testing.T) {
 
 	// --- verify quorum, nodes, and backup ---
 
-	for _, runner := range runners {
+	for _, r := range runners {
 		c, cancel := context.WithTimeout(ctx, time.Duration(4*time.Second))
 		defer cancel()
 
-		err := verifyTestStatus(t, c, runner)
+		err := verifyTestStatus(t, c, r)
 		assert.NoError(t, err)
 
-		val, err := verifyTestData(t, c, runner, "test-rev3")
+		val, err := verifyTestData(t, c, r, "test-rev3")
 		assert.NoError(t, err)
 		assert.Equal(t, "test-rev3-val", val) // match value that should exist in the test data
 	}
@@ -296,7 +296,7 @@ func TestRollingMemberReplace(t *testing.T) {
 
 	var runners []*Runner
 	for _, config := range configs {
-		runner := &Runner{
+		r := &Runner{
 			logger:                 logger,
 			checkQuorumTimeout:     8 * time.Second,
 			memberTimeout:          8 * time.Second,
@@ -306,13 +306,13 @@ func TestRollingMemberReplace(t *testing.T) {
 				EtcdBinary: "/etcd/usr/local/bin/etcd",
 			},
 			s3Client:              s3Client,
-			envConfig:             config,
-			objectPrefix:          "snap-",
-			SnapshotEncryptionKey: testEncryptionKey,
+			etcdConfig:            config,
+			snapshotObjectPrefix:  "snap-",
+			snapshotEncryptionKey: testEncryptionKey,
 		}
-		defer runner.etcdRunner.Wait()
-		defer runner.etcdRunner.Stop()
-		runners = append(runners, runner)
+		defer r.etcdRunner.Wait()
+		defer r.etcdRunner.Stop()
+		runners = append(runners, r)
 	}
 
 	if err := newDummyCluster(t, ctx, runners); err != nil {
@@ -322,22 +322,22 @@ func TestRollingMemberReplace(t *testing.T) {
 	// --- replace each node ---
 
 	t.Logf("rolling restart")
-	for i, runner := range runners {
-		if err := runner.etcdRunner.Stop(); err != nil {
+	for i, r := range runners {
+		if err := r.etcdRunner.Stop(); err != nil {
 			t.Fatal("stop test client: %w", err)
 		}
-		if err := runner.etcdRunner.Wait(); err != nil {
+		if err := r.etcdRunner.Wait(); err != nil {
 			t.Fatal("wait stop test client: %w", err)
 		}
 
 		// update config
-		runner.envConfig = configsAfter[i]
+		r.etcdConfig = configsAfter[i]
 
-		t.Logf("restarting %s", runner.envConfig.Env["ETCD_NAME"])
+		t.Logf("restarting %s", r.etcdConfig.Env["ETCD_NAME"])
 		c, cancel := context.WithTimeout(ctx, time.Duration(8*time.Second))
 		defer cancel()
 
-		ok, err := runner.StartInit(c)
+		ok, err := r.StartInit(c)
 		if err != nil {
 			t.Fatal("call etcd runner: %w", err)
 		}
@@ -347,14 +347,14 @@ func TestRollingMemberReplace(t *testing.T) {
 
 	// --- verify quorum, nodes, and backup ---
 
-	for _, runner := range runners {
+	for _, r := range runners {
 		c, cancel := context.WithTimeout(ctx, time.Duration(4*time.Second))
 		defer cancel()
 
-		err := verifyTestStatus(t, c, runner)
+		err := verifyTestStatus(t, c, r)
 		assert.NoError(t, err)
 
-		val, err := verifyTestData(t, c, runner, "test-rev3")
+		val, err := verifyTestData(t, c, r, "test-rev3")
 		assert.NoError(t, err)
 		assert.Equal(t, "test-rev3-val", val) // match value that should exist in the test data
 	}
@@ -417,9 +417,9 @@ func TestLoopWithGossip(t *testing.T) {
 				EtcdBinary: "/etcd/usr/local/bin/etcd",
 			},
 			s3Client:              s3Client,
-			envConfig:             config,
-			objectPrefix:          "snap-",
-			SnapshotEncryptionKey: testEncryptionKey,
+			etcdConfig:            config,
+			snapshotObjectPrefix:  "snap-",
+			snapshotEncryptionKey: testEncryptionKey,
 		}
 		defer r.etcdRunner.Wait()
 		defer r.etcdRunner.Stop()
@@ -434,7 +434,7 @@ func TestLoopWithGossip(t *testing.T) {
 			t.Fatal("unexpected init end")
 		}
 		go r.StartLoop(ctx, startCh)
-		gossip, err := g.NewNode(r.logger, r.envConfig.Env["ETCD_NAME"], defaultRevision, gossipPeerURLs, r.envConfig.PeerTLSConfig, startCh)
+		gossip, err := g.NewNode(r.logger, r.etcdConfig.Env["ETCD_NAME"], defaultRevision, gossipPeerURLs, r.etcdConfig.PeerTLSConfig, startCh)
 		if err != nil {
 			t.Fatal("create gossip: %w", err)
 		}
@@ -463,7 +463,7 @@ func verifyTestStatus(t *testing.T, ctx context.Context, r *Runner) error {
 	t.Helper()
 
 	memberClientURLs := memberClientURLs(t, r)
-	client, err := etcdutil.NewClient(ctx, r.logger, memberClientURLs, r.envConfig.ClientTLSConfig)
+	client, err := etcdutil.NewClient(ctx, r.logger, memberClientURLs, r.etcdConfig.ClientTLSConfig)
 	if err != nil {
 		return err
 	}
@@ -479,7 +479,7 @@ func verifyTestData(t *testing.T, ctx context.Context, r *Runner, key string) (s
 	t.Helper()
 
 	memberClientURLs := memberClientURLs(t, r)
-	client, err := etcdutil.NewClient(ctx, r.logger, memberClientURLs, r.envConfig.ClientTLSConfig)
+	client, err := etcdutil.NewClient(ctx, r.logger, memberClientURLs, r.etcdConfig.ClientTLSConfig)
 	if err != nil {
 		return "", err
 	}
@@ -490,13 +490,13 @@ func verifyTestData(t *testing.T, ctx context.Context, r *Runner, key string) (s
 	return string(resp.Kvs[0].Value), nil
 }
 
-func newConfigs(t *testing.T, members []member, dataPath string) ([]*c.EnvConfig, error) {
+func newConfigs(t *testing.T, members []member, dataPath string) ([]*c.EtcdConfig, error) {
 	t.Helper()
 
-	var configs []*c.EnvConfig
+	var configs []*c.EtcdConfig
 	for _, member := range members {
 		var err error
-		config := &c.EnvConfig{
+		config := &c.EtcdConfig{
 			Env: map[string]string{
 				"ETCD_NAME":                        member.name,
 				"ETCD_LOG_LEVEL":                   "error",
@@ -559,10 +559,10 @@ func newDummyCluster(t *testing.T, ctx context.Context, runners []*Runner) error
 
 	for _, r := range runners {
 		// preseed data into etcd path
-		if err := etcdutil.RestoreSnapshot(r.logger, r.envConfig.RestoreConfig(filepath.Join(baseTestPath, "../rev3-snap.db"), 0)); err != nil {
+		if err := etcdutil.RestoreSnapshot(r.logger, r.etcdConfig.RestoreConfig(filepath.Join(baseTestPath, "../rev3-snap.db"), 0)); err != nil {
 			return fmt.Errorf("dummy cluster data restore: %w", err)
 		}
-		if err := r.etcdRunner.StartExisting(r.envConfig.WriteEnv()); err != nil {
+		if err := r.etcdRunner.StartExisting(r.etcdConfig.WriteEnv()); err != nil {
 			return fmt.Errorf("dummy cluster: %w", err)
 		}
 	}
@@ -590,7 +590,7 @@ func memberClientURLs(t *testing.T, r *Runner) []string {
 	t.Helper()
 
 	var urls []string
-	if v, ok := r.envConfig.Env["ETCD_LISTEN_CLIENT_URLS"]; ok {
+	if v, ok := r.etcdConfig.Env["ETCD_LISTEN_CLIENT_URLS"]; ok {
 		for _, u := range strings.Split(v, ",") {
 			urls = append(urls, u)
 		}

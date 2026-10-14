@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/minio/minio-go/v7"
 	"github.com/randomcoww/etcd-wrapper/internal/tlsutil"
 	"github.com/stretchr/testify/assert"
 )

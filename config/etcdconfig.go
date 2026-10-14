@@ -10,10 +10,9 @@ import (
 
 	"github.com/randomcoww/etcd-wrapper/internal/tlsutil"
 	"go.etcd.io/etcd/etcdutl/v3/snapshot"
-	"go.uber.org/zap/zapcore"
 )
 
-type EnvConfig struct {
+type EtcdConfig struct {
 	Env                      map[string]string
 	InitialAdvertisePeerURLs []string
 	InitialCluster           map[string][]string
@@ -21,21 +20,13 @@ type EnvConfig struct {
 	PeerTLSConfig            *tls.Config
 }
 
-func (config *EnvConfig) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	enc.AddString("Name", config.Env["ETCD_NAME"])
-	enc.AddString("DataDir", config.Env["ETCD_DATA_DIR"])
-	enc.AddString("WalDir", config.Env["ETCD_WAL_DIR"])
-	enc.AddString("InitialAdvertisePeerURLs", fmt.Sprintf("%v", config.InitialAdvertisePeerURLs))
-	return nil
-}
-
-func LoadFromEnv() (*EnvConfig, error) {
+func LoadFromEnv() (*EtcdConfig, error) {
 	var (
 		err error
 		ok  bool
 	)
 
-	config := &EnvConfig{
+	config := &EtcdConfig{
 		Env:            make(map[string]string),
 		InitialCluster: make(map[string][]string),
 	}
@@ -144,7 +135,7 @@ func LoadFromEnv() (*EnvConfig, error) {
 	return config, nil
 }
 
-func (config *EnvConfig) ClusterPeerURLs() []string {
+func (config *EtcdConfig) ClusterPeerURLs() []string {
 	var peerURLs []string
 	for _, urls := range config.InitialCluster {
 		peerURLs = append(peerURLs, urls...)
@@ -153,7 +144,7 @@ func (config *EnvConfig) ClusterPeerURLs() []string {
 	return peerURLs
 }
 
-func (config *EnvConfig) InitialClusterEnv() string {
+func (config *EtcdConfig) InitialClusterEnv() string {
 	var initialClusterParts []string
 	for name, peerURLs := range config.InitialCluster {
 		for _, peerURL := range peerURLs {
@@ -164,11 +155,11 @@ func (config *EnvConfig) InitialClusterEnv() string {
 	return strings.Join(initialClusterParts, ",")
 }
 
-func (config *EnvConfig) InitialAdvertisePeerURLsEnv() string {
+func (config *EtcdConfig) InitialAdvertisePeerURLsEnv() string {
 	return strings.Join(config.InitialAdvertisePeerURLs, ",")
 }
 
-func (config *EnvConfig) WriteEnv() []string {
+func (config *EtcdConfig) WriteEnv() []string {
 	config.Env["ETCD_INITIAL_CLUSTER"] = config.InitialClusterEnv()
 	config.Env["ETCD_INITIAL_ADVERTISE_PEER_URLS"] = config.InitialAdvertisePeerURLsEnv()
 
@@ -180,7 +171,7 @@ func (config *EnvConfig) WriteEnv() []string {
 	return envs
 }
 
-func (config *EnvConfig) RestoreConfig(snapshotPath string, revisionBump uint64) snapshot.RestoreConfig {
+func (config *EtcdConfig) RestoreConfig(snapshotPath string, revisionBump uint64) snapshot.RestoreConfig {
 	r := snapshot.RestoreConfig{
 		Name:                config.Env["ETCD_NAME"],
 		OutputDataDir:       config.Env["ETCD_DATA_DIR"],

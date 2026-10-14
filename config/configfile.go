@@ -8,30 +8,24 @@ import (
 	"time"
 
 	"github.com/randomcoww/etcd-wrapper/internal/tlsutil"
-	"go.uber.org/zap/zapcore"
 	"gopkg.in/yaml.v3"
 )
 
 type YamlConfig struct {
-	CheckQuorumDelay      time.Duration `yaml:"checkQuorumDelay,omitempty"`
-	ClientTimeout         time.Duration `yaml:"clusterTimeout,omitempty"`
-	EtcdBinaryFile        string        `yaml:"etcdBinaryFile,omitempty"`
-	S3Endpoint            string        `yaml:"s3Endpoint"`
-	S3Region              string        `yaml:"s3Region,omitempty"`
-	S3Bucket              string        `yaml:"s3Bucket"`
-	S3TrustedCAs          []string      `yaml:"s3TrustedCAs,omitempty"`
-	S3AccessKeyID         string        `yaml:"s3AccessKeyID"`
-	S3SecretAccessKey     string        `yaml:"s3SecretAccessKey"`
-	S3TLSConfig           *tls.Config
-	SnapshotEncryptionKey string            `yaml:"snapshotEncryptionKey"`
-	GossipPeerURLs        map[string]string `yaml:"gossipPeerURLs"`
-}
-
-func (config *YamlConfig) MarshalLogObject(enc zapcore.ObjectEncoder) error {
-	enc.AddDuration("CheckQuorumDelay", config.CheckQuorumDelay)
-	enc.AddDuration("ClientTimeout", config.ClientTimeout)
-	enc.AddString("EtcdBinaryFile", config.EtcdBinaryFile)
-	return nil
+	CheckQuorumDelay       time.Duration `yaml:"checkQuorumDelay,omitempty"`
+	RestoreSnapshotTimeout time.Duration `yaml:"restoreSnapshotTimeout,omitempty"`
+	MemberTimeout          time.Duration `yaml:"memberTimeout,omitempty"`
+	EtcdBinaryFile         string        `yaml:"etcdBinaryFile,omitempty"`
+	S3Endpoint             string        `yaml:"s3Endpoint"`
+	S3Region               string        `yaml:"s3Region,omitempty"`
+	S3Bucket               string        `yaml:"s3Bucket"`
+	S3TrustedCAs           []string      `yaml:"s3TrustedCAs,omitempty"`
+	S3AccessKeyID          string        `yaml:"s3AccessKeyID"`
+	S3SecretAccessKey      string        `yaml:"s3SecretAccessKey"`
+	S3TLSConfig            *tls.Config
+	SnapshotObjectPrefix   string            `yaml:"snapshotObjectPrefix"`
+	SnapshotEncryptionKey  string            `yaml:"snapshotEncryptionKey"`
+	GossipPeerURLs         map[string]string `yaml:"gossipPeerURLs"`
 }
 
 func LoadConfigFile(path string) (*YamlConfig, error) {
@@ -40,11 +34,13 @@ func LoadConfigFile(path string) (*YamlConfig, error) {
 		return nil, fmt.Errorf("reading config file '%s': %w", path, err)
 	}
 	raw := &YamlConfig{
-		S3Endpoint:       "https://s3.amazonaws.com",
-		S3Region:         "us-east-1",
-		CheckQuorumDelay: 1 * time.Minute,
-		ClientTimeout:    8 * time.Second,
-		EtcdBinaryFile:   "/usr/local/bin/etcd",
+		S3Endpoint:             "https://s3.amazonaws.com",
+		S3Region:               "us-east-1",
+		CheckQuorumDelay:       16 * time.Second,
+		MemberTimeout:          8 * time.Second,
+		RestoreSnapshotTimeout: 8 * time.Second,
+		SnapshotObjectPrefix:   "etcd-snapshot-",
+		EtcdBinaryFile:         "/usr/local/bin/etcd",
 	}
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)

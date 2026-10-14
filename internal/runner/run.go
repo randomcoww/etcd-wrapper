@@ -33,11 +33,26 @@ type Runner struct {
 	restoreSnapshotTimeout time.Duration
 	memberTimeout          time.Duration
 	etcdRunner             etcdProcess
-	envConfig              *c.EnvConfig
+	etcdConfig             *c.EtcdConfig
 	s3Client               s3util.Client
-	objectPrefix           string
-	SnapshotEncryptionKey  string
+	snapshotObjectPrefix   string
+	snapshotEncryptionKey  string
 	restoreRevisionBump    uint64
+}
+
+func NewFromConfig(logger *zap.Logger, etcdRunner etcdProcess, s3Client s3util.Client, raw *c.YamlConfig, etcdConfig *c.EtcdConfig) *Runner {
+	return &Runner{
+		logger:                 logger,
+		checkQuorumTimeout:     raw.CheckQuorumDelay,
+		restoreSnapshotTimeout: raw.RestoreSnapshotTimeout,
+		memberTimeout:          raw.MemberTimeout,
+		etcdRunner:             etcdRunner,
+		etcdConfig:             etcdConfig,
+		s3Client:               s3Client,
+		snapshotObjectPrefix:   raw.SnapshotObjectPrefix,
+		snapshotEncryptionKey:  raw.SnapshotEncryptionKey,
+		restoreRevisionBump:    10000,
+	}
 }
 
 func (r *Runner) StartInit(ctx context.Context) (bool, error) {
@@ -73,7 +88,7 @@ func (r *Runner) StartLoop(ctx context.Context, start chan struct{}) error {
 
 		select {
 		case <-start:
-			return r.etcdRunner.StartNew(r.envConfig.WriteEnv())
+			return r.etcdRunner.StartNew(r.etcdConfig.WriteEnv())
 		case <-ctx.Done():
 			return nil
 		}
@@ -83,7 +98,7 @@ func (r *Runner) StartLoop(ctx context.Context, start chan struct{}) error {
 func (r *Runner) checkQuorumAndStart(ctx context.Context) (bool, error) {
 	peerClientCtx, cancel := context.WithTimeout(ctx, r.checkQuorumTimeout)
 	defer cancel()
-	client, err := etcdutil.NewClientFromPeers(peerClientCtx, r.logger, r.envConfig.ClusterPeerURLs(), r.envConfig.PeerTLSConfig, r.envConfig.ClientTLSConfig)
+	client, err := etcdutil.NewClientFromPeers(peerClientCtx, r.logger, r.etcdConfig.ClusterPeerURLs(), r.etcdConfig.PeerTLSConfig, r.etcdConfig.ClientTLSConfig)
 	if err == nil {
 		defer client.Close()
 		err = client.CheckQuorum(peerClientCtx)
@@ -112,7 +127,7 @@ func (r *Runner) startNoQuorum(ctx context.Context) (bool, error) {
 		}
 	}
 	r.logger.Info("start etcd existing")
-	if err := r.etcdRunner.StartExisting(r.envConfig.WriteEnv()); err != nil {
+	if err := r.etcdRunner.StartExisting(r.etcdConfig.WriteEnv()); err != nil {
 		return true, err
 	}
 	return true, nil
@@ -135,7 +150,7 @@ func (r *Runner) addMemberToQuorum(ctx context.Context, client etcdutil.EtcdClie
 	r.logger.Info("cleared local data")
 
 	r.logger.Info("start etcd existing")
-	return r.etcdRunner.StartExisting(r.envConfig.WriteEnv())
+	return r.etcdRunner.StartExisting(r.etcdConfig.WriteEnv())
 }
 
 func (r *Runner) replaceMember(ctx context.Context, client etcdutil.EtcdClient) error {
@@ -145,11 +160,11 @@ func (r *Runner) replaceMember(ctx context.Context, client etcdutil.EtcdClient) 
 	if err != nil {
 		return fmt.Errorf("list cluster members: %w", err)
 	}
-	localMember := findMemberInCluster(listResp, r.envConfig.Env["ETCD_NAME"], r.envConfig.InitialAdvertisePeerURLs)
+	localMember := findMemberInCluster(listResp, r.etcdConfig.Env["ETCD_NAME"], r.etcdConfig.InitialAdvertisePeerURLs)
 
 	// replace my node to join cluster
 	// if my node already exists, it needs to be replaced
-	if localMember != nil && len(listResp.GetMembers()) >= len(r.envConfig.InitialCluster) {
+	if localMember != nil && len(listResp.GetMembers()) >= len(r.etcdConfig.InitialCluster) {
 		r.logger.Info("remove local member", zap.Uint64("ID", localMember.GetID()))
 
 		memberRemoveCtx, cancel := context.WithTimeout(ctx, r.memberTimeout)
@@ -158,18 +173,18 @@ func (r *Runner) replaceMember(ctx context.Context, client etcdutil.EtcdClient) 
 		if err != nil {
 			return fmt.Errorf("remove cluster member %d: %w", localMember.GetID(), err)
 		}
-		localMember = findMemberInCluster(listResp, r.envConfig.Env["ETCD_NAME"], r.envConfig.InitialAdvertisePeerURLs)
+		localMember = findMemberInCluster(listResp, r.etcdConfig.Env["ETCD_NAME"], r.etcdConfig.InitialAdvertisePeerURLs)
 		r.logger.Info("removed local member")
 	}
 
-	if localMember == nil && len(listResp.GetMembers()) < len(r.envConfig.InitialCluster) {
+	if localMember == nil && len(listResp.GetMembers()) < len(r.etcdConfig.InitialCluster) {
 		memberAddCtx, cancel := context.WithTimeout(ctx, r.memberTimeout)
 		defer cancel()
-		listResp, err = client.MemberAdd(memberAddCtx, r.envConfig.InitialAdvertisePeerURLs)
+		listResp, err = client.MemberAdd(memberAddCtx, r.etcdConfig.InitialAdvertisePeerURLs)
 		if err != nil {
 			return fmt.Errorf("add member: %w", err)
 		}
-		localMember = findMemberInCluster(listResp, r.envConfig.Env["ETCD_NAME"], r.envConfig.InitialAdvertisePeerURLs)
+		localMember = findMemberInCluster(listResp, r.etcdConfig.Env["ETCD_NAME"], r.etcdConfig.InitialAdvertisePeerURLs)
 		r.logger.Info("added local member", zap.Uint64("ID", localMember.GetID()))
 	}
 	return nil
@@ -186,22 +201,22 @@ func (r *Runner) updateMembers(ctx context.Context, client etcdutil.EtcdClient) 
 	for _, member := range listResp.GetMembers() {
 		switch {
 		case member.GetID() == 0:
-		case member.GetName() == r.envConfig.Env["ETCD_NAME"], util.HasMatchingElement(member.GetPeerURLs(), r.envConfig.InitialAdvertisePeerURLs):
-			if !slices.Equal(member.GetPeerURLs(), r.envConfig.InitialAdvertisePeerURLs) {
+		case member.GetName() == r.etcdConfig.Env["ETCD_NAME"], util.HasMatchingElement(member.GetPeerURLs(), r.etcdConfig.InitialAdvertisePeerURLs):
+			if !slices.Equal(member.GetPeerURLs(), r.etcdConfig.InitialAdvertisePeerURLs) {
 
 				memberUpdateCtx, cancel := context.WithTimeout(ctx, r.memberTimeout)
 				defer cancel()
-				listResp, err = client.MemberUpdate(memberUpdateCtx, member.GetID(), r.envConfig.InitialAdvertisePeerURLs)
+				listResp, err = client.MemberUpdate(memberUpdateCtx, member.GetID(), r.etcdConfig.InitialAdvertisePeerURLs)
 				if err != nil {
 					return err
 				}
-				r.logger.Info("update local member", zap.Uint64("ID", member.GetID()), zap.String("peerURLs", fmt.Sprintf("%+v", r.envConfig.InitialAdvertisePeerURLs)))
+				r.logger.Info("update local member", zap.Uint64("ID", member.GetID()), zap.String("peerURLs", fmt.Sprintf("%+v", r.etcdConfig.InitialAdvertisePeerURLs)))
 			}
-			r.envConfig.InitialCluster[r.envConfig.Env["ETCD_NAME"]] = r.envConfig.InitialAdvertisePeerURLs
+			r.etcdConfig.InitialCluster[r.etcdConfig.Env["ETCD_NAME"]] = r.etcdConfig.InitialAdvertisePeerURLs
 
 		case member.GetName() == "":
 		default:
-			memberPeerURLs, ok := r.envConfig.InitialCluster[member.GetName()]
+			memberPeerURLs, ok := r.etcdConfig.InitialCluster[member.GetName()]
 			if !ok {
 				break
 			}
@@ -226,7 +241,7 @@ func (r *Runner) updateMembers(ctx context.Context, client etcdutil.EtcdClient) 
 				if err != nil {
 					return err
 				}
-				r.envConfig.InitialCluster[member.GetName()] = newMemberPeerURLs
+				r.etcdConfig.InitialCluster[member.GetName()] = newMemberPeerURLs
 				r.logger.Info("update member", zap.Uint64("ID", member.GetID()), zap.String("peerURLs", fmt.Sprintf("%+v", newMemberPeerURLs)))
 			}
 		}
@@ -235,10 +250,10 @@ func (r *Runner) updateMembers(ctx context.Context, client etcdutil.EtcdClient) 
 }
 
 func (r *Runner) clearLocalData() error {
-	if err := removeDir(r.envConfig.Env["ETCD_DATA_DIR"]); err != nil {
+	if err := removeDir(r.etcdConfig.Env["ETCD_DATA_DIR"]); err != nil {
 		return fmt.Errorf("remove data dir: %w", err)
 	}
-	if err := removeDir(r.envConfig.Env["ETCD_WAL_DIR"]); err != nil {
+	if err := removeDir(r.etcdConfig.Env["ETCD_WAL_DIR"]); err != nil {
 		return fmt.Errorf("remove data dir: %w", err)
 	}
 	r.logger.Info("cleaned out existing data")
@@ -246,7 +261,7 @@ func (r *Runner) clearLocalData() error {
 }
 
 func (r *Runner) getLocalRevision() (int64, error) {
-	revision, err := etcdutil.GetDataRevision(r.envConfig.Env["ETCD_DATA_DIR"], r.logger)
+	revision, err := etcdutil.GetDataRevision(r.etcdConfig.Env["ETCD_DATA_DIR"], r.logger)
 	if err != nil {
 		r.logger.Error("get local data revision", zap.Error(err))
 		if err := r.clearLocalData(); err != nil {
@@ -275,7 +290,7 @@ func (r *Runner) restoreSnapshot(ctx context.Context) (int64, error) {
 	if !ok {
 		return defaultRevision, fmt.Errorf("verify backup bucket")
 	}
-	ok, err = snapshot.Restore(restoreSnapshotCtx, r.logger, r.s3Client, r.objectPrefix, r.envConfig.RestoreConfig("", r.restoreRevisionBump), r.SnapshotEncryptionKey)
+	ok, err = snapshot.Restore(restoreSnapshotCtx, r.logger, r.s3Client, r.snapshotObjectPrefix, r.etcdConfig.RestoreConfig("", r.restoreRevisionBump), r.snapshotEncryptionKey)
 	if err != nil {
 		return defaultRevision, fmt.Errorf("restore snapshot: %w", err)
 	}
