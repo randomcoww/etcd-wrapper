@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/minio/minio-go/v7"
+	"github.com/randomcoww/etcd-wrapper/internal/tlsutil"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -25,7 +26,11 @@ const (
 )
 
 func TestS3Client(t *testing.T) {
-	client, err := NewClient("https://127.0.0.1:9000", "us-east-1", minioBucket, minioUser, minioPassword, []string{filepath.Join(baseTestPath, "minio", "certs", "CAs", "ca.crt")})
+	tlsConfig, err := tlsutil.BuildTLSCAConfig([]string{filepath.Join(baseTestPath, "minio", "certs", "CAs", "ca.crt")})
+	if err != nil {
+		t.Fatalf("TLS config: %v", err)
+	}
+	client, err := NewClient("127.0.0.1:9000", "us-east-1", minioBucket, minioUser, minioPassword, tlsConfig)
 	assert.NoError(t, err)
 
 	clientCtx, cancel := context.WithTimeout(context.Background(), 8*time.Second)

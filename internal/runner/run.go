@@ -40,7 +40,7 @@ type Runner struct {
 	restoreRevisionBump    uint64
 }
 
-func (r *Runner) init(ctx context.Context) (bool, error) {
+func (r *Runner) StartInit(ctx context.Context) (bool, error) {
 	ok, err := r.checkQuorumAndStart(ctx)
 	if err != nil {
 		return false, err
@@ -60,7 +60,7 @@ func (r *Runner) init(ctx context.Context) (bool, error) {
 	return false, nil
 }
 
-func (r *Runner) loop(ctx context.Context, start chan struct{}) error {
+func (r *Runner) StartLoop(ctx context.Context, start chan struct{}) error {
 	for {
 		ok, err := r.checkQuorumAndStart(ctx)
 		if err != nil {

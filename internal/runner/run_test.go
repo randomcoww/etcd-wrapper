@@ -95,7 +95,7 @@ func TestCreateFromRestore(t *testing.T) {
 		c, cancel := context.WithTimeout(ctx, time.Duration(8*time.Second))
 		defer cancel()
 
-		ok, err := runner.init(c)
+		ok, err := runner.StartInit(c)
 		if err != nil {
 			t.Fatal("call etcd runner: %w", err)
 		}
@@ -205,7 +205,7 @@ func TestReplaceMembers(t *testing.T) {
 
 		t.Logf("starting %s", runner.envConfig.Env["ETCD_NAME"])
 
-		ok, err := runner.init(c)
+		ok, err := runner.StartInit(c)
 		if err != nil {
 			t.Fatal("call etcd runner: %w", err)
 		}
@@ -337,7 +337,7 @@ func TestRollingMemberReplace(t *testing.T) {
 		c, cancel := context.WithTimeout(ctx, time.Duration(8*time.Second))
 		defer cancel()
 
-		ok, err := runner.init(c)
+		ok, err := runner.StartInit(c)
 		if err != nil {
 			t.Fatal("call etcd runner: %w", err)
 		}
@@ -426,14 +426,14 @@ func TestLoopWithGossip(t *testing.T) {
 		runners = append(runners, r)
 
 		startCh := make(chan struct{})
-		ok, err := r.init(ctx)
+		ok, err := r.StartInit(ctx)
 		if err != nil {
 			t.Fatal("init: %w", err)
 		}
 		if ok {
 			t.Fatal("unexpected init end")
 		}
-		go r.loop(ctx, startCh)
+		go r.StartLoop(ctx, startCh)
 		gossip, err := g.NewNode(r.logger, r.envConfig.Env["ETCD_NAME"], defaultRevision, gossipPeerURLs, r.envConfig.PeerTLSConfig, startCh)
 		if err != nil {
 			t.Fatal("create gossip: %w", err)

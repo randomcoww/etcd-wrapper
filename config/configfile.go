@@ -1,10 +1,13 @@
 package config
 
 import (
+	"crypto/tls"
 	"fmt"
+	"net/url"
 	"os"
 	"time"
 
+	"github.com/randomcoww/etcd-wrapper/internal/tlsutil"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/yaml.v3"
 )
@@ -19,7 +22,9 @@ type YamlConfig struct {
 	S3TrustedCAs          []string      `yaml:"s3TrustedCAs,omitempty"`
 	S3AccessKeyID         string        `yaml:"s3AccessKeyID"`
 	S3SecretAccessKey     string        `yaml:"s3SecretAccessKey"`
-	SnapshotEncryptionKey string        `yaml:"snapshotEncryptionKey"`
+	S3TLSConfig           *tls.Config
+	SnapshotEncryptionKey string            `yaml:"snapshotEncryptionKey"`
+	GossipPeerURLs        map[string]string `yaml:"gossipPeerURLs"`
 }
 
 func (config *YamlConfig) MarshalLogObject(enc zapcore.ObjectEncoder) error {
@@ -53,5 +58,29 @@ func LoadConfigFile(path string) (*YamlConfig, error) {
 		return nil, fmt.Errorf("etcd binary file '%s' is not a regular file", raw.EtcdBinaryFile)
 	}
 
+	if raw.S3Bucket == "" {
+		return nil, fmt.Errorf("missing s3Bucket")
+	}
+	u, err := url.Parse(raw.S3Endpoint)
+	if err != nil {
+		return nil, fmt.Errorf("parse advertise url: %w", err)
+	}
+	if u.Scheme != "https" {
+		return nil, fmt.Errorf("S3 URL scheme must be HTTPS")
+	}
+	raw.S3Endpoint = u.Host
+
+	raw.S3TLSConfig, err = tlsutil.BuildTLSCAConfig(raw.S3TrustedCAs)
+	if err != nil {
+		return nil, fmt.Errorf("building S3 TLS config: %w", err)
+	}
+
+	for node, peerURL := range raw.GossipPeerURLs {
+		u, err := url.Parse(peerURL)
+		if err != nil {
+			return nil, fmt.Errorf("parse peer URL: %w", err)
+		}
+		raw.GossipPeerURLs[node] = fmt.Sprintf("%s://%s", u.Scheme, u.Host)
+	}
 	return raw, nil
 }

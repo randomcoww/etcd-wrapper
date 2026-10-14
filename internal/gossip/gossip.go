@@ -141,7 +141,6 @@ func (n *Node) StartLoop() error {
 		}
 		n.round()
 	}
-	return nil
 }
 
 func (n *Node) round() {

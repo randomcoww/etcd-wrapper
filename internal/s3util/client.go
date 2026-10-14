@@ -2,16 +2,15 @@ package s3util
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"time"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
-	"github.com/randomcoww/etcd-wrapper/internal/tlsutil"
 )
 
 type s3client struct {
@@ -25,22 +24,7 @@ type Client interface {
 	List(context.Context, string) ([]string, map[string]error)
 }
 
-func NewClient(endpoint, region, bucket, accessKeyID, secretAccessKey string, trustedCAs []string) (*s3client, error) {
-	if bucket == "" {
-		return nil, fmt.Errorf("missing s3Bucket")
-	}
-	u, err := url.Parse(endpoint)
-	if err != nil {
-		return nil, fmt.Errorf("parse advertise url: %w", err)
-	}
-	if u.Scheme != "https" {
-		return nil, fmt.Errorf("S3 URL scheme must be HTTPS")
-	}
-	tlsConfig, err := tlsutil.BuildTLSCAConfig(trustedCAs)
-	if err != nil {
-		return nil, fmt.Errorf("building S3 TLS config: %w", err)
-	}
-
+func NewClient(endpoint, region, bucket, accessKeyID, secretAccessKey string, tlsConfig *tls.Config) (*s3client, error) {
 	opts := &minio.Options{
 		Creds:  credentials.NewStaticV4(accessKeyID, secretAccessKey, ""),
 		Secure: true,
@@ -55,7 +39,7 @@ func NewClient(endpoint, region, bucket, accessKeyID, secretAccessKey string, tr
 			TLSClientConfig:     tlsConfig,
 		},
 	}
-	client, err := minio.New(u.Host, opts)
+	client, err := minio.New(endpoint, opts)
 	if err != nil {
 		return nil, fmt.Errorf("creating S3 client: %w", err)
 	}
