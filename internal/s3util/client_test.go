@@ -36,26 +36,37 @@ func TestS3Client(t *testing.T) {
 	clientCtx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 
-	// --- upload some test data ---
+	// --- upload test data ---
 
-	for k, v := range map[string]string{
-		"snap-1":  "snap-1-val",
-		"snap-2":  "snap-2-val",
-		"snap-3":  "",
-		"other-1": "other-1-val",
-	} {
-		if _, err := uploadTestData(t, client.client, minioBucket, clientCtx, k, bytes.NewBufferString(v)); err != nil {
-			t.Fatalf("Create test data: %v", err)
-		}
-	}
+	b, err := client.Upload(clientCtx, "snap-1", io.NopCloser(bytes.NewBufferString("snap-1-val")))
+	assert.NoError(t, err)
+	assert.Equal(t, int64(10), b)
+
+	b, err = client.Upload(clientCtx, "snap-2", io.NopCloser(bytes.NewBufferString("snap-2-val")))
+	assert.NoError(t, err)
+	assert.Equal(t, int64(10), b)
+
+	b, err = client.Upload(clientCtx, "snap-3", io.NopCloser(bytes.NewBufferString("")))
+	assert.NoError(t, err)
+	assert.Equal(t, int64(0), b)
+
+	b, err = client.Upload(clientCtx, "other-1", io.NopCloser(bytes.NewBufferString("other-1-val")))
+	assert.NoError(t, err)
+	assert.Equal(t, int64(11), b)
+
+	// --- verify ---
 
 	ok, err := client.VerifyBucket(clientCtx)
 	assert.NoError(t, err)
 	assert.True(t, ok)
 
+	// --- list objects ---
+
 	list, errors := client.List(clientCtx, "snap-")
 	assert.Equal(t, []string{"snap-1", "snap-2"}, list)
 	assert.Equal(t, map[string]error{"snap-3": fmt.Errorf("object size is 0")}, errors)
+
+	// --- get objects ---
 
 	dataPath := t.TempDir()
 	snapshotFile, _ := os.CreateTemp(dataPath, "snapshot-restore-*.db")
@@ -77,25 +88,17 @@ func TestS3Client(t *testing.T) {
 		t.Fatal("test snapshot file missing: %w", err)
 	}
 	assert.Equal(t, "snap-2-val", string(content))
-}
 
-// --- helper ---
+	// --- remove objects and verify list ---
 
-func uploadTestData(t *testing.T, client *minio.Client, bucket string, ctx context.Context, key string, reader io.Reader) (int64, error) {
-	t.Helper()
+	err = client.Remove(clientCtx, []string{"snap-1", "snap-2", "snap-3"})
+	assert.NoError(t, err)
 
-	buf := &bytes.Buffer{}
-	size, err := io.Copy(buf, reader)
-	if err != nil {
-		return size, fmt.Errorf("upload: failed to create buffer: %w", err)
-	}
-	if _, err = client.PutObject(ctx, bucket, key, buf, size, minio.PutObjectOptions{
-		AutoChecksum: minio.ChecksumCRC32,
-	}); err != nil {
-		if cleanupErr := client.RemoveIncompleteUpload(ctx, bucket, key); cleanupErr != nil {
-			return size, fmt.Errorf("upload: failed to put object: %w\n  failed to cleanup incomplete upload: %w", err, cleanupErr)
-		}
-		return size, fmt.Errorf("upload: failed to put object: %w", err)
-	}
-	return size, nil
+	list, errors = client.List(clientCtx, "snap-")
+	assert.Equal(t, []string{}, list)
+	assert.Equal(t, map[string]error{}, errors)
+
+	list, errors = client.List(clientCtx, "other-")
+	assert.Equal(t, []string{"other-1"}, list)
+	assert.Equal(t, map[string]error{}, errors)
 }

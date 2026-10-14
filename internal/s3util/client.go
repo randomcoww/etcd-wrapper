@@ -1,8 +1,10 @@
 package s3util
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -67,12 +69,51 @@ func (c *s3client) Download(ctx context.Context, key string) (io.ReadCloser, boo
 	return object, true, nil
 }
 
+func (c *s3client) Upload(ctx context.Context, key string, reader io.ReadCloser) (int64, error) {
+	defer reader.Close()
+
+	buf := &bytes.Buffer{}
+	size, err := io.Copy(buf, reader)
+	if err != nil {
+		return size, fmt.Errorf("put buffer: %w", err)
+	}
+	if _, err := c.client.PutObject(ctx, c.bucket, key, buf, size, minio.PutObjectOptions{
+		AutoChecksum: minio.ChecksumCRC32,
+	}); err != nil {
+		removeIncompleteErr := c.client.RemoveIncompleteUpload(ctx, c.bucket, key)
+		if removeIncompleteErr != nil {
+			return size, fmt.Errorf("put object: %w", errors.Join(err, removeIncompleteErr))
+		}
+		return size, fmt.Errorf("put object: %w", err)
+	}
+	return size, nil
+}
+
+func (c *s3client) Remove(ctx context.Context, keys []string) error {
+	objectsCh := make(chan minio.ObjectInfo)
+	go func() {
+		defer close(objectsCh)
+		for _, k := range keys {
+			objectsCh <- minio.ObjectInfo{
+				Key: k,
+			}
+		}
+	}()
+
+	var errs []error
+	errorCh := c.client.RemoveObjects(ctx, c.bucket, objectsCh, minio.RemoveObjectsOptions{})
+	for e := range errorCh {
+		errs = append(errs, e.Err)
+	}
+	return errors.Join(errs...)
+}
+
 func (c *s3client) List(ctx context.Context, prefix string) ([]string, map[string]error) {
 	objectCh := c.client.ListObjects(ctx, c.bucket, minio.ListObjectsOptions{
 		Prefix:    prefix,
 		Recursive: true,
 	})
-	var keys []string
+	keys := []string{}
 	errors := make(map[string]error)
 
 	for object := range objectCh {
