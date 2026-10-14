@@ -16,9 +16,8 @@ import (
 	"go.uber.org/zap"
 )
 
-var (
-	intervalDuration time.Duration = 4 * time.Second
-	defaultRevision  int64         = 1
+const (
+	defaultRevision int64 = 1
 )
 
 type etcdProcess interface {
@@ -29,73 +28,79 @@ type etcdProcess interface {
 }
 
 type Runner struct {
-	logger                *zap.Logger
-	checkQuorumDelay      time.Duration
-	clientTimeout         time.Duration
-	etcdRunner            etcdProcess
-	envConfig             *c.EnvConfig
-	s3Client              s3util.Client
-	objectPrefix          string
-	SnapshotEncryptionKey string
+	logger                 *zap.Logger
+	checkQuorumTimeout     time.Duration
+	addQuorumMemberTimeout time.Duration
+	restoreSnapshotTimeout time.Duration
+	etcdRunner             etcdProcess
+	envConfig              *c.EnvConfig
+	s3Client               s3util.Client
+	objectPrefix           string
+	SnapshotEncryptionKey  string
+	restoreRevisionBump    uint64
 }
 
-func (r *Runner) init(ctx context.Context, revisionBump uint64) (bool, error) {
-	client, err := etcdutil.NewClientFromPeers(ctx, r.logger, r.envConfig.ClusterPeerURLs(), r.envConfig.PeerTLSConfig, r.envConfig.ClientTLSConfig)
+func (r *Runner) init(ctx context.Context) (bool, error) {
+	peerClientCtx, cancel := context.WithTimeout(ctx, r.checkQuorumTimeout)
+	defer cancel()
+	client, err := etcdutil.NewClientFromPeers(peerClientCtx, r.logger, r.envConfig.ClusterPeerURLs(), r.envConfig.PeerTLSConfig, r.envConfig.ClientTLSConfig)
 	if err == nil {
 		defer client.Close()
-
-		c, cancel := context.WithTimeout(ctx, 2*time.Second)
-		defer cancel()
-		err = client.CheckQuorum(c)
+		err = client.CheckQuorum(peerClientCtx)
+		if err == nil {
+			addQuorumMemberCtx, cancel := context.WithTimeout(ctx, r.addQuorumMemberTimeout)
+			defer cancel()
+			if err := r.addMemberToQuorum(addQuorumMemberCtx, client); err != nil {
+				return false, err
+			}
+			return true, nil
+		}
 	}
+	r.logger.Info("quorum not found")
+	revision, err := r.getLocalRevision()
 	if err != nil {
-		r.logger.Info("quorum not found")
-		revision, err := r.getLocalRevision()
+		return false, fmt.Errorf("init cluster: %w", err)
+	}
+	if revision == defaultRevision {
+		restoreSnapshotCtx, cancel := context.WithTimeout(ctx, r.restoreSnapshotTimeout)
+		defer cancel()
+		revision, err = r.restoreSnapshot(restoreSnapshotCtx)
 		if err != nil {
 			return false, fmt.Errorf("init cluster: %w", err)
 		}
 		if revision == defaultRevision {
-			revision, err = r.restoreSnapshot(ctx)
-			if err != nil {
-				return false, fmt.Errorf("init cluster: %w", err)
-			}
-			if revision == defaultRevision {
-				return false, nil
-			}
+			return false, nil
 		}
-		r.logger.Info("start etcd existing")
-		if err := r.etcdRunner.StartExisting(r.envConfig.WriteEnv()); err != nil {
-			return false, err
-		}
-		return true, nil
 	}
-	if err := r.addMemberToQuorum(ctx, client); err != nil {
+	r.logger.Info("start etcd existing")
+	if err := r.etcdRunner.StartExisting(r.envConfig.WriteEnv()); err != nil {
 		return false, err
 	}
 	return true, nil
 }
 
-func (r *Runner) loop(ctx context.Context) error {
-	ticker := time.NewTicker(intervalDuration)
-	defer ticker.Stop()
-
+func (r *Runner) loop(ctx context.Context, start chan struct{}) error {
 	for {
-		select {
-		case <-ticker.C:
-			client, err := etcdutil.NewClientFromPeers(ctx, r.logger, r.envConfig.ClusterPeerURLs(), r.envConfig.PeerTLSConfig, r.envConfig.ClientTLSConfig)
+		peerClientCtx, cancel := context.WithTimeout(ctx, r.checkQuorumTimeout)
+		defer cancel()
+		client, err := etcdutil.NewClientFromPeers(peerClientCtx, r.logger, r.envConfig.ClusterPeerURLs(), r.envConfig.PeerTLSConfig, r.envConfig.ClientTLSConfig)
+		if err == nil {
+			defer client.Close()
+			err = client.CheckQuorum(peerClientCtx)
 			if err == nil {
-				defer client.Close()
-
-				c, cancel := context.WithTimeout(ctx, 2*time.Second)
+				addQuorumMemberCtx, cancel := context.WithTimeout(ctx, r.addQuorumMemberTimeout)
 				defer cancel()
-				err = client.CheckQuorum(c)
+				if err := r.addMemberToQuorum(addQuorumMemberCtx, client); err != nil {
+					return err
+				}
+				return nil
 			}
+		}
+		r.logger.Info("quorum not found")
 
-			if err != nil {
-				r.logger.Info("quorum not found")
-				continue
-			}
-			return r.addMemberToQuorum(ctx, client)
+		select {
+		case <-start:
+			return r.etcdRunner.StartNew(r.envConfig.WriteEnv())
 		case <-ctx.Done():
 			return nil
 		}
@@ -242,7 +247,7 @@ func (r *Runner) restoreSnapshot(ctx context.Context) (int64, error) {
 	if !ok {
 		return defaultRevision, fmt.Errorf("verify backup bucket")
 	}
-	ok, err = snapshot.Restore(ctx, r.logger, r.s3Client, r.objectPrefix, r.envConfig.RestoreConfig("", 10000), r.SnapshotEncryptionKey)
+	ok, err = snapshot.Restore(ctx, r.logger, r.s3Client, r.objectPrefix, r.envConfig.RestoreConfig("", r.restoreRevisionBump), r.SnapshotEncryptionKey)
 	if err != nil {
 		return defaultRevision, fmt.Errorf("restore snapshot: %w", err)
 	}

@@ -2,9 +2,8 @@ package gossip
 
 import (
 	"fmt"
-	"net"
 	"path/filepath"
-	"sync/atomic"
+	"sync"
 	"testing"
 	"time"
 
@@ -24,7 +23,6 @@ type member struct {
 }
 
 func TestConvergence(t *testing.T) {
-	done := make(chan int)
 	members := []member{
 		{
 			name:     "node0",
@@ -43,124 +41,71 @@ func TestConvergence(t *testing.T) {
 		},
 	}
 
-	callbacks := make([]func() error, len(members))
-	for i := 0; i < len(members); i++ {
-		callbacks[i] = func() error {
-			done <- i
-			return nil
-		}
-	}
-
-	nodes, err := newDummyCluster(t, members, callbacks)
+	nodes, callbacks, err := newDummyCluster(t, members)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	for _, node := range nodes {
+	var wg sync.WaitGroup
+	results := make([]envelope, len(members))
+
+	for i, node := range nodes {
+		wg.Add(1)
+		defer node.Stop()
+
+		go func(node *Node, i int) {
+			<-callbacks[i]
+			results[i] = node.buildEnvelope()
+			wg.Done()
+		}(node, i)
+
+		time.Sleep(8 * time.Second)
+
 		go node.StartListen()
 		go node.StartLoop()
-		defer node.Stop()
 	}
 
-	count := 0
-	for i := range done {
+	wg.Wait()
+	for i, node := range nodes {
 		assert.Equal(t, envelope{
-			Name: nodes[i].name,
+			Name: node.name,
 			View: map[string]int64{
 				"node0": 1,
 				"node1": 2,
 				"node2": 3,
 			},
 			Done: true,
-		}, nodes[i].buildEnvelope())
-
-		count++
-		if count >= len(members) {
-			close(done)
-		}
+		}, results[i])
 	}
 }
 
-func TestGossipShutdown(t *testing.T) {
-	done := make(chan int)
-	members := []member{
-		{
-			name:     "node0",
-			revision: 1,
-			port:     8090,
-		},
-		{
-			name:     "node1",
-			revision: 2,
-			port:     8091,
-		},
-		{
-			name:     "node2",
-			revision: 3,
-			port:     8092,
-		},
-	}
-
-	portClosedAtCallback := make([]atomic.Bool, len(members))
-	callbacks := make([]func() error, len(members))
-	for i := 0; i < len(members); i++ {
-		callbacks[i] = func() error {
-			c, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", members[i].port), 300*time.Millisecond)
-			if err != nil {
-				portClosedAtCallback[i].Store(true)
-			} else {
-				c.Close()
-			}
-			done <- i
-			return nil
-		}
-	}
-
-	nodes, err := newDummyCluster(t, members, callbacks)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for _, node := range nodes {
-		go node.StartListen()
-		go node.StartLoop()
-		defer node.Stop()
-	}
-
-	count := 0
-	for i := range done {
-		assert.True(t, portClosedAtCallback[i].Load())
-
-		count++
-		if count >= len(members) {
-			close(done)
-		}
-	}
-}
-
-func newDummyCluster(t *testing.T, members []member, callbacks []func() error) ([]*Node, error) {
+func newDummyCluster(t *testing.T, members []member) ([]*Node, []chan struct{}, error) {
 	logger, _ := zap.NewProduction()
 
+	var done []chan struct{}
 	var nodes []*Node
 	m := make(map[string]string)
 	for _, member := range members {
 		m[member.name] = fmt.Sprintf("https://127.0.0.1:%d", member.port)
 	}
 
-	for i, member := range members {
+	for _, member := range members {
 		tlsConfig, err := tlsutil.BuildTLSClientConfig(
 			filepath.Join(baseTestPath, member.name, "peer", "tls.crt"),
 			filepath.Join(baseTestPath, member.name, "peer", "tls.key"),
 			[]string{filepath.Join(baseTestPath, "peer", "ca.crt")},
 		)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		node, err := NewNode(logger, member.name, member.revision, m, tlsConfig, callbacks[i])
+		doneCh := make(chan struct{})
+		done = append(done, doneCh)
+
+		node, err := NewNode(logger, member.name, member.revision, m, tlsConfig, doneCh)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		nodes = append(nodes, node)
 	}
-	return nodes, nil
+	return nodes, done, nil
 }

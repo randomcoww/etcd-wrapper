@@ -20,9 +20,9 @@ import (
 	"go.uber.org/zap"
 )
 
-var (
-	reqTimeout       time.Duration = 2 * time.Second
-	intervalDuration time.Duration = 1 * time.Second
+const (
+	loopInterval time.Duration = 1 * time.Second
+	closeTimeout time.Duration = 2 * time.Second
 )
 
 type Peer struct {
@@ -48,27 +48,24 @@ type Node struct {
 	listener  net.Listener
 	server    *http.Server
 
-	mu          sync.Mutex
-	stopOnce    sync.Once
-	manual      atomic.Bool
-	fired       atomic.Bool
-	onConverged func() error
-
+	mu         sync.Mutex
+	stopOnce   sync.Once
+	done       chan struct{}
 	stop       chan struct{}
 	serverDone chan struct{}
 	loopDone   chan struct{}
 }
 
-func NewNode(logger *zap.Logger, name string, revision int64, peerURLsMap map[string]string, tlsConfig *tls.Config, handler func() error) (*Node, error) {
+func NewNode(logger *zap.Logger, name string, revision int64, peerURLsMap map[string]string, tlsConfig *tls.Config, done chan struct{}) (*Node, error) {
 	n := &Node{
-		logger:      logger,
-		name:        name,
-		revision:    revision,
-		tlsConfig:   tlsConfig,
-		onConverged: handler,
-		stop:        make(chan struct{}),
-		serverDone:  make(chan struct{}),
-		loopDone:    make(chan struct{}),
+		logger:     logger,
+		name:       name,
+		revision:   revision,
+		tlsConfig:  tlsConfig,
+		stop:       make(chan struct{}),
+		serverDone: make(chan struct{}),
+		loopDone:   make(chan struct{}),
+		done:       done,
 	}
 
 	for peerName, peerURL := range peerURLsMap {
@@ -92,7 +89,7 @@ func NewNode(logger *zap.Logger, name string, revision int64, peerURLsMap map[st
 					TLSClientConfig:   tlsConfig,
 					ForceAttemptHTTP2: false, // keep-alive h2 connections stall Shutdown
 				},
-				Timeout: reqTimeout,
+				Timeout: 3 * time.Second,
 			},
 		})
 	}
@@ -121,9 +118,10 @@ func (n *Node) StartListen() {
 
 func (n *Node) StartLoop() error {
 	defer close(n.loopDone)
+	defer close(n.done)
 	n.logger.Info("start gossip loop", zap.String("node", n.name))
 
-	ticker := time.NewTicker(intervalDuration)
+	ticker := time.NewTicker(loopInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -135,34 +133,24 @@ func (n *Node) StartLoop() error {
 
 		if n.converged() && n.verifyDone() {
 			n.closeGossip()
-			n.logger.Info("all nodes responded; gossip fully stopped")
-			if !n.manual.Load() && n.fired.CompareAndSwap(false, true) {
-				if err := n.onConverged(); err != nil {
-					return err
-				}
+			select {
+			case n.done <- struct{}{}:
+				n.logger.Info("all nodes responded; gossip fully stopped", zap.String("node", n.name))
 			}
 			return nil
 		}
-		if err := n.round(); err != nil {
-			n.logger.Error("round", zap.Error(err))
-			return err
-		}
+		n.round()
 	}
 	return nil
 }
 
-func (n *Node) round() error {
+func (n *Node) round() {
 	peer := n.peers[rand.IntN(len(n.peers))]
 	reply, err := n.push(peer)
 	if err != nil {
-		if errors.Is(err, syscall.ECONNREFUSED) {
-			peer.remoteDone.Store(true)
-			return nil
-		}
-		return fmt.Errorf("gossip round failed: %w", err)
+		return
 	}
 	n.mergeEnvelope(reply)
-	return nil
 }
 
 func (n *Node) verifyDone() bool {
@@ -196,7 +184,7 @@ func (n *Node) verifyDone() bool {
 func (n *Node) closeGossip() {
 	n.stopOnce.Do(func() {
 		close(n.stop) // ends the gossip loop
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), closeTimeout)
 		defer cancel()
 		_ = n.server.Shutdown(ctx) // graceful; Shutdown also closes the listener
 		_ = n.listener.Close()     // belt-and-braces: guarantee the port is gone
@@ -211,7 +199,7 @@ func (n *Node) push(peer *Peer) (envelope, error) {
 	if err != nil {
 		return reply, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), intervalDuration)
+	ctx, cancel := context.WithTimeout(context.Background(), loopInterval)
 	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, peer.url, bytes.NewReader(body))
 	if err != nil {
@@ -293,10 +281,9 @@ func (n *Node) converged() bool {
 }
 
 func (n *Node) Stop() {
-	n.manual.Store(true)
 	n.closeGossip()
 	select {
 	case <-n.loopDone:
-	case <-time.After(2 * time.Second):
+	case <-time.After(closeTimeout):
 	}
 }

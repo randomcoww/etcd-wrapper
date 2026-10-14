@@ -11,6 +11,7 @@ import (
 	c "github.com/randomcoww/etcd-wrapper/config"
 	"github.com/randomcoww/etcd-wrapper/internal/etcd"
 	"github.com/randomcoww/etcd-wrapper/internal/etcdutil"
+	g "github.com/randomcoww/etcd-wrapper/internal/gossip"
 	"github.com/randomcoww/etcd-wrapper/internal/tlsutil"
 	"github.com/randomcoww/etcd-wrapper/s3test"
 	"github.com/stretchr/testify/assert"
@@ -27,6 +28,7 @@ type member struct {
 	clientPort  int
 	peerPort    int
 	metricsPort int
+	gossipPort  int
 }
 
 func TestCreateFromRestore(t *testing.T) {
@@ -73,9 +75,10 @@ func TestCreateFromRestore(t *testing.T) {
 	var runners []*Runner
 	for _, config := range configs {
 		runner := &Runner{
-			logger:           logger,
-			checkQuorumDelay: 8 * time.Second,
-			clientTimeout:    4 * time.Second,
+			logger:                 logger,
+			checkQuorumTimeout:     8 * time.Second,
+			addQuorumMemberTimeout: 8 * time.Second,
+			restoreSnapshotTimeout: 2 * time.Second,
 			etcdRunner: &etcd.Fork{
 				Ctx:        ctx,
 				EtcdBinary: "/etcd/usr/local/bin/etcd",
@@ -92,7 +95,7 @@ func TestCreateFromRestore(t *testing.T) {
 		c, cancel := context.WithTimeout(ctx, time.Duration(8*time.Second))
 		defer cancel()
 
-		ok, err := runner.init(c, 10000)
+		ok, err := runner.init(c)
 		if err != nil {
 			t.Fatal("call etcd runner: %w", err)
 		}
@@ -159,9 +162,10 @@ func TestReplaceMembers(t *testing.T) {
 	var runners []*Runner
 	for _, config := range configs {
 		runner := &Runner{
-			logger:           logger,
-			checkQuorumDelay: 8 * time.Second,
-			clientTimeout:    4 * time.Second,
+			logger:                 logger,
+			checkQuorumTimeout:     8 * time.Second,
+			addQuorumMemberTimeout: 8 * time.Second,
+			restoreSnapshotTimeout: 2 * time.Second,
 			etcdRunner: &etcd.Fork{
 				Ctx:        ctx,
 				EtcdBinary: "/etcd/usr/local/bin/etcd",
@@ -201,7 +205,7 @@ func TestReplaceMembers(t *testing.T) {
 
 		t.Logf("starting %s", runner.envConfig.Env["ETCD_NAME"])
 
-		ok, err := runner.init(c, 10000)
+		ok, err := runner.init(c)
 		if err != nil {
 			t.Fatal("call etcd runner: %w", err)
 		}
@@ -293,9 +297,10 @@ func TestRollingMemberReplace(t *testing.T) {
 	var runners []*Runner
 	for _, config := range configs {
 		runner := &Runner{
-			logger:           logger,
-			checkQuorumDelay: 8 * time.Second,
-			clientTimeout:    4 * time.Second,
+			logger:                 logger,
+			checkQuorumTimeout:     8 * time.Second,
+			addQuorumMemberTimeout: 8 * time.Second,
+			restoreSnapshotTimeout: 2 * time.Second,
 			etcdRunner: &etcd.Fork{
 				Ctx:        ctx,
 				EtcdBinary: "/etcd/usr/local/bin/etcd",
@@ -332,7 +337,7 @@ func TestRollingMemberReplace(t *testing.T) {
 		c, cancel := context.WithTimeout(ctx, time.Duration(8*time.Second))
 		defer cancel()
 
-		ok, err := runner.init(c, 10000)
+		ok, err := runner.init(c)
 		if err != nil {
 			t.Fatal("call etcd runner: %w", err)
 		}
@@ -355,7 +360,7 @@ func TestRollingMemberReplace(t *testing.T) {
 	}
 }
 
-func TestNoQuorumNoData(t *testing.T) {
+func TestLoopWithGossip(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -372,18 +377,21 @@ func TestNoQuorumNoData(t *testing.T) {
 			clientPort:  8080,
 			peerPort:    8090,
 			metricsPort: 8100,
+			gossipPort:  9000,
 		},
 		{
 			name:        "node1",
 			clientPort:  8081,
 			peerPort:    8091,
 			metricsPort: 8101,
+			gossipPort:  9001,
 		},
 		{
 			name:        "node2",
 			clientPort:  8082,
 			peerPort:    8092,
 			metricsPort: 8102,
+			gossipPort:  9002,
 		},
 	}
 	dataPath := t.TempDir()
@@ -392,11 +400,18 @@ func TestNoQuorumNoData(t *testing.T) {
 		t.Fatal("generate test configs: %w", err)
 	}
 
+	gossipPeerURLs := make(map[string]string)
+	for _, member := range members {
+		gossipPeerURLs[member.name] = fmt.Sprintf("https://127.0.0.1:%d", member.gossipPort)
+	}
+
+	var runners []*Runner
 	for _, config := range configs {
-		runner := &Runner{
-			logger:           logger,
-			checkQuorumDelay: 8 * time.Second,
-			clientTimeout:    4 * time.Second,
+		r := &Runner{
+			logger:                 logger,
+			checkQuorumTimeout:     8 * time.Second,
+			addQuorumMemberTimeout: 8 * time.Second,
+			restoreSnapshotTimeout: 2 * time.Second,
 			etcdRunner: &etcd.Fork{
 				Ctx:        ctx,
 				EtcdBinary: "/etcd/usr/local/bin/etcd",
@@ -406,12 +421,39 @@ func TestNoQuorumNoData(t *testing.T) {
 			objectPrefix:          "snap-",
 			SnapshotEncryptionKey: testEncryptionKey,
 		}
-		c, cancel := context.WithTimeout(ctx, time.Duration(8*time.Second))
+		defer r.etcdRunner.Wait()
+		defer r.etcdRunner.Stop()
+		runners = append(runners, r)
+
+		startCh := make(chan struct{})
+		ok, err := r.init(ctx)
+		if err != nil {
+			t.Fatal("init: %w", err)
+		}
+		if ok {
+			t.Fatal("unexpected init end")
+		}
+		go r.loop(ctx, startCh)
+		gossip, err := g.NewNode(r.logger, r.envConfig.Env["ETCD_NAME"], defaultRevision, gossipPeerURLs, r.envConfig.PeerTLSConfig, startCh)
+		if err != nil {
+			t.Fatal("create gossip: %w", err)
+		}
+		defer gossip.Stop()
+
+		time.Sleep(8 * time.Second)
+
+		go gossip.StartListen()
+		go gossip.StartLoop()
+	}
+
+	// --- verify quorum, nodes ---
+
+	for _, runner := range runners {
+		c, cancel := context.WithTimeout(ctx, time.Duration(60*time.Second))
 		defer cancel()
 
-		ok, err := runner.init(c, 10000)
+		err := verifyTestStatus(t, c, runner)
 		assert.NoError(t, err)
-		assert.False(t, ok)
 	}
 }
 
