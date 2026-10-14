@@ -77,7 +77,7 @@ func TestCreateFromRestore(t *testing.T) {
 		runner := &Runner{
 			logger:                 logger,
 			checkQuorumTimeout:     8 * time.Second,
-			addQuorumMemberTimeout: 8 * time.Second,
+			memberTimeout:          8 * time.Second,
 			restoreSnapshotTimeout: 2 * time.Second,
 			etcdRunner: &etcd.Fork{
 				Ctx:        ctx,
@@ -164,7 +164,7 @@ func TestReplaceMembers(t *testing.T) {
 		runner := &Runner{
 			logger:                 logger,
 			checkQuorumTimeout:     8 * time.Second,
-			addQuorumMemberTimeout: 8 * time.Second,
+			memberTimeout:          8 * time.Second,
 			restoreSnapshotTimeout: 2 * time.Second,
 			etcdRunner: &etcd.Fork{
 				Ctx:        ctx,
@@ -299,7 +299,7 @@ func TestRollingMemberReplace(t *testing.T) {
 		runner := &Runner{
 			logger:                 logger,
 			checkQuorumTimeout:     8 * time.Second,
-			addQuorumMemberTimeout: 8 * time.Second,
+			memberTimeout:          8 * time.Second,
 			restoreSnapshotTimeout: 2 * time.Second,
 			etcdRunner: &etcd.Fork{
 				Ctx:        ctx,
@@ -377,21 +377,21 @@ func TestLoopWithGossip(t *testing.T) {
 			clientPort:  8080,
 			peerPort:    8090,
 			metricsPort: 8100,
-			gossipPort:  9000,
+			gossipPort:  8110,
 		},
 		{
 			name:        "node1",
 			clientPort:  8081,
 			peerPort:    8091,
 			metricsPort: 8101,
-			gossipPort:  9001,
+			gossipPort:  8111,
 		},
 		{
 			name:        "node2",
 			clientPort:  8082,
 			peerPort:    8092,
 			metricsPort: 8102,
-			gossipPort:  9002,
+			gossipPort:  8112,
 		},
 	}
 	dataPath := t.TempDir()
@@ -410,7 +410,7 @@ func TestLoopWithGossip(t *testing.T) {
 		r := &Runner{
 			logger:                 logger,
 			checkQuorumTimeout:     8 * time.Second,
-			addQuorumMemberTimeout: 8 * time.Second,
+			memberTimeout:          8 * time.Second,
 			restoreSnapshotTimeout: 2 * time.Second,
 			etcdRunner: &etcd.Fork{
 				Ctx:        ctx,

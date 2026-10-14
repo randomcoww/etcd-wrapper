@@ -30,8 +30,8 @@ type etcdProcess interface {
 type Runner struct {
 	logger                 *zap.Logger
 	checkQuorumTimeout     time.Duration
-	addQuorumMemberTimeout time.Duration
 	restoreSnapshotTimeout time.Duration
+	memberTimeout          time.Duration
 	etcdRunner             etcdProcess
 	envConfig              *c.EnvConfig
 	s3Client               s3util.Client
@@ -41,60 +41,33 @@ type Runner struct {
 }
 
 func (r *Runner) init(ctx context.Context) (bool, error) {
-	peerClientCtx, cancel := context.WithTimeout(ctx, r.checkQuorumTimeout)
-	defer cancel()
-	client, err := etcdutil.NewClientFromPeers(peerClientCtx, r.logger, r.envConfig.ClusterPeerURLs(), r.envConfig.PeerTLSConfig, r.envConfig.ClientTLSConfig)
-	if err == nil {
-		defer client.Close()
-		err = client.CheckQuorum(peerClientCtx)
-		if err == nil {
-			addQuorumMemberCtx, cancel := context.WithTimeout(ctx, r.addQuorumMemberTimeout)
-			defer cancel()
-			if err := r.addMemberToQuorum(addQuorumMemberCtx, client); err != nil {
-				return false, err
-			}
-			return true, nil
-		}
-	}
-	r.logger.Info("quorum not found")
-	revision, err := r.getLocalRevision()
+	ok, err := r.checkQuorumAndStart(ctx)
 	if err != nil {
-		return false, fmt.Errorf("init cluster: %w", err)
-	}
-	if revision == defaultRevision {
-		restoreSnapshotCtx, cancel := context.WithTimeout(ctx, r.restoreSnapshotTimeout)
-		defer cancel()
-		revision, err = r.restoreSnapshot(restoreSnapshotCtx)
-		if err != nil {
-			return false, fmt.Errorf("init cluster: %w", err)
-		}
-		if revision == defaultRevision {
-			return false, nil
-		}
-	}
-	r.logger.Info("start etcd existing")
-	if err := r.etcdRunner.StartExisting(r.envConfig.WriteEnv()); err != nil {
 		return false, err
 	}
-	return true, nil
+	if ok {
+		return true, nil
+	}
+	r.logger.Info("quorum not found")
+
+	ok, err = r.startNoQuorum(ctx)
+	if err != nil {
+		return false, err
+	}
+	if ok {
+		return true, nil
+	}
+	return false, nil
 }
 
 func (r *Runner) loop(ctx context.Context, start chan struct{}) error {
 	for {
-		peerClientCtx, cancel := context.WithTimeout(ctx, r.checkQuorumTimeout)
-		defer cancel()
-		client, err := etcdutil.NewClientFromPeers(peerClientCtx, r.logger, r.envConfig.ClusterPeerURLs(), r.envConfig.PeerTLSConfig, r.envConfig.ClientTLSConfig)
-		if err == nil {
-			defer client.Close()
-			err = client.CheckQuorum(peerClientCtx)
-			if err == nil {
-				addQuorumMemberCtx, cancel := context.WithTimeout(ctx, r.addQuorumMemberTimeout)
-				defer cancel()
-				if err := r.addMemberToQuorum(addQuorumMemberCtx, client); err != nil {
-					return err
-				}
-				return nil
-			}
+		ok, err := r.checkQuorumAndStart(ctx)
+		if err != nil {
+			return err
+		}
+		if ok {
+			return nil
 		}
 		r.logger.Info("quorum not found")
 
@@ -105,6 +78,44 @@ func (r *Runner) loop(ctx context.Context, start chan struct{}) error {
 			return nil
 		}
 	}
+}
+
+func (r *Runner) checkQuorumAndStart(ctx context.Context) (bool, error) {
+	peerClientCtx, cancel := context.WithTimeout(ctx, r.checkQuorumTimeout)
+	defer cancel()
+	client, err := etcdutil.NewClientFromPeers(peerClientCtx, r.logger, r.envConfig.ClusterPeerURLs(), r.envConfig.PeerTLSConfig, r.envConfig.ClientTLSConfig)
+	if err == nil {
+		defer client.Close()
+		err = client.CheckQuorum(peerClientCtx)
+		if err == nil {
+			if err := r.addMemberToQuorum(ctx, client); err != nil {
+				return true, err
+			}
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+func (r *Runner) startNoQuorum(ctx context.Context) (bool, error) {
+	revision, err := r.getLocalRevision()
+	if err != nil {
+		return false, fmt.Errorf("init cluster: %w", err)
+	}
+	if revision == defaultRevision {
+		revision, err = r.restoreSnapshot(ctx)
+		if err != nil {
+			return false, fmt.Errorf("init cluster: %w", err)
+		}
+		if revision == defaultRevision {
+			return false, nil
+		}
+	}
+	r.logger.Info("start etcd existing")
+	if err := r.etcdRunner.StartExisting(r.envConfig.WriteEnv()); err != nil {
+		return true, err
+	}
+	return true, nil
 }
 
 func (r *Runner) addMemberToQuorum(ctx context.Context, client etcdutil.EtcdClient) error {
@@ -128,7 +139,9 @@ func (r *Runner) addMemberToQuorum(ctx context.Context, client etcdutil.EtcdClie
 }
 
 func (r *Runner) replaceMember(ctx context.Context, client etcdutil.EtcdClient) error {
-	listResp, err := client.MemberList(ctx)
+	memberListCtx, cancel := context.WithTimeout(ctx, r.memberTimeout)
+	defer cancel()
+	listResp, err := client.MemberList(memberListCtx)
 	if err != nil {
 		return fmt.Errorf("list cluster members: %w", err)
 	}
@@ -139,7 +152,9 @@ func (r *Runner) replaceMember(ctx context.Context, client etcdutil.EtcdClient) 
 	if localMember != nil && len(listResp.GetMembers()) >= len(r.envConfig.InitialCluster) {
 		r.logger.Info("remove local member", zap.Uint64("ID", localMember.GetID()))
 
-		listResp, err = client.MemberRemove(ctx, localMember.GetID())
+		memberRemoveCtx, cancel := context.WithTimeout(ctx, r.memberTimeout)
+		defer cancel()
+		listResp, err = client.MemberRemove(memberRemoveCtx, localMember.GetID())
 		if err != nil {
 			return fmt.Errorf("remove cluster member %d: %w", localMember.GetID(), err)
 		}
@@ -148,7 +163,9 @@ func (r *Runner) replaceMember(ctx context.Context, client etcdutil.EtcdClient) 
 	}
 
 	if localMember == nil && len(listResp.GetMembers()) < len(r.envConfig.InitialCluster) {
-		listResp, err = client.MemberAdd(ctx, r.envConfig.InitialAdvertisePeerURLs)
+		memberAddCtx, cancel := context.WithTimeout(ctx, r.memberTimeout)
+		defer cancel()
+		listResp, err = client.MemberAdd(memberAddCtx, r.envConfig.InitialAdvertisePeerURLs)
 		if err != nil {
 			return fmt.Errorf("add member: %w", err)
 		}
@@ -159,7 +176,9 @@ func (r *Runner) replaceMember(ctx context.Context, client etcdutil.EtcdClient) 
 }
 
 func (r *Runner) updateMembers(ctx context.Context, client etcdutil.EtcdClient) error {
-	listResp, err := client.MemberList(ctx)
+	memberListCtx, cancel := context.WithTimeout(ctx, r.memberTimeout)
+	defer cancel()
+	listResp, err := client.MemberList(memberListCtx)
 	if err != nil {
 		return fmt.Errorf("list cluster members: %w", err)
 	}
@@ -169,7 +188,10 @@ func (r *Runner) updateMembers(ctx context.Context, client etcdutil.EtcdClient) 
 		case member.GetID() == 0:
 		case member.GetName() == r.envConfig.Env["ETCD_NAME"], util.HasMatchingElement(member.GetPeerURLs(), r.envConfig.InitialAdvertisePeerURLs):
 			if !slices.Equal(member.GetPeerURLs(), r.envConfig.InitialAdvertisePeerURLs) {
-				listResp, err = client.MemberUpdate(ctx, member.GetID(), r.envConfig.InitialAdvertisePeerURLs)
+
+				memberUpdateCtx, cancel := context.WithTimeout(ctx, r.memberTimeout)
+				defer cancel()
+				listResp, err = client.MemberUpdate(memberUpdateCtx, member.GetID(), r.envConfig.InitialAdvertisePeerURLs)
 				if err != nil {
 					return err
 				}
@@ -197,7 +219,10 @@ func (r *Runner) updateMembers(ctx context.Context, client etcdutil.EtcdClient) 
 			}
 			if len(newMemberPeerURLs) > 0 {
 				newMemberPeerURLs = append(newMemberPeerURLs, member.GetPeerURLs()...)
-				_, err := client.MemberUpdate(ctx, member.GetID(), newMemberPeerURLs)
+
+				memberUpdateCtx, cancel := context.WithTimeout(ctx, r.memberTimeout)
+				defer cancel()
+				_, err := client.MemberUpdate(memberUpdateCtx, member.GetID(), newMemberPeerURLs)
 				if err != nil {
 					return err
 				}
@@ -237,17 +262,20 @@ func (r *Runner) getLocalRevision() (int64, error) {
 }
 
 func (r *Runner) restoreSnapshot(ctx context.Context) (int64, error) {
+	restoreSnapshotCtx, cancel := context.WithTimeout(ctx, r.restoreSnapshotTimeout)
+	defer cancel()
+
 	if err := r.clearLocalData(); err != nil {
 		return defaultRevision, err
 	}
-	ok, err := snapshot.VerifyBucket(ctx, r.s3Client)
+	ok, err := snapshot.VerifyBucket(restoreSnapshotCtx, r.s3Client)
 	if err != nil {
 		return defaultRevision, fmt.Errorf("verify backup bucket: %w", err)
 	}
 	if !ok {
 		return defaultRevision, fmt.Errorf("verify backup bucket")
 	}
-	ok, err = snapshot.Restore(ctx, r.logger, r.s3Client, r.objectPrefix, r.envConfig.RestoreConfig("", r.restoreRevisionBump), r.SnapshotEncryptionKey)
+	ok, err = snapshot.Restore(restoreSnapshotCtx, r.logger, r.s3Client, r.objectPrefix, r.envConfig.RestoreConfig("", r.restoreRevisionBump), r.SnapshotEncryptionKey)
 	if err != nil {
 		return defaultRevision, fmt.Errorf("restore snapshot: %w", err)
 	}
