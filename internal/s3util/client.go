@@ -1,7 +1,6 @@
 package s3util
 
 import (
-	"bytes"
 	"context"
 	"crypto/tls"
 	"errors"
@@ -24,13 +23,16 @@ type Client interface {
 	VerifyBucket(context.Context) (bool, error)
 	Download(context.Context, string) (io.ReadCloser, bool, error)
 	List(context.Context, string) ([]string, map[string]error)
+	Remove(context.Context, []string) error
+	Upload(context.Context, string, io.Reader) error
 }
 
 func NewClient(endpoint, region, bucket, accessKeyID, secretAccessKey string, tlsConfig *tls.Config) (*s3client, error) {
 	opts := &minio.Options{
-		Creds:  credentials.NewStaticV4(accessKeyID, secretAccessKey, ""),
-		Secure: true,
-		Region: region,
+		Creds:           credentials.NewStaticV4(accessKeyID, secretAccessKey, ""),
+		Secure:          true,
+		TrailingHeaders: true,
+		Region:          region,
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
@@ -69,24 +71,19 @@ func (c *s3client) Download(ctx context.Context, key string) (io.ReadCloser, boo
 	return object, true, nil
 }
 
-func (c *s3client) Upload(ctx context.Context, key string, reader io.ReadCloser) (int64, error) {
-	defer reader.Close()
-
-	buf := &bytes.Buffer{}
-	size, err := io.Copy(buf, reader)
-	if err != nil {
-		return size, fmt.Errorf("put buffer: %w", err)
-	}
-	if _, err := c.client.PutObject(ctx, c.bucket, key, buf, size, minio.PutObjectOptions{
+func (c *s3client) Upload(ctx context.Context, key string, reader io.Reader) error {
+	if _, err := c.client.PutObject(ctx, c.bucket, key, reader, -1, minio.PutObjectOptions{
+		ContentType:  "application/octet-stream",
 		AutoChecksum: minio.ChecksumCRC32,
+		PartSize:     8 * 1024 * 1024,
 	}); err != nil {
 		removeIncompleteErr := c.client.RemoveIncompleteUpload(ctx, c.bucket, key)
 		if removeIncompleteErr != nil {
-			return size, fmt.Errorf("put object: %w", errors.Join(err, removeIncompleteErr))
+			return fmt.Errorf("put object: %w", errors.Join(err, removeIncompleteErr))
 		}
-		return size, fmt.Errorf("put object: %w", err)
+		return fmt.Errorf("put object: %w", err)
 	}
-	return size, nil
+	return nil
 }
 
 func (c *s3client) Remove(ctx context.Context, keys []string) error {

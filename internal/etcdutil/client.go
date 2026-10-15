@@ -59,7 +59,7 @@ type EtcdClient interface {
 	GetRevision(context.Context) (int64, error)
 	CheckQuorum(context.Context) error
 	Defragment(context.Context, string) error
-	Snapshot(context.Context) (io.Reader, error)
+	Snapshot(context.Context) (io.ReadCloser, error)
 	Close() error
 	C() *clientv3.Client
 }
@@ -211,7 +211,7 @@ func (client *Client) Defragment(ctx context.Context, endpoint string) error {
 	return fmt.Errorf("defragment node: %w", err)
 }
 
-func (client *Client) Snapshot(ctx context.Context) (io.Reader, error) {
+func (client *Client) Snapshot(ctx context.Context) (io.ReadCloser, error) {
 	rc, err := client.Maintenance.Snapshot(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("snapshot data: %w", err)

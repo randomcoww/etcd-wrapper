@@ -37,21 +37,17 @@ func TestS3Client(t *testing.T) {
 
 	// --- upload test data ---
 
-	b, err := client.Upload(clientCtx, "snap-1", io.NopCloser(bytes.NewBufferString("snap-1-val")))
+	err = client.Upload(clientCtx, "snap-1", bytes.NewBufferString("snap-1-val"))
 	assert.NoError(t, err)
-	assert.Equal(t, int64(10), b)
 
-	b, err = client.Upload(clientCtx, "snap-2", io.NopCloser(bytes.NewBufferString("snap-2-val")))
+	err = client.Upload(clientCtx, "snap-2", bytes.NewBufferString("snap-2-val"))
 	assert.NoError(t, err)
-	assert.Equal(t, int64(10), b)
 
-	b, err = client.Upload(clientCtx, "snap-3", io.NopCloser(bytes.NewBufferString("")))
+	err = client.Upload(clientCtx, "snap-3", bytes.NewBufferString(""))
 	assert.NoError(t, err)
-	assert.Equal(t, int64(0), b)
 
-	b, err = client.Upload(clientCtx, "other-1", io.NopCloser(bytes.NewBufferString("other-1-val")))
+	err = client.Upload(clientCtx, "other-1", bytes.NewBufferString("other-1-val"))
 	assert.NoError(t, err)
-	assert.Equal(t, int64(11), b)
 
 	// --- verify ---
 
