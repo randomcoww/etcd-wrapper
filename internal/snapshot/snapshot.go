@@ -29,12 +29,13 @@ type Snapshot struct {
 	uploadSnapshotTimeout  time.Duration
 }
 
-func NewFromConfig(logger *zap.Logger, s3Client s3util.Client, raw *c.YamlConfig) *Snapshot {
+func NewFromConfig(logger *zap.Logger, s3Client s3util.Client, raw *c.YamlConfig, objectTagFunc func() string) *Snapshot {
 	return &Snapshot{
 		logger:                 logger,
 		s3Client:               s3Client,
 		encryptionPassword:     raw.SnapshotEncryptionKey,
 		objectPrefix:           raw.SnapshotObjectPrefix,
+		objectTagFunc:          objectTagFunc,
 		retentionCount:         raw.SnapshotRetentionCount,
 		restoreRevisionBump:    100000,
 		s3ClientTimeout:        raw.S3ClientTimeout,

@@ -208,8 +208,10 @@ func (client *Client) CheckQuorum(ctx context.Context) error {
 }
 
 func (client *Client) Defragment(ctx context.Context, endpoint string) error {
-	_, err := client.Maintenance.Defragment(ctx, endpoint)
-	return fmt.Errorf("defragment node: %w", err)
+	if _, err := client.Maintenance.Defragment(ctx, endpoint); err != nil {
+		return fmt.Errorf("defragment node: %w", err)
+	}
+	return nil
 }
 
 func (client *Client) Snapshot(ctx context.Context) (io.ReadCloser, error) {

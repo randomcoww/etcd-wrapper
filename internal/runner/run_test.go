@@ -90,7 +90,7 @@ func TestCreateFromRestore(t *testing.T) {
 				S3ClientTimeout:        2 * time.Second,
 				RestoreSnapshotTimeout: 2 * time.Second,
 				UploadSnapshotTimeout:  2 * time.Second,
-			}),
+			}, func() string { return "" }),
 		}
 		defer r.etcdRunner.Wait()
 		defer r.etcdRunner.Stop()
@@ -180,7 +180,7 @@ func TestReplaceMembers(t *testing.T) {
 				S3ClientTimeout:        2 * time.Second,
 				RestoreSnapshotTimeout: 2 * time.Second,
 				UploadSnapshotTimeout:  2 * time.Second,
-			}),
+			}, func() string { return "" }),
 		}
 		defer r.etcdRunner.Wait()
 		defer r.etcdRunner.Stop()
@@ -318,7 +318,7 @@ func TestRollingMemberReplace(t *testing.T) {
 				S3ClientTimeout:        2 * time.Second,
 				RestoreSnapshotTimeout: 2 * time.Second,
 				UploadSnapshotTimeout:  2 * time.Second,
-			}),
+			}, func() string { return "" }),
 		}
 		defer r.etcdRunner.Wait()
 		defer r.etcdRunner.Stop()
@@ -432,7 +432,7 @@ func TestLoopWithGossip(t *testing.T) {
 				S3ClientTimeout:        2 * time.Second,
 				RestoreSnapshotTimeout: 2 * time.Second,
 				UploadSnapshotTimeout:  2 * time.Second,
-			}),
+			}, func() string { return "" }),
 		}
 		defer r.etcdRunner.Wait()
 		defer r.etcdRunner.Stop()

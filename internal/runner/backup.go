@@ -62,17 +62,23 @@ func (b *Backup) run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	b.logger.Info("found local node", zap.Uint64("ID", localNode.member.GetID()))
 
 	// --- defrag ---
 
 	defragmentCtx, cancel := context.WithTimeout(ctx, b.memberTimeout)
 	defer cancel()
 	err = client.Defragment(defragmentCtx, localNode.member.GetClientURLs()[0])
+	if err != nil {
+		return err
+	}
+	b.logger.Info("ran defragment")
 
 	// --- run backup as leader ---
 
 	if !localNode.isLeader {
 		b.logger.Info("not leader, skipping backup")
+		return nil
 	}
 
 	snapshotCtx, cancel := context.WithTimeout(ctx, b.memberTimeout)
@@ -114,6 +120,7 @@ func (b *Backup) getLocalNode(ctx context.Context, client etcdutil.EtcdClient) (
 	if len(listResp.GetMembers()) < len(b.etcdConfig.InitialCluster) {
 		return nil, fmt.Errorf("not enough members responding")
 	}
+	b.logger.Info("found members", zap.Int("count", len(listResp.GetMembers())))
 
 	var clientURLs []string
 	for _, member := range listResp.GetMembers() {
@@ -133,6 +140,7 @@ func (b *Backup) getLocalNode(ctx context.Context, client etcdutil.EtcdClient) (
 	if !ok {
 		return nil, fmt.Errorf("local status response not found")
 	}
+	b.logger.Info("all members respond to status")
 
 	return &node{
 		member:   localMember,

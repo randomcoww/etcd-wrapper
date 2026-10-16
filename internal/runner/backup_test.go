@@ -1,111 +1,122 @@
 package runner
 
-// import (
-// 	"context"
-// 	"fmt"
-// 	"path/filepath"
-// 	"strings"
-// 	"testing"
-// 	"time"
+import (
+	"context"
+	"path/filepath"
+	"sync"
+	"testing"
+	"time"
 
-// 	c "github.com/randomcoww/etcd-wrapper/config"
-// 	"github.com/randomcoww/etcd-wrapper/internal/etcd"
-// 	"github.com/randomcoww/etcd-wrapper/internal/etcdutil"
-// 	g "github.com/randomcoww/etcd-wrapper/internal/gossip"
-// 	"github.com/randomcoww/etcd-wrapper/internal/tlsutil"
-// 	"github.com/randomcoww/etcd-wrapper/s3test"
-// 	"github.com/stretchr/testify/assert"
-// 	"go.uber.org/zap"
-// )
+	c "github.com/randomcoww/etcd-wrapper/config"
+	"github.com/randomcoww/etcd-wrapper/internal/etcd"
+	s "github.com/randomcoww/etcd-wrapper/internal/snapshot"
+	"github.com/randomcoww/etcd-wrapper/s3test"
+	"github.com/stretchr/testify/assert"
+	"go.uber.org/zap"
+)
 
-// const (
-// 	baseTestPath      string = "../../test/outputs"
-// 	testEncryptionKey string = "test-snapshot-encryption"
-// )
+func TestBackupRun(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-// type member struct {
-// 	name        string
-// 	clientPort  int
-// 	peerPort    int
-// 	metricsPort int
-// 	gossipPort  int
-// }
+	logger, _ := zap.NewProduction()
+	members := []member{
+		{
+			name:        "node0",
+			clientPort:  8080,
+			peerPort:    8090,
+			metricsPort: 8100,
+		},
+		{
+			name:        "node1",
+			clientPort:  8081,
+			peerPort:    8091,
+			metricsPort: 8101,
+		},
+		{
+			name:        "node2",
+			clientPort:  8082,
+			peerPort:    8092,
+			metricsPort: 8102,
+		},
+	}
+	dataPath := t.TempDir()
+	configs, err := newConfigs(t, members, dataPath)
+	if err != nil {
+		t.Fatal("generate test configs: %w", err)
+	}
 
-// func TestBackup(t *testing.T) {
-// 	ctx, cancel := context.WithCancel(context.Background())
-// 	defer cancel()
+	s3Client := &s3test.FakeS3Client{
+		ObjectsList: []string{
+			"snap-2",
+		},
+		ObjectsErrors: make(map[string]error),
+		SnapshotFiles: map[string]string{
+			"snap-2": filepath.Join(baseTestPath, "../rev2-snap.db"), // good data
+		},
+		TestEncryptionKey: testEncryptionKey,
+	}
+	snapshot := s.NewFromConfig(logger, s3Client, &c.YamlConfig{
+		SnapshotEncryptionKey:  testEncryptionKey,
+		SnapshotObjectPrefix:   "snap-",
+		SnapshotRetentionCount: 2,
+		S3ClientTimeout:        2 * time.Second,
+		RestoreSnapshotTimeout: 2 * time.Second,
+		UploadSnapshotTimeout:  2 * time.Second,
+	}, func() string { return "test" })
 
-// 	logger, _ := zap.NewProduction()
-// 	s3Client := &s3test.FakeS3Client{
-// 		ObjectsList: []string{
-// 			"snap-2",
-// 		},
-// 		ObjectsErrors: make(map[string]error),
-// 		SnapshotFiles: map[string]string{
-// 			"snap-2": filepath.Join(baseTestPath, "../rev2-snap.db"), // good data
-// 		},
-// 		TestEncryptionKey: testEncryptionKey,
-// 	}
-// 	members := []member{
-// 		{
-// 			name:        "node0",
-// 			clientPort:  8080,
-// 			peerPort:    8090,
-// 			metricsPort: 8100,
-// 		},
-// 		{
-// 			name:        "node1",
-// 			clientPort:  8081,
-// 			peerPort:    8091,
-// 			metricsPort: 8101,
-// 		},
-// 		{
-// 			name:        "node2",
-// 			clientPort:  8082,
-// 			peerPort:    8092,
-// 			metricsPort: 8102,
-// 		},
-// 	}
-// 	dataPath := t.TempDir()
-// 	configs, err := newConfigs(t, members, dataPath)
-// 	if err != nil {
-// 		t.Fatal("generate test configs: %w", err)
-// 	}
+	var runners []*Runner
+	var backupRunners []*Backup
 
-// 	var runners []*Runner
-// 	for _, config := range configs {
-// 		r := &Runner{
-// 			logger:                 logger,
-// 			checkQuorumTimeout:     8 * time.Second,
-// 			memberTimeout:          8 * time.Second,
-// 			restoreSnapshotTimeout: 2 * time.Second,
-// 			etcdRunner: &etcd.Fork{
-// 				Ctx:        ctx,
-// 				EtcdBinary: "/etcd/usr/local/bin/etcd",
-// 			},
-// 			s3Client:              s3Client,
-// 			etcdConfig:            config,
-// 			snapshotObjectPrefix:  "snap-",
-// 			snapshotEncryptionKey: testEncryptionKey,
-// 		}
-// 		defer r.etcdRunner.Wait()
-// 		defer r.etcdRunner.Stop()
-// 		runners = append(runners, r)
-// 	}
+	for _, config := range configs {
+		r := &Runner{
+			logger:             logger,
+			checkQuorumTimeout: 8 * time.Second,
+			memberTimeout:      8 * time.Second,
+			etcdRunner: &etcd.Fork{
+				Ctx:        ctx,
+				EtcdBinary: "/etcd/usr/local/bin/etcd",
+			},
+			etcdConfig: config,
+			snapshot:   snapshot,
+		}
+		defer r.etcdRunner.Wait()
+		defer r.etcdRunner.Stop()
+		runners = append(runners, r)
 
-// 	if err := newDummyCluster(t, ctx, runners); err != nil {
-// 		t.Fatal("create dummy cluster: %w", err)
-// 	}
+		b := &Backup{
+			logger:             logger,
+			backupInterval:     4 * time.Second,
+			checkQuorumTimeout: 8 * time.Second,
+			memberTimeout:      8 * time.Second,
+			etcdConfig:         config,
+			snapshot:           snapshot,
+		}
+		backupRunners = append(backupRunners, b)
+	}
 
-// 	backup := &Backup{
-// 		logger:                logger,
-// 		checkQuorumTimeout:    8 * time.Second,
-// 		memberTimeout:         8 * time.Second,
-// 		s3Client:              s3Client,
-// 		etcdConfig:            config,
-// 		snapshotObjectPrefix:  "snap-",
-// 		snapshotEncryptionKey: testEncryptionKey,
-// 	}
+	if err := newDummyCluster(t, ctx, runners); err != nil {
+		t.Fatal("create dummy cluster: %w", err)
+	}
 
-// 	s, err := backup.status()
-// }
+	var wg sync.WaitGroup
+	errs := make([]error, len(backupRunners))
+
+	for i, b := range backupRunners {
+		wg.Add(1)
+		backupCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
+		defer cancel()
+		go func(index int) {
+			errs[index] = b.run(backupCtx)
+			wg.Done()
+		}(i)
+	}
+
+	wg.Wait()
+	for _, err := range errs {
+		assert.NoError(t, err)
+	}
+
+	_, ok := s3Client.SnapshotFiles["snap-test"] // should create backup under SnapshotFiles
+	assert.True(t, ok)
+}
