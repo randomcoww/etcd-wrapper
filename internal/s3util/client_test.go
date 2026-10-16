@@ -8,7 +8,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -63,26 +62,14 @@ func TestS3Client(t *testing.T) {
 
 	// --- get objects ---
 
-	dataPath := t.TempDir()
-	snapshotFile, _ := os.CreateTemp(dataPath, "snapshot-restore-*.db")
-	defer os.RemoveAll(snapshotFile.Name())
-	defer snapshotFile.Close()
-
 	reader, ok, err := client.Download(clientCtx, "snap-2")
 	defer reader.Close()
 
-	if _, err := io.Copy(snapshotFile, reader); err != nil {
+	var buf bytes.Buffer
+	if _, err := io.Copy(&buf, reader); err != nil {
 		t.Fatal("snapshot copy: %w", err)
 	}
-
-	assert.NoError(t, err) // no error
-	assert.True(t, ok)     // true (exists)
-
-	content, err := os.ReadFile(snapshotFile.Name())
-	if err != nil {
-		t.Fatal("test snapshot file missing: %w", err)
-	}
-	assert.Equal(t, "snap-2-val", string(content))
+	assert.Equal(t, "snap-2-val", buf.String())
 
 	// --- remove objects and verify list ---
 
