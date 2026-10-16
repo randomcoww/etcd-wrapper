@@ -3,7 +3,6 @@ package runner
 import (
 	"context"
 	"fmt"
-	"os"
 	"slices"
 	"time"
 
@@ -11,7 +10,6 @@ import (
 	"github.com/randomcoww/etcd-wrapper/internal/etcdutil"
 	s "github.com/randomcoww/etcd-wrapper/internal/snapshot"
 	"github.com/randomcoww/etcd-wrapper/internal/util"
-	etcdserverpb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.uber.org/zap"
 )
 
@@ -151,7 +149,7 @@ func (r *Runner) replaceMember(ctx context.Context, client etcdutil.EtcdClient) 
 	if err != nil {
 		return fmt.Errorf("list cluster members: %w", err)
 	}
-	localMember := findMemberInCluster(listResp, r.etcdConfig.Env["ETCD_NAME"], r.etcdConfig.InitialAdvertisePeerURLs)
+	localMember := etcdutil.FindLocalMemberInResp(listResp, r.etcdConfig.Env["ETCD_NAME"], r.etcdConfig.InitialAdvertisePeerURLs)
 
 	// replace my node to join cluster
 	// if my node already exists, it needs to be replaced
@@ -164,7 +162,7 @@ func (r *Runner) replaceMember(ctx context.Context, client etcdutil.EtcdClient) 
 		if err != nil {
 			return fmt.Errorf("remove cluster member %d: %w", localMember.GetID(), err)
 		}
-		localMember = findMemberInCluster(listResp, r.etcdConfig.Env["ETCD_NAME"], r.etcdConfig.InitialAdvertisePeerURLs)
+		localMember = etcdutil.FindLocalMemberInResp(listResp, r.etcdConfig.Env["ETCD_NAME"], r.etcdConfig.InitialAdvertisePeerURLs)
 		r.logger.Info("removed local member")
 	}
 
@@ -175,7 +173,7 @@ func (r *Runner) replaceMember(ctx context.Context, client etcdutil.EtcdClient) 
 		if err != nil {
 			return fmt.Errorf("add member: %w", err)
 		}
-		localMember = findMemberInCluster(listResp, r.etcdConfig.Env["ETCD_NAME"], r.etcdConfig.InitialAdvertisePeerURLs)
+		localMember = etcdutil.FindLocalMemberInResp(listResp, r.etcdConfig.Env["ETCD_NAME"], r.etcdConfig.InitialAdvertisePeerURLs)
 		r.logger.Info("added local member", zap.Uint64("ID", localMember.GetID()))
 	}
 	return nil
@@ -241,10 +239,10 @@ func (r *Runner) updateMembers(ctx context.Context, client etcdutil.EtcdClient) 
 }
 
 func (r *Runner) clearLocalData() error {
-	if err := removeDir(r.etcdConfig.Env["ETCD_DATA_DIR"]); err != nil {
+	if err := util.RemoveDir(r.etcdConfig.Env["ETCD_DATA_DIR"]); err != nil {
 		return fmt.Errorf("remove data dir: %w", err)
 	}
-	if err := removeDir(r.etcdConfig.Env["ETCD_WAL_DIR"]); err != nil {
+	if err := util.RemoveDir(r.etcdConfig.Env["ETCD_WAL_DIR"]); err != nil {
 		return fmt.Errorf("remove data dir: %w", err)
 	}
 	r.logger.Info("cleaned out existing data")
@@ -286,27 +284,4 @@ func (r *Runner) restoreSnapshot(ctx context.Context) (int64, error) {
 		return r.getLocalRevision()
 	}
 	return defaultRevision, nil
-}
-
-func findMemberInCluster(listResp etcdutil.Members, name string, peerURLs []string) *etcdserverpb.Member {
-	for _, member := range listResp.GetMembers() {
-		if member.GetName() == name {
-			return member
-		}
-		if util.HasMatchingElement(member.GetPeerURLs(), peerURLs) {
-			return member
-		}
-	}
-	return nil
-}
-
-func removeDir(path string) error {
-	_, err := os.Stat(path)
-	switch {
-	case os.IsNotExist(err):
-		return nil
-	case err != nil:
-		return fmt.Errorf("remove path %s: %w", path, err)
-	}
-	return os.RemoveAll(path)
 }

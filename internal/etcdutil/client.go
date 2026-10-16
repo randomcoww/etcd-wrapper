@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/randomcoww/etcd-wrapper/internal/util"
 	etcdserverpb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	clientv3 "go.etcd.io/etcd/client/v3"
 	"go.etcd.io/etcd/server/v3/etcdserver"
@@ -221,4 +222,16 @@ func (client *Client) Snapshot(ctx context.Context) (io.ReadCloser, error) {
 
 func (client *Client) C() *clientv3.Client {
 	return client.Client
+}
+
+func FindLocalMemberInResp(listResp Members, name string, peerURLs []string) Member {
+	for _, member := range listResp.GetMembers() {
+		if member.GetName() == name {
+			return member
+		}
+		if util.HasMatchingElement(member.GetPeerURLs(), peerURLs) {
+			return member
+		}
+	}
+	return nil
 }
