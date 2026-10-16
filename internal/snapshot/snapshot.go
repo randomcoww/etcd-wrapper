@@ -24,7 +24,7 @@ type Snapshot struct {
 	objectTagFunc          func() string
 	retentionCount         int
 	restoreRevisionBump    uint64
-	snapshotClientTimeout  time.Duration
+	s3ClientTimeout        time.Duration
 	restoreSnapshotTimeout time.Duration
 	uploadSnapshotTimeout  time.Duration
 }
@@ -37,16 +37,16 @@ func NewFromConfig(logger *zap.Logger, s3Client s3util.Client, raw *c.YamlConfig
 		objectPrefix:           raw.SnapshotObjectPrefix,
 		retentionCount:         raw.SnapshotRetentionCount,
 		restoreRevisionBump:    100000,
-		snapshotClientTimeout:  raw.SnapshotClientTimeout,
+		s3ClientTimeout:        raw.S3ClientTimeout,
 		restoreSnapshotTimeout: raw.RestoreSnapshotTimeout,
 		uploadSnapshotTimeout:  raw.UploadSnapshotTimeout,
 	}
 }
 
 func (s *Snapshot) VerifyBucket(ctx context.Context) (bool, error) {
-	snapshotClientCtx, cancel := context.WithTimeout(ctx, s.snapshotClientTimeout)
+	s3ClientCtx, cancel := context.WithTimeout(ctx, s.s3ClientTimeout)
 	defer cancel()
-	return s.s3Client.VerifyBucket(snapshotClientCtx)
+	return s.s3Client.VerifyBucket(s3ClientCtx)
 }
 
 func (s *Snapshot) Restore(ctx context.Context, restoreConfig s.RestoreConfig) (bool, error) {
@@ -58,9 +58,9 @@ func (s *Snapshot) Restore(ctx context.Context, restoreConfig s.RestoreConfig) (
 		return false, nil
 	}
 
-	snapshotClientCtx, cancel := context.WithTimeout(ctx, s.snapshotClientTimeout)
+	s3ClientCtx, cancel := context.WithTimeout(ctx, s.s3ClientTimeout)
 	defer cancel()
-	keys, errors := s.s3Client.List(snapshotClientCtx, s.objectPrefix)
+	keys, errors := s.s3Client.List(s3ClientCtx, s.objectPrefix)
 	if len(keys) == 0 {
 		return false, nil
 	}
@@ -179,11 +179,11 @@ func (s *Snapshot) CreateBackup(ctx context.Context, reader io.ReadCloser) error
 }
 
 func (s *Snapshot) RemoveOldBackups(ctx context.Context) error {
-	snapshotClientCtx, cancel := context.WithTimeout(ctx, s.snapshotClientTimeout)
+	s3ClientCtx, cancel := context.WithTimeout(ctx, s.s3ClientTimeout)
 	defer cancel()
-	keys, _ := s.s3Client.List(snapshotClientCtx, s.objectPrefix)
+	keys, _ := s.s3Client.List(s3ClientCtx, s.objectPrefix)
 	if len(keys) > s.retentionCount {
-		return s.s3Client.Remove(snapshotClientCtx, keys[:len(keys)-s.retentionCount])
+		return s.s3Client.Remove(s3ClientCtx, keys[:len(keys)-s.retentionCount])
 	}
 	return nil
 }

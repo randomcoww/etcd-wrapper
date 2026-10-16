@@ -73,7 +73,7 @@ func TestRestore(t *testing.T) {
 		encryptionPassword:     testEncryptionKey,
 		objectPrefix:           "snap-",
 		restoreRevisionBump:    1000,
-		snapshotClientTimeout:  2 * time.Second,
+		s3ClientTimeout:        2 * time.Second,
 		restoreSnapshotTimeout: 2 * time.Second,
 		uploadSnapshotTimeout:  2 * time.Second,
 	}
@@ -105,7 +105,7 @@ func TestCreateBackup(t *testing.T) {
 		encryptionPassword:     testEncryptionKey,
 		objectPrefix:           "snap-",
 		objectTagFunc:          func() string { return baseNow.Add(time.Duration(1 * time.Minute)).Format(timeFormat) },
-		snapshotClientTimeout:  2 * time.Second,
+		s3ClientTimeout:        2 * time.Second,
 		restoreSnapshotTimeout: 2 * time.Second,
 		uploadSnapshotTimeout:  2 * time.Second,
 	}
@@ -142,7 +142,7 @@ func TestRemoveOldBackups(t *testing.T) {
 		logger:                 logger,
 		s3Client:               s3Client,
 		retentionCount:         2,
-		snapshotClientTimeout:  2 * time.Second,
+		s3ClientTimeout:        2 * time.Second,
 		restoreSnapshotTimeout: 2 * time.Second,
 		uploadSnapshotTimeout:  2 * time.Second,
 	}

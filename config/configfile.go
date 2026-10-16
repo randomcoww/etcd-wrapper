@@ -12,23 +12,26 @@ import (
 )
 
 type YamlConfig struct {
-	CheckQuorumDelay       time.Duration `yaml:"checkQuorumDelay,omitempty"`
-	MemberTimeout          time.Duration `yaml:"memberTimeout,omitempty"`
-	EtcdBinaryFile         string        `yaml:"etcdBinaryFile,omitempty"`
-	S3Endpoint             string        `yaml:"s3Endpoint,omitempty"`
-	S3Region               string        `yaml:"s3Region,omitempty"`
-	S3Bucket               string        `yaml:"s3Bucket"`
-	S3TrustedCAs           []string      `yaml:"s3TrustedCAs,omitempty"`
-	S3AccessKeyID          string        `yaml:"s3AccessKeyID"`
-	S3SecretAccessKey      string        `yaml:"s3SecretAccessKey"`
-	S3TLSConfig            *tls.Config
-	SnapshotObjectPrefix   string            `yaml:"snapshotObjectPrefix,omitempty"`
-	SnapshotEncryptionKey  string            `yaml:"snapshotEncryptionKey"`
-	SnapshotRetentionCount int               `yaml:"snapshotRetentionCount,omitempty"`
-	SnapshotClientTimeout  time.Duration     `yaml:"snapshotClientTimeout,omitempty"`
-	RestoreSnapshotTimeout time.Duration     `yaml:"restoreSnapshotTimeout,omitempty"`
-	UploadSnapshotTimeout  time.Duration     `yaml:"uploadSnapshotTimeout,omitempty"`
-	GossipPeerURLs         map[string]string `yaml:"gossipPeerURLs"`
+	CheckQuorumDelay time.Duration     `yaml:"checkQuorumDelay,omitempty"`
+	MemberTimeout    time.Duration     `yaml:"memberTimeout,omitempty"`
+	EtcdBinaryFile   string            `yaml:"etcdBinaryFile,omitempty"`
+	GossipPeerURLs   map[string]string `yaml:"gossipPeerURLs"`
+
+	S3Endpoint        string   `yaml:"s3Endpoint,omitempty"`
+	S3Region          string   `yaml:"s3Region,omitempty"`
+	S3Bucket          string   `yaml:"s3Bucket"`
+	S3TrustedCAs      []string `yaml:"s3TrustedCAs,omitempty"`
+	S3AccessKeyID     string   `yaml:"s3AccessKeyID"`
+	S3SecretAccessKey string   `yaml:"s3SecretAccessKey"`
+	S3TLSConfig       *tls.Config
+
+	SnapshotEncryptionKey  string        `yaml:"snapshotEncryptionKey"`
+	SnapshotObjectPrefix   string        `yaml:"snapshotObjectPrefix,omitempty"`
+	SnapshotRetentionCount int           `yaml:"snapshotRetentionCount,omitempty"`
+	S3ClientTimeout        time.Duration `yaml:"s3ClientTimeout,omitempty"`
+	RestoreSnapshotTimeout time.Duration `yaml:"restoreSnapshotTimeout,omitempty"`
+	UploadSnapshotTimeout  time.Duration `yaml:"uploadSnapshotTimeout,omitempty"`
+	BackupInterval         time.Duration `yaml:"backupInterval,omitempty"`
 }
 
 func LoadConfigFile(path string) (*YamlConfig, error) {
@@ -44,9 +47,10 @@ func LoadConfigFile(path string) (*YamlConfig, error) {
 		S3Region:               "us-east-1",
 		SnapshotObjectPrefix:   "etcd-snapshot-",
 		SnapshotRetentionCount: 4,
-		SnapshotClientTimeout:  4 * time.Second,
+		S3ClientTimeout:        4 * time.Second,
 		RestoreSnapshotTimeout: 16 * time.Second,
 		UploadSnapshotTimeout:  16 * time.Second,
+		BackupInterval:         10 * time.Minute,
 	}
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)
