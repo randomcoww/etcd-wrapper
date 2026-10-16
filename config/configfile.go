@@ -13,18 +13,21 @@ import (
 
 type YamlConfig struct {
 	CheckQuorumDelay       time.Duration `yaml:"checkQuorumDelay,omitempty"`
-	RestoreSnapshotTimeout time.Duration `yaml:"restoreSnapshotTimeout,omitempty"`
 	MemberTimeout          time.Duration `yaml:"memberTimeout,omitempty"`
 	EtcdBinaryFile         string        `yaml:"etcdBinaryFile,omitempty"`
-	S3Endpoint             string        `yaml:"s3Endpoint"`
+	S3Endpoint             string        `yaml:"s3Endpoint,omitempty"`
 	S3Region               string        `yaml:"s3Region,omitempty"`
 	S3Bucket               string        `yaml:"s3Bucket"`
 	S3TrustedCAs           []string      `yaml:"s3TrustedCAs,omitempty"`
 	S3AccessKeyID          string        `yaml:"s3AccessKeyID"`
 	S3SecretAccessKey      string        `yaml:"s3SecretAccessKey"`
 	S3TLSConfig            *tls.Config
-	SnapshotObjectPrefix   string            `yaml:"snapshotObjectPrefix"`
+	SnapshotObjectPrefix   string            `yaml:"snapshotObjectPrefix,omitempty"`
 	SnapshotEncryptionKey  string            `yaml:"snapshotEncryptionKey"`
+	SnapshotRetentionCount int               `yaml:"snapshotRetentionCount,omitempty"`
+	SnapshotClientTimeout  time.Duration     `yaml:"snapshotClientTimeout,omitempty"`
+	RestoreSnapshotTimeout time.Duration     `yaml:"restoreSnapshotTimeout,omitempty"`
+	UploadSnapshotTimeout  time.Duration     `yaml:"uploadSnapshotTimeout,omitempty"`
 	GossipPeerURLs         map[string]string `yaml:"gossipPeerURLs"`
 }
 
@@ -34,13 +37,16 @@ func LoadConfigFile(path string) (*YamlConfig, error) {
 		return nil, fmt.Errorf("reading config file '%s': %w", path, err)
 	}
 	raw := &YamlConfig{
-		S3Endpoint:             "https://s3.amazonaws.com",
-		S3Region:               "us-east-1",
 		CheckQuorumDelay:       16 * time.Second,
 		MemberTimeout:          8 * time.Second,
-		RestoreSnapshotTimeout: 8 * time.Second,
-		SnapshotObjectPrefix:   "etcd-snapshot-",
 		EtcdBinaryFile:         "/usr/local/bin/etcd",
+		S3Endpoint:             "https://s3.amazonaws.com",
+		S3Region:               "us-east-1",
+		SnapshotObjectPrefix:   "etcd-snapshot-",
+		SnapshotRetentionCount: 4,
+		SnapshotClientTimeout:  4 * time.Second,
+		RestoreSnapshotTimeout: 16 * time.Second,
+		UploadSnapshotTimeout:  16 * time.Second,
 	}
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)

@@ -72,7 +72,6 @@ func TestRestore(t *testing.T) {
 		s3Client:               s3Client,
 		encryptionPassword:     testEncryptionKey,
 		objectPrefix:           "snap-",
-		etcdConfig:             etcdConfig,
 		restoreRevisionBump:    1000,
 		snapshotClientTimeout:  2 * time.Second,
 		restoreSnapshotTimeout: 2 * time.Second,
@@ -82,7 +81,7 @@ func TestRestore(t *testing.T) {
 	clientCtx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
 	defer cancel()
 
-	ok, err := snapshot.Restore(clientCtx)
+	ok, err := snapshot.Restore(clientCtx, etcdConfig.RestoreConfig())
 	assert.NoError(t, err)
 	assert.True(t, ok)
 

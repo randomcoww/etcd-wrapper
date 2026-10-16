@@ -12,6 +12,7 @@ import (
 	c "github.com/randomcoww/etcd-wrapper/config"
 	"github.com/randomcoww/etcd-wrapper/internal/etcdutil"
 	"github.com/randomcoww/etcd-wrapper/internal/s3util"
+	s "go.etcd.io/etcd/etcdutl/v3/snapshot"
 	"go.uber.org/zap"
 )
 
@@ -22,18 +23,33 @@ type Snapshot struct {
 	objectPrefix           string
 	objectTagFunc          func() string
 	retentionCount         int
-	etcdConfig             *c.EtcdConfig
 	restoreRevisionBump    uint64
 	snapshotClientTimeout  time.Duration
 	restoreSnapshotTimeout time.Duration
 	uploadSnapshotTimeout  time.Duration
 }
 
-func (s *Snapshot) VerifyBucket(ctx context.Context) (bool, error) {
-	return s.s3Client.VerifyBucket(ctx)
+func NewFromConfig(logger *zap.Logger, s3Client s3util.Client, raw *c.YamlConfig) *Snapshot {
+	return &Snapshot{
+		logger:                 logger,
+		s3Client:               s3Client,
+		encryptionPassword:     raw.SnapshotEncryptionKey,
+		objectPrefix:           raw.SnapshotObjectPrefix,
+		retentionCount:         raw.SnapshotRetentionCount,
+		restoreRevisionBump:    100000,
+		snapshotClientTimeout:  raw.SnapshotClientTimeout,
+		restoreSnapshotTimeout: raw.RestoreSnapshotTimeout,
+		uploadSnapshotTimeout:  raw.UploadSnapshotTimeout,
+	}
 }
 
-func (s *Snapshot) Restore(ctx context.Context) (bool, error) {
+func (s *Snapshot) VerifyBucket(ctx context.Context) (bool, error) {
+	snapshotClientCtx, cancel := context.WithTimeout(ctx, s.snapshotClientTimeout)
+	defer cancel()
+	return s.s3Client.VerifyBucket(snapshotClientCtx)
+}
+
+func (s *Snapshot) Restore(ctx context.Context, restoreConfig s.RestoreConfig) (bool, error) {
 	ok, err := s.VerifyBucket(ctx)
 	if err != nil {
 		return false, fmt.Errorf("verify bucket: %w", err)
@@ -53,7 +69,7 @@ func (s *Snapshot) Restore(ctx context.Context) (bool, error) {
 	}
 
 	for i := len(keys) - 1; i >= 0; i-- {
-		ok, err = s.restoreKey(ctx, keys[i])
+		ok, err = s.restoreKey(ctx, keys[i], restoreConfig)
 		if err == nil && ok {
 			s.logger.Info("restored snapshot", zap.String("key", keys[i]))
 			break
@@ -66,7 +82,7 @@ func (s *Snapshot) Restore(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
-func (s *Snapshot) restoreKey(ctx context.Context, key string) (bool, error) {
+func (s *Snapshot) restoreKey(ctx context.Context, key string, restoreConfig s.RestoreConfig) (bool, error) {
 	s.logger.Info("attempting snapshot restore")
 	dir, err := os.MkdirTemp("", "etcd-wrapper-*")
 	if err != nil {
@@ -114,7 +130,9 @@ func (s *Snapshot) restoreKey(ctx context.Context, key string) (bool, error) {
 
 	// --- restore to etcd ---
 
-	if err := etcdutil.RestoreSnapshot(s.logger, s.etcdConfig.RestoreConfig(snapshotFile.Name(), s.restoreRevisionBump)); err != nil {
+	restoreConfig.SnapshotPath = snapshotFile.Name()
+	restoreConfig.RevisionBump = s.restoreRevisionBump
+	if err := etcdutil.RestoreSnapshot(s.logger, restoreConfig); err != nil {
 		return false, fmt.Errorf("restore snapshot to etcd data: %w", err)
 	}
 	s.logger.Info("finished restoring snapshot")

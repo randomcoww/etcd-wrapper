@@ -171,7 +171,7 @@ func (config *EtcdConfig) WriteEnv() []string {
 	return envs
 }
 
-func (config *EtcdConfig) RestoreConfig(snapshotPath string, revisionBump uint64) snapshot.RestoreConfig {
+func (config *EtcdConfig) RestoreConfig() snapshot.RestoreConfig {
 	r := snapshot.RestoreConfig{
 		Name:                config.Env["ETCD_NAME"],
 		OutputDataDir:       config.Env["ETCD_DATA_DIR"],
@@ -179,8 +179,8 @@ func (config *EtcdConfig) RestoreConfig(snapshotPath string, revisionBump uint64
 		PeerURLs:            config.InitialAdvertisePeerURLs,
 		InitialCluster:      config.InitialClusterEnv(),
 		InitialClusterToken: config.Env["ETCD_INITIAL_CLUSTER_TOKEN"],
-		RevisionBump:        revisionBump,
-		SnapshotPath:        snapshotPath,
+		// RevisionBump:        revisionBump,
+		// SnapshotPath:        snapshotPath,
 	}
 	if r.RevisionBump > 0 {
 		r.MarkCompacted = true

@@ -9,8 +9,7 @@ import (
 
 	c "github.com/randomcoww/etcd-wrapper/config"
 	"github.com/randomcoww/etcd-wrapper/internal/etcdutil"
-	"github.com/randomcoww/etcd-wrapper/internal/s3util"
-	"github.com/randomcoww/etcd-wrapper/internal/snapshot"
+	s "github.com/randomcoww/etcd-wrapper/internal/snapshot"
 	"github.com/randomcoww/etcd-wrapper/internal/util"
 	etcdserverpb "go.etcd.io/etcd/api/v3/etcdserverpb"
 	"go.uber.org/zap"
@@ -28,30 +27,22 @@ type etcdProcess interface {
 }
 
 type Runner struct {
-	logger                 *zap.Logger
-	checkQuorumTimeout     time.Duration
-	restoreSnapshotTimeout time.Duration
-	memberTimeout          time.Duration
-	etcdRunner             etcdProcess
-	etcdConfig             *c.EtcdConfig
-	s3Client               s3util.Client
-	snapshotObjectPrefix   string
-	snapshotEncryptionKey  string
-	restoreRevisionBump    uint64
+	logger             *zap.Logger
+	checkQuorumTimeout time.Duration
+	memberTimeout      time.Duration
+	etcdRunner         etcdProcess
+	etcdConfig         *c.EtcdConfig
+	snapshot           *s.Snapshot
 }
 
-func NewFromConfig(logger *zap.Logger, etcdRunner etcdProcess, s3Client s3util.Client, raw *c.YamlConfig, etcdConfig *c.EtcdConfig) *Runner {
+func NewFromConfig(logger *zap.Logger, etcdRunner etcdProcess, snapshot *s.Snapshot, raw *c.YamlConfig, etcdConfig *c.EtcdConfig) *Runner {
 	return &Runner{
-		logger:                 logger,
-		checkQuorumTimeout:     raw.CheckQuorumDelay,
-		restoreSnapshotTimeout: raw.RestoreSnapshotTimeout,
-		memberTimeout:          raw.MemberTimeout,
-		etcdRunner:             etcdRunner,
-		etcdConfig:             etcdConfig,
-		s3Client:               s3Client,
-		snapshotObjectPrefix:   raw.SnapshotObjectPrefix,
-		snapshotEncryptionKey:  raw.SnapshotEncryptionKey,
-		restoreRevisionBump:    10000,
+		logger:             logger,
+		checkQuorumTimeout: raw.CheckQuorumDelay,
+		memberTimeout:      raw.MemberTimeout,
+		etcdRunner:         etcdRunner,
+		etcdConfig:         etcdConfig,
+		snapshot:           snapshot,
 	}
 }
 
@@ -277,20 +268,17 @@ func (r *Runner) getLocalRevision() (int64, error) {
 }
 
 func (r *Runner) restoreSnapshot(ctx context.Context) (int64, error) {
-	restoreSnapshotCtx, cancel := context.WithTimeout(ctx, r.restoreSnapshotTimeout)
-	defer cancel()
-
 	if err := r.clearLocalData(); err != nil {
 		return defaultRevision, err
 	}
-	ok, err := snapshot.VerifyBucket(restoreSnapshotCtx, r.s3Client)
+	ok, err := r.snapshot.VerifyBucket(ctx)
 	if err != nil {
 		return defaultRevision, fmt.Errorf("verify backup bucket: %w", err)
 	}
 	if !ok {
 		return defaultRevision, fmt.Errorf("verify backup bucket")
 	}
-	ok, err = snapshot.Restore(restoreSnapshotCtx, r.logger, r.s3Client, r.snapshotObjectPrefix, r.etcdConfig.RestoreConfig("", r.restoreRevisionBump), r.snapshotEncryptionKey)
+	ok, err = r.snapshot.Restore(ctx, r.etcdConfig.RestoreConfig())
 	if err != nil {
 		return defaultRevision, fmt.Errorf("restore snapshot: %w", err)
 	}

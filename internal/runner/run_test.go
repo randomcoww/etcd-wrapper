@@ -12,6 +12,7 @@ import (
 	"github.com/randomcoww/etcd-wrapper/internal/etcd"
 	"github.com/randomcoww/etcd-wrapper/internal/etcdutil"
 	g "github.com/randomcoww/etcd-wrapper/internal/gossip"
+	s "github.com/randomcoww/etcd-wrapper/internal/snapshot"
 	"github.com/randomcoww/etcd-wrapper/internal/tlsutil"
 	"github.com/randomcoww/etcd-wrapper/s3test"
 	"github.com/stretchr/testify/assert"
@@ -36,16 +37,6 @@ func TestCreateFromRestore(t *testing.T) {
 	defer cancel()
 
 	logger, _ := zap.NewProduction()
-	s3Client := &s3test.FakeS3Client{
-		ObjectsList: []string{
-			"snap-2",
-		},
-		ObjectsErrors: make(map[string]error),
-		SnapshotFiles: map[string]string{
-			"snap-2": filepath.Join(baseTestPath, "../rev2-snap.db"), // good data
-		},
-		TestEncryptionKey: testEncryptionKey,
-	}
 	members := []member{
 		{
 			name:        "node0",
@@ -75,18 +66,31 @@ func TestCreateFromRestore(t *testing.T) {
 	var runners []*Runner
 	for _, config := range configs {
 		r := &Runner{
-			logger:                 logger,
-			checkQuorumTimeout:     8 * time.Second,
-			memberTimeout:          8 * time.Second,
-			restoreSnapshotTimeout: 2 * time.Second,
+			logger:             logger,
+			checkQuorumTimeout: 8 * time.Second,
+			memberTimeout:      8 * time.Second,
 			etcdRunner: &etcd.Fork{
 				Ctx:        ctx,
 				EtcdBinary: "/etcd/usr/local/bin/etcd",
 			},
-			s3Client:              s3Client,
-			etcdConfig:            config,
-			snapshotObjectPrefix:  "snap-",
-			snapshotEncryptionKey: testEncryptionKey,
+			etcdConfig: config,
+			snapshot: s.NewFromConfig(logger, &s3test.FakeS3Client{
+				ObjectsList: []string{
+					"snap-2",
+				},
+				ObjectsErrors: make(map[string]error),
+				SnapshotFiles: map[string]string{
+					"snap-2": filepath.Join(baseTestPath, "../rev2-snap.db"), // good data
+				},
+				TestEncryptionKey: testEncryptionKey,
+			}, &c.YamlConfig{
+				SnapshotEncryptionKey:  testEncryptionKey,
+				SnapshotObjectPrefix:   "snap-",
+				SnapshotRetentionCount: 2,
+				SnapshotClientTimeout:  2 * time.Second,
+				RestoreSnapshotTimeout: 2 * time.Second,
+				UploadSnapshotTimeout:  2 * time.Second,
+			}),
 		}
 		defer r.etcdRunner.Wait()
 		defer r.etcdRunner.Stop()
@@ -123,16 +127,6 @@ func TestReplaceMembers(t *testing.T) {
 	defer cancel()
 
 	logger, _ := zap.NewProduction()
-	s3Client := &s3test.FakeS3Client{
-		ObjectsList: []string{
-			"snap-2",
-		},
-		ObjectsErrors: make(map[string]error),
-		SnapshotFiles: map[string]string{
-			"snap-2": filepath.Join(baseTestPath, "../rev2-snap.db"), // good data
-		},
-		TestEncryptionKey: testEncryptionKey,
-	}
 	members := []member{
 		{
 			name:        "node0",
@@ -162,18 +156,31 @@ func TestReplaceMembers(t *testing.T) {
 	var runners []*Runner
 	for _, config := range configs {
 		r := &Runner{
-			logger:                 logger,
-			checkQuorumTimeout:     8 * time.Second,
-			memberTimeout:          8 * time.Second,
-			restoreSnapshotTimeout: 2 * time.Second,
+			logger:             logger,
+			checkQuorumTimeout: 8 * time.Second,
+			memberTimeout:      8 * time.Second,
 			etcdRunner: &etcd.Fork{
 				Ctx:        ctx,
 				EtcdBinary: "/etcd/usr/local/bin/etcd",
 			},
-			s3Client:              s3Client,
-			etcdConfig:            config,
-			snapshotObjectPrefix:  "snap-",
-			snapshotEncryptionKey: testEncryptionKey,
+			etcdConfig: config,
+			snapshot: s.NewFromConfig(logger, &s3test.FakeS3Client{
+				ObjectsList: []string{
+					"snap-2",
+				},
+				ObjectsErrors: make(map[string]error),
+				SnapshotFiles: map[string]string{
+					"snap-2": filepath.Join(baseTestPath, "../rev2-snap.db"), // good data
+				},
+				TestEncryptionKey: testEncryptionKey,
+			}, &c.YamlConfig{
+				SnapshotEncryptionKey:  testEncryptionKey,
+				SnapshotObjectPrefix:   "snap-",
+				SnapshotRetentionCount: 2,
+				SnapshotClientTimeout:  2 * time.Second,
+				RestoreSnapshotTimeout: 2 * time.Second,
+				UploadSnapshotTimeout:  2 * time.Second,
+			}),
 		}
 		defer r.etcdRunner.Wait()
 		defer r.etcdRunner.Stop()
@@ -233,16 +240,6 @@ func TestRollingMemberReplace(t *testing.T) {
 	defer cancel()
 
 	logger, _ := zap.NewProduction()
-	s3Client := &s3test.FakeS3Client{
-		ObjectsList: []string{
-			"snap-3",
-		},
-		ObjectsErrors: make(map[string]error),
-		SnapshotFiles: map[string]string{
-			"snap-3": filepath.Join(baseTestPath, "../rev3-snap.db"), // good data
-		},
-		TestEncryptionKey: testEncryptionKey,
-	}
 	members := []member{
 		{
 			name:        "node0",
@@ -297,18 +294,31 @@ func TestRollingMemberReplace(t *testing.T) {
 	var runners []*Runner
 	for _, config := range configs {
 		r := &Runner{
-			logger:                 logger,
-			checkQuorumTimeout:     8 * time.Second,
-			memberTimeout:          8 * time.Second,
-			restoreSnapshotTimeout: 2 * time.Second,
+			logger:             logger,
+			checkQuorumTimeout: 8 * time.Second,
+			memberTimeout:      8 * time.Second,
 			etcdRunner: &etcd.Fork{
 				Ctx:        ctx,
 				EtcdBinary: "/etcd/usr/local/bin/etcd",
 			},
-			s3Client:              s3Client,
-			etcdConfig:            config,
-			snapshotObjectPrefix:  "snap-",
-			snapshotEncryptionKey: testEncryptionKey,
+			etcdConfig: config,
+			snapshot: s.NewFromConfig(logger, &s3test.FakeS3Client{
+				ObjectsList: []string{
+					"snap-2",
+				},
+				ObjectsErrors: make(map[string]error),
+				SnapshotFiles: map[string]string{
+					"snap-2": filepath.Join(baseTestPath, "../rev2-snap.db"), // good data
+				},
+				TestEncryptionKey: testEncryptionKey,
+			}, &c.YamlConfig{
+				SnapshotEncryptionKey:  testEncryptionKey,
+				SnapshotObjectPrefix:   "snap-",
+				SnapshotRetentionCount: 2,
+				SnapshotClientTimeout:  2 * time.Second,
+				RestoreSnapshotTimeout: 2 * time.Second,
+				UploadSnapshotTimeout:  2 * time.Second,
+			}),
 		}
 		defer r.etcdRunner.Wait()
 		defer r.etcdRunner.Stop()
@@ -365,12 +375,6 @@ func TestLoopWithGossip(t *testing.T) {
 	defer cancel()
 
 	logger, _ := zap.NewProduction()
-	s3Client := &s3test.FakeS3Client{
-		ObjectsList:       []string{},
-		ObjectsErrors:     make(map[string]error),
-		SnapshotFiles:     map[string]string{},
-		TestEncryptionKey: testEncryptionKey,
-	}
 	members := []member{
 		{
 			name:        "node0",
@@ -408,18 +412,27 @@ func TestLoopWithGossip(t *testing.T) {
 	var runners []*Runner
 	for _, config := range configs {
 		r := &Runner{
-			logger:                 logger,
-			checkQuorumTimeout:     8 * time.Second,
-			memberTimeout:          8 * time.Second,
-			restoreSnapshotTimeout: 2 * time.Second,
+			logger:             logger,
+			checkQuorumTimeout: 8 * time.Second,
+			memberTimeout:      8 * time.Second,
 			etcdRunner: &etcd.Fork{
 				Ctx:        ctx,
 				EtcdBinary: "/etcd/usr/local/bin/etcd",
 			},
-			s3Client:              s3Client,
-			etcdConfig:            config,
-			snapshotObjectPrefix:  "snap-",
-			snapshotEncryptionKey: testEncryptionKey,
+			etcdConfig: config,
+			snapshot: s.NewFromConfig(logger, &s3test.FakeS3Client{
+				ObjectsList:       []string{},
+				ObjectsErrors:     make(map[string]error),
+				SnapshotFiles:     map[string]string{},
+				TestEncryptionKey: testEncryptionKey,
+			}, &c.YamlConfig{
+				SnapshotEncryptionKey:  testEncryptionKey,
+				SnapshotObjectPrefix:   "snap-",
+				SnapshotRetentionCount: 2,
+				SnapshotClientTimeout:  2 * time.Second,
+				RestoreSnapshotTimeout: 2 * time.Second,
+				UploadSnapshotTimeout:  2 * time.Second,
+			}),
 		}
 		defer r.etcdRunner.Wait()
 		defer r.etcdRunner.Stop()
@@ -559,7 +572,11 @@ func newDummyCluster(t *testing.T, ctx context.Context, runners []*Runner) error
 
 	for _, r := range runners {
 		// preseed data into etcd path
-		if err := etcdutil.RestoreSnapshot(r.logger, r.etcdConfig.RestoreConfig(filepath.Join(baseTestPath, "../rev3-snap.db"), 0)); err != nil {
+		restoreConfig := r.etcdConfig.RestoreConfig()
+		restoreConfig.RevisionBump = 0
+		restoreConfig.SnapshotPath = filepath.Join(baseTestPath, "../rev3-snap.db")
+
+		if err := etcdutil.RestoreSnapshot(r.logger, restoreConfig); err != nil {
 			return fmt.Errorf("dummy cluster data restore: %w", err)
 		}
 		if err := r.etcdRunner.StartExisting(r.etcdConfig.WriteEnv()); err != nil {
