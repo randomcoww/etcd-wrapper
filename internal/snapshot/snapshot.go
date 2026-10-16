@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"filippo.io/age"
 	c "github.com/randomcoww/etcd-wrapper/config"
@@ -15,14 +16,17 @@ import (
 )
 
 type Snapshot struct {
-	logger              *zap.Logger
-	s3Client            s3util.Client
-	encryptionPassword  string
-	objectPrefix        string
-	objectTagFunc       func() string
-	retentionCount      int
-	etcdConfig          *c.EtcdConfig
-	restoreRevisionBump uint64
+	logger                 *zap.Logger
+	s3Client               s3util.Client
+	encryptionPassword     string
+	objectPrefix           string
+	objectTagFunc          func() string
+	retentionCount         int
+	etcdConfig             *c.EtcdConfig
+	restoreRevisionBump    uint64
+	snapshotClientTimeout  time.Duration
+	restoreSnapshotTimeout time.Duration
+	uploadSnapshotTimeout  time.Duration
 }
 
 func (s *Snapshot) VerifyBucket(ctx context.Context) (bool, error) {
@@ -38,7 +42,9 @@ func (s *Snapshot) Restore(ctx context.Context) (bool, error) {
 		return false, nil
 	}
 
-	keys, errors := s.s3Client.List(ctx, s.objectPrefix)
+	snapshotClientCtx, cancel := context.WithTimeout(ctx, s.snapshotClientTimeout)
+	defer cancel()
+	keys, errors := s.s3Client.List(snapshotClientCtx, s.objectPrefix)
 	if len(keys) == 0 {
 		return false, nil
 	}
@@ -76,7 +82,9 @@ func (s *Snapshot) restoreKey(ctx context.Context, key string) (bool, error) {
 	defer snapshotFile.Close()
 	s.logger.Info("opened file for snapshot")
 
-	reader, ok, err := s.s3Client.Download(ctx, key)
+	restoreSnapshotCtx, cancel := context.WithTimeout(ctx, s.restoreSnapshotTimeout)
+	defer cancel()
+	reader, ok, err := s.s3Client.Download(restoreSnapshotCtx, key)
 	if err != nil {
 		return false, fmt.Errorf("download snapshot: %w", err)
 	}
@@ -143,7 +151,9 @@ func (s *Snapshot) CreateBackup(ctx context.Context, reader io.ReadCloser) error
 	objectKey := fmt.Sprintf("%s%s", s.objectPrefix, s.objectTagFunc())
 	s.logger.Info("backup", zap.String("key", objectKey), zap.Int64("size", b))
 
-	if err := s.s3Client.Upload(ctx, objectKey, &buf); err != nil {
+	uploadSnapshotCtx, cancel := context.WithTimeout(ctx, s.uploadSnapshotTimeout)
+	defer cancel()
+	if err := s.s3Client.Upload(uploadSnapshotCtx, objectKey, &buf); err != nil {
 		return fmt.Errorf("put backup: %w", err)
 	}
 	s.logger.Info("created backup", zap.String("key", objectKey))
@@ -151,9 +161,11 @@ func (s *Snapshot) CreateBackup(ctx context.Context, reader io.ReadCloser) error
 }
 
 func (s *Snapshot) RemoveOldBackups(ctx context.Context) error {
-	keys, _ := s.s3Client.List(ctx, s.objectPrefix)
+	snapshotClientCtx, cancel := context.WithTimeout(ctx, s.snapshotClientTimeout)
+	defer cancel()
+	keys, _ := s.s3Client.List(snapshotClientCtx, s.objectPrefix)
 	if len(keys) > s.retentionCount {
-		return s.s3Client.Remove(ctx, keys[:len(keys)-s.retentionCount])
+		return s.s3Client.Remove(snapshotClientCtx, keys[:len(keys)-s.retentionCount])
 	}
 	return nil
 }

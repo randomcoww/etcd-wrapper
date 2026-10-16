@@ -68,13 +68,15 @@ func TestRestore(t *testing.T) {
 
 	logger, _ := zap.NewProduction()
 	snapshot := &Snapshot{
-		logger:             logger,
-		s3Client:           s3Client,
-		encryptionPassword: testEncryptionKey,
-		objectPrefix:       "snap-",
-		// retentionCount:      2,
-		etcdConfig:          etcdConfig,
-		restoreRevisionBump: 1000,
+		logger:                 logger,
+		s3Client:               s3Client,
+		encryptionPassword:     testEncryptionKey,
+		objectPrefix:           "snap-",
+		etcdConfig:             etcdConfig,
+		restoreRevisionBump:    1000,
+		snapshotClientTimeout:  2 * time.Second,
+		restoreSnapshotTimeout: 2 * time.Second,
+		uploadSnapshotTimeout:  2 * time.Second,
 	}
 
 	clientCtx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
@@ -99,11 +101,14 @@ func TestCreateBackup(t *testing.T) {
 	logger, _ := zap.NewProduction()
 	baseNow, _ := time.Parse("2006-01-02", "2000-01-01")
 	snapshot := &Snapshot{
-		logger:             logger,
-		s3Client:           s3Client,
-		encryptionPassword: testEncryptionKey,
-		objectPrefix:       "snap-",
-		objectTagFunc:      func() string { return baseNow.Add(time.Duration(1 * time.Minute)).Format(timeFormat) },
+		logger:                 logger,
+		s3Client:               s3Client,
+		encryptionPassword:     testEncryptionKey,
+		objectPrefix:           "snap-",
+		objectTagFunc:          func() string { return baseNow.Add(time.Duration(1 * time.Minute)).Format(timeFormat) },
+		snapshotClientTimeout:  2 * time.Second,
+		restoreSnapshotTimeout: 2 * time.Second,
+		uploadSnapshotTimeout:  2 * time.Second,
 	}
 
 	file, err := os.Open(filepath.Join(baseTestPath, "../rev2-snap.db"))
@@ -135,9 +140,12 @@ func TestRemoveOldBackups(t *testing.T) {
 	}
 	logger, _ := zap.NewProduction()
 	snapshot := &Snapshot{
-		logger:         logger,
-		s3Client:       s3Client,
-		retentionCount: 2,
+		logger:                 logger,
+		s3Client:               s3Client,
+		retentionCount:         2,
+		snapshotClientTimeout:  2 * time.Second,
+		restoreSnapshotTimeout: 2 * time.Second,
+		uploadSnapshotTimeout:  2 * time.Second,
 	}
 
 	clientCtx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
