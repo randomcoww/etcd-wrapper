@@ -32,6 +32,9 @@ type YamlConfig struct {
 	RestoreSnapshotTimeout time.Duration `yaml:"restoreSnapshotTimeout,omitempty"`
 	UploadSnapshotTimeout  time.Duration `yaml:"uploadSnapshotTimeout,omitempty"`
 	BackupInterval         time.Duration `yaml:"backupInterval,omitempty"`
+	SnapshotTimeout        time.Duration `yaml:"snapshotTimeout,omitempty"`
+	DefragmentTimeout      time.Duration `yaml:"defragmentTimeout,omitempty"`
+	DefragThreshold        float64       `yaml:"defragThreshold,omitempty"`
 }
 
 func LoadConfigFile(path string) (*YamlConfig, error) {
@@ -51,6 +54,9 @@ func LoadConfigFile(path string) (*YamlConfig, error) {
 		RestoreSnapshotTimeout: 16 * time.Second,
 		UploadSnapshotTimeout:  16 * time.Second,
 		BackupInterval:         10 * time.Minute,
+		SnapshotTimeout:        16 * time.Second,
+		DefragmentTimeout:      16 * time.Second,
+		DefragThreshold:        0.3,
 	}
 	if err := yaml.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("parsing config: %w", err)

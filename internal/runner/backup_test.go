@@ -88,9 +88,12 @@ func TestBackupRun(t *testing.T) {
 			logger:             logger,
 			backupInterval:     4 * time.Second,
 			checkQuorumTimeout: 8 * time.Second,
-			memberTimeout:      8 * time.Second,
+			memberTimeout:      4 * time.Second,
+			snapshotTimeout:    8 * time.Second,
+			defragmentTimeout:  16 * time.Second,
 			etcdConfig:         config,
 			snapshot:           snapshot,
+			defragThreshold:    0.0,
 		}
 		backupRunners = append(backupRunners, b)
 	}

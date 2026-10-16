@@ -43,6 +43,8 @@ type Member interface {
 type Status interface {
 	GetHeader() *etcdserverpb.ResponseHeader
 	GetLeader() uint64
+	GetDbSize() int64
+	GetDbSizeInUse() int64
 }
 
 type Header interface {

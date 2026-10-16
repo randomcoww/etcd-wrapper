@@ -12,17 +12,16 @@ import (
 	"go.uber.org/zap"
 )
 
-const (
-	timeFormat string = "20060102-150405"
-)
-
 type Backup struct {
 	logger             *zap.Logger
 	backupInterval     time.Duration
 	checkQuorumTimeout time.Duration
 	memberTimeout      time.Duration
+	snapshotTimeout    time.Duration
+	defragmentTimeout  time.Duration
 	etcdConfig         *c.EtcdConfig
 	snapshot           *s.Snapshot
+	defragThreshold    float64
 	Success            bool
 }
 
@@ -30,6 +29,20 @@ type node struct {
 	member   etcdutil.Member
 	status   etcdutil.Status
 	isLeader bool
+	isLocal  bool
+}
+
+func NewBackupFromConfig(logger *zap.Logger, snapshot *s.Snapshot, raw *c.YamlConfig, etcdConfig *c.EtcdConfig) *Backup {
+	return &Backup{
+		logger:             logger,
+		checkQuorumTimeout: raw.CheckQuorumDelay,
+		memberTimeout:      raw.MemberTimeout,
+		etcdConfig:         etcdConfig,
+		snapshotTimeout:    raw.SnapshotTimeout,
+		defragmentTimeout:  raw.DefragmentTimeout,
+		defragThreshold:    raw.DefragThreshold,
+		snapshot:           snapshot,
+	}
 }
 
 func (b *Backup) StartLoop(ctx context.Context) error {
@@ -58,40 +71,46 @@ func (b *Backup) run(ctx context.Context) error {
 	}
 	defer client.Close()
 
-	localNode, err := b.getLocalNode(ctx, client)
+	nodes, err := b.nodeList(ctx, client)
 	if err != nil {
 		return err
 	}
-	b.logger.Info("found local node", zap.Uint64("ID", localNode.member.GetID()))
 
-	// --- defrag ---
-
-	defragmentCtx, cancel := context.WithTimeout(ctx, b.memberTimeout)
-	defer cancel()
-	err = client.Defragment(defragmentCtx, localNode.member.GetClientURLs()[0])
-	if err != nil {
-		return err
+	var localLeader *node
+	for _, node := range nodes {
+		if node.isLocal && node.isLeader {
+			localLeader = node
+		}
 	}
-	b.logger.Info("ran defragment")
-
-	// --- run backup as leader ---
-
-	if !localNode.isLeader {
-		b.logger.Info("not leader, skipping backup")
+	if localLeader == nil {
 		return nil
 	}
 
-	snapshotCtx, cancel := context.WithTimeout(ctx, b.memberTimeout)
+	b.logger.Info("node is leader running maintenance")
+
+	// --- defrag ---
+
+	if err := b.rollingDefragment(ctx, client, nodes); err != nil {
+		return err
+	}
+	b.logger.Info("ran rolling defragment")
+
+	// --- snapshot backup ---
+
+	snapshotCtx, cancel := context.WithTimeout(ctx, b.snapshotTimeout)
 	defer cancel()
 	reader, err := client.Snapshot(snapshotCtx)
 	if err != nil {
 		return err
 	}
+	b.logger.Info("created snapshot backup")
 
 	err = b.snapshot.CreateBackup(ctx, reader)
 	if err != nil {
 		return err
 	}
+	b.logger.Info("uploaded snapshot backup")
+
 	return nil
 }
 
@@ -109,7 +128,7 @@ func (b *Backup) clientWithQuorum(ctx context.Context) (etcdutil.EtcdClient, err
 	return client, nil
 }
 
-func (b *Backup) getLocalNode(ctx context.Context, client etcdutil.EtcdClient) (*node, error) {
+func (b *Backup) nodeList(ctx context.Context, client etcdutil.EtcdClient) ([]*node, error) {
 	memberListCtx, cancel := context.WithTimeout(ctx, b.memberTimeout)
 	defer cancel()
 	listResp, err := client.MemberList(memberListCtx)
@@ -126,27 +145,28 @@ func (b *Backup) getLocalNode(ctx context.Context, client etcdutil.EtcdClient) (
 	for _, member := range listResp.GetMembers() {
 		clientURLs = append(clientURLs, member.GetClientURLs()...)
 	}
-
 	statusMap, err := b.statusMap(ctx, client, clientURLs)
 	if err != nil {
 		return nil, fmt.Errorf("one or more status responses failed: %w", err)
 	}
 
-	localMember := etcdutil.FindLocalMemberInResp(listResp, b.etcdConfig.Env["ETCD_NAME"], b.etcdConfig.InitialAdvertisePeerURLs)
-	if localMember == nil {
-		return nil, fmt.Errorf("local member not found")
+	res := []*node{}
+	for _, member := range listResp.GetMembers() {
+		if member.GetName() == "" {
+			return nil, fmt.Errorf("member name not set")
+		}
+		status, ok := statusMap[member.GetID()]
+		if !ok {
+			return nil, fmt.Errorf("local status response not found")
+		}
+		res = append(res, &node{
+			status:   status,
+			member:   member,
+			isLeader: status.GetLeader() == member.GetID(),
+			isLocal:  b.etcdConfig.Env["ETCD_NAME"] == member.GetName(),
+		})
 	}
-	localStatus, ok := statusMap[localMember.GetID()]
-	if !ok {
-		return nil, fmt.Errorf("local status response not found")
-	}
-	b.logger.Info("all members respond to status")
-
-	return &node{
-		member:   localMember,
-		status:   localStatus,
-		isLeader: localStatus.GetLeader() == localMember.GetID(),
-	}, nil
+	return res, nil
 }
 
 func (b *Backup) statusMap(ctx context.Context, client etcdutil.EtcdClient, endpoints []string) (map[uint64]etcdutil.Status, error) {
@@ -182,4 +202,55 @@ func (b *Backup) statusMap(ctx context.Context, client etcdutil.EtcdClient, endp
 		}
 	}
 	return res, errors.Join(errs...)
+}
+
+func (b *Backup) rollingDefragment(ctx context.Context, client etcdutil.EtcdClient, nodeList []*node) error {
+	defragmentNodes := []*node{}
+
+	for _, n := range nodeList {
+		if !b.needsDefragment(n.status) {
+			continue
+		}
+		if n.isLeader {
+			defragmentNodes = append(defragmentNodes, n)
+			continue
+		}
+		defragmentNodes = append([]*node{n}, defragmentNodes...)
+	}
+
+	for _, n := range defragmentNodes {
+		if err := b.runDefragment(ctx, n.member, client); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (b *Backup) runDefragment(ctx context.Context, member etcdutil.Member, client etcdutil.EtcdClient) error {
+	defragmentCtx, cancel := context.WithTimeout(ctx, b.defragmentTimeout)
+	defer cancel()
+	if err := client.Defragment(defragmentCtx, member.GetClientURLs()[0]); err != nil {
+		return err
+	}
+	b.logger.Info("start defragment", zap.String("node", member.GetName()))
+
+	// wait for status to respond
+	time.Sleep(1 * time.Second)
+	if _, err := client.Status(defragmentCtx, member.GetClientURLs()[0]); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (b *Backup) needsDefragment(status etcdutil.Status) bool {
+	if status.GetDbSize() == 0 {
+		return false
+	}
+	fragmentation := (float64(status.GetDbSize()-status.GetDbSizeInUse()) / float64(status.GetDbSize()))
+	if fragmentation >= b.defragThreshold {
+		b.logger.Info("defragment needed", zap.Float64("ratio", fragmentation))
+		return true
+	}
+	b.logger.Info("skip defragment", zap.Float64("ratio", fragmentation))
+	return false
 }

@@ -33,7 +33,7 @@ type Runner struct {
 	snapshot           *s.Snapshot
 }
 
-func NewFromConfig(logger *zap.Logger, etcdRunner etcdProcess, snapshot *s.Snapshot, raw *c.YamlConfig, etcdConfig *c.EtcdConfig) *Runner {
+func NewRunnerFromConfig(logger *zap.Logger, etcdRunner etcdProcess, snapshot *s.Snapshot, raw *c.YamlConfig, etcdConfig *c.EtcdConfig) *Runner {
 	return &Runner{
 		logger:             logger,
 		checkQuorumTimeout: raw.CheckQuorumDelay,
