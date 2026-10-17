@@ -517,10 +517,10 @@ func newConfigs(t *testing.T, members []member, dataPath string) ([]*c.EtcdConfi
 				"ETCD_CLIENT_CERT_AUTH":            "true",
 				"ETCD_PEER_CLIENT_CERT_AUTH":       "true",
 				"ETCD_STRICT_RECONFIG_CHECK":       "true",
-				"ETCD_TRUSTED_CA_FILE":             filepath.Join(baseTestPath, "client", "ca.crt"),
+				"ETCD_TRUSTED_CA_FILE":             filepath.Join(baseTestPath, member.name, "client", "ca.crt"),
 				"ETCD_CERT_FILE":                   filepath.Join(baseTestPath, member.name, "client", "tls.crt"),
 				"ETCD_KEY_FILE":                    filepath.Join(baseTestPath, member.name, "client", "tls.key"),
-				"ETCD_PEER_TRUSTED_CA_FILE":        filepath.Join(baseTestPath, "peer", "ca.crt"),
+				"ETCD_PEER_TRUSTED_CA_FILE":        filepath.Join(baseTestPath, member.name, "peer", "ca.crt"),
 				"ETCD_PEER_CERT_FILE":              filepath.Join(baseTestPath, member.name, "peer", "tls.crt"),
 				"ETCD_PEER_KEY_FILE":               filepath.Join(baseTestPath, member.name, "peer", "tls.key"),
 				"ETCD_LISTEN_CLIENT_URLS":          fmt.Sprintf("https://127.0.0.1:%d", member.clientPort),
@@ -549,7 +549,7 @@ func newConfigs(t *testing.T, members []member, dataPath string) ([]*c.EtcdConfi
 		config.ClientTLSConfig, err = tlsutil.BuildTLSClientConfig(
 			filepath.Join(baseTestPath, member.name, "client", "tls.crt"),
 			filepath.Join(baseTestPath, member.name, "client", "tls.key"),
-			[]string{filepath.Join(baseTestPath, "client", "ca.crt")},
+			[]string{filepath.Join(baseTestPath, member.name, "client", "ca.crt")},
 		)
 		if err != nil {
 			return nil, err
@@ -557,7 +557,7 @@ func newConfigs(t *testing.T, members []member, dataPath string) ([]*c.EtcdConfi
 		config.PeerTLSConfig, err = tlsutil.BuildTLSClientConfig(
 			filepath.Join(baseTestPath, member.name, "peer", "tls.crt"),
 			filepath.Join(baseTestPath, member.name, "peer", "tls.key"),
-			[]string{filepath.Join(baseTestPath, "peer", "ca.crt")},
+			[]string{filepath.Join(baseTestPath, member.name, "peer", "ca.crt")},
 		)
 		if err != nil {
 			return nil, err

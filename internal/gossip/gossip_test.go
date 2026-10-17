@@ -93,7 +93,7 @@ func newDummyCluster(t *testing.T, members []member) ([]*Node, []chan struct{}, 
 		tlsConfig, err := tlsutil.BuildTLSClientConfig(
 			filepath.Join(baseTestPath, member.name, "peer", "tls.crt"),
 			filepath.Join(baseTestPath, member.name, "peer", "tls.key"),
-			[]string{filepath.Join(baseTestPath, "peer", "ca.crt")},
+			[]string{filepath.Join(baseTestPath, member.name, "peer", "ca.crt")},
 		)
 		if err != nil {
 			return nil, nil, err

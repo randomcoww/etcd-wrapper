@@ -106,14 +106,19 @@ func NewNode(logger *zap.Logger, name string, revision int64, peerURLsMap map[st
 	return n, nil
 }
 
-func (n *Node) StartListen() {
+func (n *Node) StartListen() error {
 	defer close(n.serverDone)
 	n.logger.Info("start gossip listener", zap.String("node", n.name))
 
-	if err := n.server.ServeTLS(n.listener, "", ""); err != nil &&
-		!errors.Is(err, http.ErrServerClosed) && !errors.Is(err, net.ErrClosed) {
-		n.logger.Error("server stopped with error", zap.Error(err))
+	if err := n.server.ServeTLS(n.listener, "", ""); err != nil {
+		switch {
+		case errors.Is(err, http.ErrServerClosed), errors.Is(err, net.ErrClosed):
+			return nil
+		default:
+			return err
+		}
 	}
+	return nil
 }
 
 func (n *Node) StartLoop() error {
