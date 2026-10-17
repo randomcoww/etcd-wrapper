@@ -7,19 +7,19 @@ locals {
   cluster_token     = "test"
   members = {
     node0 = {
-      client_url            = "https://127.0.0.1:8080"
-      peer_url              = "https://127.0.0.1:8090"
-      gossip_url              = "https://127.0.0.1:8100"
+      client_url = "https://127.0.0.1:8080"
+      peer_url   = "https://127.0.0.1:8090"
+      gossip_url = "https://127.0.0.1:8100"
     }
     node1 = {
-      client_url            = "https://127.0.0.1:8081"
-      peer_url              = "https://127.0.0.1:8091"
-      gossip_url              = "https://127.0.0.1:8101"
+      client_url = "https://127.0.0.1:8081"
+      peer_url   = "https://127.0.0.1:8091"
+      gossip_url = "https://127.0.0.1:8101"
     }
     node2 = {
-      client_url            = "https://127.0.0.1:8082"
-      peer_url              = "https://127.0.0.1:8092"
-      gossip_url              = "https://127.0.0.1:8102"
+      client_url = "https://127.0.0.1:8082"
+      peer_url   = "https://127.0.0.1:8092"
+      gossip_url = "https://127.0.0.1:8102"
     }
   }
 
@@ -28,49 +28,44 @@ locals {
   minio_port     = 9000
   minio_bucket   = "etcd"
 
-  configs = {
-    for node, member in local.members:
-    node => {
-      EtcdBinaryFile = "/usr/local/bin/etcd"
-      GossipPeerURLs = {
-        for node, member in local.members:
-        node => member.gossip_url
-      }
-      S3Endpoint = "https://127.0.0.1:${local.minio_port}"
-      S3Bucket = local.minio_bucket
-      S3TrustedCAs = [
-        "/etc/minio/certs/CAs/ca.crt",
-      ]
-      S3AccessKeyID = local.minio_username
-      S3SecretAccessKey = local.minio_password
-      SnapshotEncryptionKey = "test-encryption-password"
-    }
-  }
-
   etcd_files = {
-    for node, _ in local.members:
+    for node, member in local.members :
     node => {
-      "config.yaml" = yamlencode(local.configs[node])
-      "client/ca.crt" = tls_self_signed_cert.etcd-ca.cert_pem
+      "config.yaml" = yamlencode({
+        EtcdBinaryFile = "/usr/local/bin/etcd"
+        GossipPeerURLs = {
+          for node, member in local.members :
+          node => member.gossip_url
+        }
+        S3Endpoint = "https://127.0.0.1:${local.minio_port}"
+        S3Bucket   = local.minio_bucket
+        S3TrustedCAs = [
+          "/etc/minio/certs/CAs/ca.crt",
+        ]
+        S3AccessKeyID         = local.minio_username
+        S3SecretAccessKey     = local.minio_password
+        SnapshotEncryptionKey = "test-encryption-password"
+      })
+      "client/ca.crt"  = tls_self_signed_cert.etcd-ca.cert_pem
       "client/tls.crt" = tls_locally_signed_cert.etcd[node].cert_pem
       "client/tls.key" = tls_private_key.etcd[node].private_key_pem
-      "peer/ca.crt" = tls_self_signed_cert.etcd-peer-ca.cert_pem
-      "peer/tls.crt" = tls_locally_signed_cert.etcd-peer[node].cert_pem
-      "peer/tls.key" = tls_private_key.etcd-peer[node].private_key_pem
+      "peer/ca.crt"    = tls_self_signed_cert.etcd-peer-ca.cert_pem
+      "peer/tls.crt"   = tls_locally_signed_cert.etcd-peer[node].cert_pem
+      "peer/tls.key"   = tls_private_key.etcd-peer[node].private_key_pem
     }
   }
   minio_files = {
-    "minio/certs/CAs/ca.crt" = tls_self_signed_cert.minio-ca.cert_pem
-    "minio/certs/public.crt" = tls_locally_signed_cert.minio.cert_pem
+    "minio/certs/CAs/ca.crt"  = tls_self_signed_cert.minio-ca.cert_pem
+    "minio/certs/public.crt"  = tls_locally_signed_cert.minio.cert_pem
     "minio/certs/private.key" = tls_private_key.minio.private_key_pem
   }
 }
 
 resource "local_file" "files" {
   for_each = merge(local.minio_files, [
-    for node, files in local.etcd_files:
+    for node, files in local.etcd_files :
     {
-      for file, content in files:
+      for file, content in files :
       "${node}/${file}" => content
     }
   ]...)
@@ -178,7 +173,7 @@ module "etcd-wrapper" {
         ])
         command = [
           "${local.etcd_wrapper_path}/bin/etcd-runner",
-          "-config","${local.data_path}/config.yaml",
+          "-config", "${local.data_path}/config.yaml",
         ]
         env = [
           for k, v in {
