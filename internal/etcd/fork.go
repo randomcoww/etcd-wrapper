@@ -12,6 +12,7 @@ type Fork struct {
 	Cmd        *exec.Cmd
 	Ctx        context.Context
 	EtcdBinary string
+	cancel     func()
 }
 
 func (m *Fork) StartNew(env []string) error {
@@ -22,24 +23,19 @@ func (m *Fork) StartExisting(env []string) error {
 	return m.start(env, "existing")
 }
 
+// Create a new instance each time to allow restart test
 func (m *Fork) start(env []string, state string) error {
-	m.Cmd = exec.CommandContext(m.Ctx, m.EtcdBinary)
-	m.Cmd.Args = []string{
-		m.EtcdBinary,
-		"--initial-cluster-state",
-		state,
-	}
+	ctx, cancel := context.WithCancel(m.Ctx)
+	m.Cmd = exec.CommandContext(ctx, m.EtcdBinary, "--initial-cluster-state", state)
 	m.Cmd.Env = env
 	m.Cmd.Stdout = os.Stdout
 	m.Cmd.Stderr = os.Stderr
+	m.cancel = cancel
 	return m.Cmd.Start()
 }
 
-func (m *Fork) Stop() error {
-	if m.Cmd.Process != nil {
-		return m.Cmd.Process.Kill()
-	}
-	return nil
+func (m *Fork) Stop() {
+	m.cancel()
 }
 
 func (m *Fork) Wait() error {

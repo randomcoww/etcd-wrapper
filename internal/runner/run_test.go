@@ -11,7 +11,6 @@ import (
 	c "github.com/randomcoww/etcd-wrapper/config"
 	"github.com/randomcoww/etcd-wrapper/internal/etcd"
 	"github.com/randomcoww/etcd-wrapper/internal/etcdutil"
-	g "github.com/randomcoww/etcd-wrapper/internal/gossip"
 	s "github.com/randomcoww/etcd-wrapper/internal/snapshot"
 	"github.com/randomcoww/etcd-wrapper/internal/tlsutil"
 	"github.com/randomcoww/etcd-wrapper/s3test"
@@ -63,6 +62,17 @@ func TestCreateFromRestore(t *testing.T) {
 		t.Fatal("generate test configs: %w", err)
 	}
 
+	s3Client := &s3test.FakeS3Client{
+		ObjectsList: []string{
+			"snap-2",
+		},
+		ObjectsErrors: make(map[string]error),
+		SnapshotFiles: map[string]string{
+			"snap-2": filepath.Join(baseTestPath, "../rev2-snap.db"), // good data
+		},
+		TestEncryptionKey: testEncryptionKey,
+	}
+
 	var runners []*Runner
 	for _, config := range configs {
 		r := &Runner{
@@ -74,16 +84,7 @@ func TestCreateFromRestore(t *testing.T) {
 				EtcdBinary: "/etcd/usr/local/bin/etcd",
 			},
 			etcdConfig: config,
-			snapshot: s.NewFromConfig(logger, &s3test.FakeS3Client{
-				ObjectsList: []string{
-					"snap-2",
-				},
-				ObjectsErrors: make(map[string]error),
-				SnapshotFiles: map[string]string{
-					"snap-2": filepath.Join(baseTestPath, "../rev2-snap.db"), // good data
-				},
-				TestEncryptionKey: testEncryptionKey,
-			}, &c.YamlConfig{
+			snapshot: s.NewFromConfig(logger, s3Client, &c.YamlConfig{
 				SnapshotEncryptionKey:  testEncryptionKey,
 				SnapshotObjectPrefix:   "snap-",
 				SnapshotRetentionCount: 2,
@@ -153,6 +154,17 @@ func TestReplaceMembers(t *testing.T) {
 		t.Fatal("generate test configs: %w", err)
 	}
 
+	s3Client := &s3test.FakeS3Client{
+		ObjectsList: []string{
+			"snap-2",
+		},
+		ObjectsErrors: make(map[string]error),
+		SnapshotFiles: map[string]string{
+			"snap-2": filepath.Join(baseTestPath, "../rev2-snap.db"), // good data
+		},
+		TestEncryptionKey: testEncryptionKey,
+	}
+
 	var runners []*Runner
 	for _, config := range configs {
 		r := &Runner{
@@ -164,16 +176,7 @@ func TestReplaceMembers(t *testing.T) {
 				EtcdBinary: "/etcd/usr/local/bin/etcd",
 			},
 			etcdConfig: config,
-			snapshot: s.NewFromConfig(logger, &s3test.FakeS3Client{
-				ObjectsList: []string{
-					"snap-2",
-				},
-				ObjectsErrors: make(map[string]error),
-				SnapshotFiles: map[string]string{
-					"snap-2": filepath.Join(baseTestPath, "../rev2-snap.db"), // good data
-				},
-				TestEncryptionKey: testEncryptionKey,
-			}, &c.YamlConfig{
+			snapshot: s.NewFromConfig(logger, s3Client, &c.YamlConfig{
 				SnapshotEncryptionKey:  testEncryptionKey,
 				SnapshotObjectPrefix:   "snap-",
 				SnapshotRetentionCount: 2,
@@ -187,7 +190,7 @@ func TestReplaceMembers(t *testing.T) {
 		runners = append(runners, r)
 	}
 
-	if err := newDummyCluster(t, ctx, runners); err != nil {
+	if err := existingDummyCluster(t, ctx, runners); err != nil {
 		t.Fatal("create dummy cluster: %w", err)
 	}
 
@@ -195,24 +198,27 @@ func TestReplaceMembers(t *testing.T) {
 
 	t.Logf("stopping nodes")
 	for _, r := range runners[:2] {
-		if err := r.etcdRunner.Stop(); err != nil {
-			t.Fatal("stop test client: %w", err)
-		}
+		r.etcdRunner.Stop()
 		if err := r.etcdRunner.Wait(); err != nil {
-			t.Fatal("wait stop test client: %w", err)
+			t.Fatalf("wait stop test client: %v", err)
 		}
 		t.Logf("stopped %s", r.etcdConfig.Env["ETCD_NAME"])
+
+		// remove data (data loss)
+		if err := r.clearLocalData(); err != nil {
+			t.Fatalf("test data loss, %v", err)
+		}
 	}
 
 	// --- start replacement nodes ---
 
 	for _, r := range runners[:2] {
-		c, cancel := context.WithTimeout(ctx, time.Duration(8*time.Second))
+		runCtx, cancel := context.WithTimeout(ctx, time.Duration(8*time.Second))
 		defer cancel()
 
 		t.Logf("starting %s", r.etcdConfig.Env["ETCD_NAME"])
 
-		ok, err := r.StartInit(c)
+		ok, err := r.StartInit(runCtx)
 		if err != nil {
 			t.Fatal("call etcd runner: %w", err)
 		}
@@ -223,15 +229,15 @@ func TestReplaceMembers(t *testing.T) {
 	// --- verify quorum, nodes, and backup ---
 
 	for _, r := range runners {
-		c, cancel := context.WithTimeout(ctx, time.Duration(4*time.Second))
+		runCtx, cancel := context.WithTimeout(ctx, time.Duration(4*time.Second))
 		defer cancel()
 
-		err := verifyTestStatus(t, c, r)
+		err := verifyTestStatus(t, runCtx, r)
 		assert.NoError(t, err)
 
-		val, err := verifyTestData(t, c, r, "test-rev3")
+		val, err := verifyTestData(t, runCtx, r, "test-rev2")
 		assert.NoError(t, err)
-		assert.Equal(t, "test-rev3-val", val) // match value that should exist in the test data
+		assert.Equal(t, "test-rev2-val", val) // match value that should exist in the test data
 	}
 }
 
@@ -291,6 +297,17 @@ func TestRollingMemberReplace(t *testing.T) {
 		t.Fatal("generate test configs: %w", err)
 	}
 
+	s3Client := &s3test.FakeS3Client{
+		ObjectsList: []string{
+			"snap-2",
+		},
+		ObjectsErrors: make(map[string]error),
+		SnapshotFiles: map[string]string{
+			"snap-2": filepath.Join(baseTestPath, "../rev2-snap.db"), // good data
+		},
+		TestEncryptionKey: testEncryptionKey,
+	}
+
 	var runners []*Runner
 	for _, config := range configs {
 		r := &Runner{
@@ -302,16 +319,7 @@ func TestRollingMemberReplace(t *testing.T) {
 				EtcdBinary: "/etcd/usr/local/bin/etcd",
 			},
 			etcdConfig: config,
-			snapshot: s.NewFromConfig(logger, &s3test.FakeS3Client{
-				ObjectsList: []string{
-					"snap-2",
-				},
-				ObjectsErrors: make(map[string]error),
-				SnapshotFiles: map[string]string{
-					"snap-2": filepath.Join(baseTestPath, "../rev2-snap.db"), // good data
-				},
-				TestEncryptionKey: testEncryptionKey,
-			}, &c.YamlConfig{
+			snapshot: s.NewFromConfig(logger, s3Client, &c.YamlConfig{
 				SnapshotEncryptionKey:  testEncryptionKey,
 				SnapshotObjectPrefix:   "snap-",
 				SnapshotRetentionCount: 2,
@@ -325,7 +333,7 @@ func TestRollingMemberReplace(t *testing.T) {
 		runners = append(runners, r)
 	}
 
-	if err := newDummyCluster(t, ctx, runners); err != nil {
+	if err := existingDummyCluster(t, ctx, runners); err != nil {
 		t.Fatal("create dummy cluster: %w", err)
 	}
 
@@ -333,11 +341,14 @@ func TestRollingMemberReplace(t *testing.T) {
 
 	t.Logf("rolling restart")
 	for i, r := range runners {
-		if err := r.etcdRunner.Stop(); err != nil {
-			t.Fatal("stop test client: %w", err)
-		}
+		r.etcdRunner.Stop()
 		if err := r.etcdRunner.Wait(); err != nil {
 			t.Fatal("wait stop test client: %w", err)
+		}
+
+		// remove data (data loss)
+		if err := r.clearLocalData(); err != nil {
+			t.Fatalf("test data loss, %v", err)
 		}
 
 		// update config
@@ -370,7 +381,7 @@ func TestRollingMemberReplace(t *testing.T) {
 	}
 }
 
-func TestLoopWithGossip(t *testing.T) {
+func TestStartNew(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -409,23 +420,25 @@ func TestLoopWithGossip(t *testing.T) {
 		gossipPeerURLs[member.name] = fmt.Sprintf("https://127.0.0.1:%d", member.gossipPort)
 	}
 
+	s3Client := &s3test.FakeS3Client{
+		ObjectsList:       []string{},
+		ObjectsErrors:     make(map[string]error),
+		SnapshotFiles:     map[string]string{},
+		TestEncryptionKey: testEncryptionKey,
+	}
+
 	var runners []*Runner
 	for _, config := range configs {
 		r := &Runner{
 			logger:             logger,
-			checkQuorumTimeout: 8 * time.Second,
+			checkQuorumTimeout: 16 * time.Second,
 			memberTimeout:      8 * time.Second,
 			etcdRunner: &etcd.Fork{
 				Ctx:        ctx,
 				EtcdBinary: "/etcd/usr/local/bin/etcd",
 			},
 			etcdConfig: config,
-			snapshot: s.NewFromConfig(logger, &s3test.FakeS3Client{
-				ObjectsList:       []string{},
-				ObjectsErrors:     make(map[string]error),
-				SnapshotFiles:     map[string]string{},
-				TestEncryptionKey: testEncryptionKey,
-			}, &c.YamlConfig{
+			snapshot: s.NewFromConfig(logger, s3Client, &c.YamlConfig{
 				SnapshotEncryptionKey:  testEncryptionKey,
 				SnapshotObjectPrefix:   "snap-",
 				SnapshotRetentionCount: 2,
@@ -438,25 +451,14 @@ func TestLoopWithGossip(t *testing.T) {
 		defer r.etcdRunner.Stop()
 		runners = append(runners, r)
 
-		startCh := make(chan struct{})
 		ok, err := r.StartInit(ctx)
 		if err != nil {
 			t.Fatal("init: %w", err)
 		}
-		if ok {
-			t.Fatal("unexpected init end")
+		if !ok {
+			t.Fatal("etcd new: %w", err)
 		}
-		go r.StartLoop(ctx, startCh)
-		gossip, err := g.NewNode(r.logger, r.etcdConfig.Env["ETCD_NAME"], defaultRevision, gossipPeerURLs, r.etcdConfig.PeerTLSConfig, startCh)
-		if err != nil {
-			t.Fatal("create gossip: %w", err)
-		}
-		defer gossip.Stop()
-
-		time.Sleep(8 * time.Second)
-
-		go gossip.StartListen()
-		go gossip.StartLoop()
+		time.Sleep(4 * time.Second)
 	}
 
 	// --- verify quorum, nodes ---
@@ -478,6 +480,9 @@ func verifyTestStatus(t *testing.T, ctx context.Context, r *Runner) error {
 	memberClientURLs := memberClientURLs(t, r)
 	client, err := etcdutil.NewClient(ctx, r.logger, memberClientURLs, r.etcdConfig.ClientTLSConfig)
 	if err != nil {
+		return err
+	}
+	if err := client.CheckQuorum(ctx); err != nil {
 		return err
 	}
 	status, err := client.Status(ctx, memberClientURLs[0])
@@ -567,7 +572,7 @@ func newConfigs(t *testing.T, members []member, dataPath string) ([]*c.EtcdConfi
 	return configs, nil
 }
 
-func newDummyCluster(t *testing.T, ctx context.Context, runners []*Runner) error {
+func existingDummyCluster(t *testing.T, ctx context.Context, runners []*Runner) error {
 	t.Helper()
 
 	for _, r := range runners {
@@ -598,6 +603,27 @@ func newDummyCluster(t *testing.T, ctx context.Context, runners []*Runner) error
 		}
 		if val != "test-rev3-val" {
 			return fmt.Errorf("test dummy data")
+		}
+	}
+	return nil
+}
+
+func newDummyCluster(t *testing.T, ctx context.Context, runners []*Runner) error {
+	t.Helper()
+
+	for _, r := range runners {
+		if err := r.etcdRunner.StartNew(r.etcdConfig.WriteEnv()); err != nil {
+			return fmt.Errorf("dummy cluster: %w", err)
+		}
+	}
+	time.Sleep(4 * time.Second)
+
+	for _, r := range runners {
+		c, cancel := context.WithTimeout(ctx, time.Duration(4*time.Second))
+		defer cancel()
+
+		if err := verifyTestStatus(t, c, r); err != nil {
+			return fmt.Errorf("test dummy cluster: %w", err)
 		}
 	}
 	return nil

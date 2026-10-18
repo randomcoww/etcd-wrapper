@@ -56,19 +56,20 @@ func TestBackupRun(t *testing.T) {
 		},
 		TestEncryptionKey: testEncryptionKey,
 	}
-	snapshot := s.NewFromConfig(logger, s3Client, &c.YamlConfig{
-		SnapshotEncryptionKey:  testEncryptionKey,
-		SnapshotObjectPrefix:   "snap-",
-		SnapshotRetentionCount: 2,
-		S3ClientTimeout:        2 * time.Second,
-		RestoreSnapshotTimeout: 2 * time.Second,
-		UploadSnapshotTimeout:  2 * time.Second,
-	}, func() string { return "test" })
 
 	var runners []*Runner
 	var backupRunners []*Backup
 
 	for _, config := range configs {
+		snapshot := s.NewFromConfig(logger, s3Client, &c.YamlConfig{
+			SnapshotEncryptionKey:  testEncryptionKey,
+			SnapshotObjectPrefix:   "snap-",
+			SnapshotRetentionCount: 2,
+			S3ClientTimeout:        2 * time.Second,
+			RestoreSnapshotTimeout: 2 * time.Second,
+			UploadSnapshotTimeout:  2 * time.Second,
+		}, func() string { return "test" })
+
 		r := &Runner{
 			logger:             logger,
 			checkQuorumTimeout: 8 * time.Second,
@@ -98,7 +99,7 @@ func TestBackupRun(t *testing.T) {
 		backupRunners = append(backupRunners, b)
 	}
 
-	if err := newDummyCluster(t, ctx, runners); err != nil {
+	if err := existingDummyCluster(t, ctx, runners); err != nil {
 		t.Fatal("create dummy cluster: %w", err)
 	}
 

@@ -2,6 +2,7 @@ package runner
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -13,14 +14,10 @@ import (
 	"go.uber.org/zap"
 )
 
-const (
-	defaultRevision int64 = 1
-)
-
 type etcdProcess interface {
 	StartNew([]string) error
 	StartExisting([]string) error
-	Stop() error
+	Stop()
 	Wait() error
 }
 
@@ -45,7 +42,16 @@ func NewRunnerFromConfig(logger *zap.Logger, etcdRunner etcdProcess, snapshot *s
 }
 
 func (r *Runner) StartInit(ctx context.Context) (bool, error) {
-	ok, err := r.checkQuorumAndStart(ctx)
+	ok, err := r.checkRevisionAndStart()
+	if err != nil {
+		return false, err
+	}
+	if ok {
+		return true, nil
+	}
+	r.logger.Info("local data not found")
+
+	ok, err = r.checkQuorumAndStart(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -54,7 +60,7 @@ func (r *Runner) StartInit(ctx context.Context) (bool, error) {
 	}
 	r.logger.Info("quorum not found")
 
-	ok, err = r.startNoQuorum(ctx)
+	ok, err = r.restoreAndStart(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -64,65 +70,81 @@ func (r *Runner) StartInit(ctx context.Context) (bool, error) {
 	return false, nil
 }
 
-func (r *Runner) StartLoop(ctx context.Context, start chan struct{}) error {
-	for {
-		ok, err := r.checkQuorumAndStart(ctx)
-		if err != nil {
-			return err
-		}
-		if ok {
-			return nil
-		}
-		r.logger.Info("quorum not found")
-
-		select {
-		case <-start:
-			return r.etcdRunner.StartNew(r.etcdConfig.WriteEnv())
-		case <-ctx.Done():
-			return nil
-		}
+func (r *Runner) checkRevisionAndStart() (bool, error) {
+	revision, err := r.getLocalRevision()
+	if err != nil {
+		return false, fmt.Errorf("init cluster: %w", err)
 	}
+
+	if revision > 0 {
+		// current revision left on disk prior to any restore
+		// if non-zero, assume it is usable and start cluster as is
+		if err := r.etcdRunner.StartExisting(r.etcdConfig.WriteEnv()); err != nil {
+			return true, err
+		}
+		return true, nil
+	}
+
+	// pass to next handler
+	return false, nil
 }
 
 func (r *Runner) checkQuorumAndStart(ctx context.Context) (bool, error) {
 	peerClientCtx, cancel := context.WithTimeout(ctx, r.checkQuorumTimeout)
 	defer cancel()
 	client, err := etcdutil.NewClientFromPeers(peerClientCtx, r.logger, r.etcdConfig.ClusterPeerURLs(), r.etcdConfig.PeerTLSConfig, r.etcdConfig.ClientTLSConfig)
-	if err == nil {
-		defer client.Close()
-		err = client.CheckQuorum(peerClientCtx)
-		if err == nil {
-			if err := r.addMemberToQuorum(ctx, client); err != nil {
-				return true, err
-			}
-			return true, nil
-		}
-	}
-	return false, nil
-}
-
-func (r *Runner) startNoQuorum(ctx context.Context) (bool, error) {
-	revision, err := r.getLocalRevision()
 	if err != nil {
-		return false, fmt.Errorf("init cluster: %w", err)
-	}
-	if revision == defaultRevision {
-		revision, err = r.restoreSnapshot(ctx)
-		if err != nil {
-			return false, fmt.Errorf("init cluster: %w", err)
-		}
-		if revision == defaultRevision {
+		if errors.Is(err, context.DeadlineExceeded) {
+			// pass to next handler
 			return false, nil
 		}
+		return false, err
 	}
-	r.logger.Info("start etcd existing")
+	defer client.Close()
+
+	remoteRevision, err := client.GetRevision(ctx)
+	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			// pass to next handler
+			return false, nil
+		}
+		return false, err
+	}
+	r.logger.Info("remote data", zap.Int64("revision", remoteRevision))
+
+	// if cluster data revision > 0, cluster is existing
+	// there is no local data, so it needs a member replacement
+	if err := r.addNodeToQuorum(ctx, client); err != nil {
+		return false, err
+	}
+
+	// the cluster is new. start this node as new
 	if err := r.etcdRunner.StartExisting(r.etcdConfig.WriteEnv()); err != nil {
 		return true, err
 	}
 	return true, nil
 }
 
-func (r *Runner) addMemberToQuorum(ctx context.Context, client etcdutil.EtcdClient) error {
+func (r *Runner) restoreAndStart(ctx context.Context) (bool, error) {
+	revision, err := r.restoreSnapshot(ctx)
+	if err != nil {
+		return false, fmt.Errorf("start no quorum: %w", err)
+	}
+
+	if revision > 0 {
+		if err := r.etcdRunner.StartExisting(r.etcdConfig.WriteEnv()); err != nil {
+			return true, err
+		}
+		return true, nil
+	}
+
+	if err := r.etcdRunner.StartNew(r.etcdConfig.WriteEnv()); err != nil {
+		return true, err
+	}
+	return true, nil
+}
+
+func (r *Runner) addNodeToQuorum(ctx context.Context, client etcdutil.EtcdClient) error {
 	r.logger.Info("existing quorum found")
 
 	if err := r.updateMembers(ctx, client); err != nil {
@@ -132,14 +154,7 @@ func (r *Runner) addMemberToQuorum(ctx context.Context, client etcdutil.EtcdClie
 		return fmt.Errorf("replace member: %w", err)
 	}
 	r.logger.Info("replaced local member")
-
-	if err := r.clearLocalData(); err != nil {
-		return fmt.Errorf("clear local data: %w", err)
-	}
-	r.logger.Info("cleared local data")
-
-	r.logger.Info("start etcd existing")
-	return r.etcdRunner.StartExisting(r.etcdConfig.WriteEnv())
+	return nil
 }
 
 func (r *Runner) replaceMember(ctx context.Context, client etcdutil.EtcdClient) error {
@@ -154,7 +169,7 @@ func (r *Runner) replaceMember(ctx context.Context, client etcdutil.EtcdClient) 
 	// replace my node to join cluster
 	// if my node already exists, it needs to be replaced
 	if localMember != nil && len(listResp.GetMembers()) >= len(r.etcdConfig.InitialCluster) {
-		r.logger.Info("remove local member", zap.Uint64("ID", localMember.GetID()))
+		r.logger.Info("remove local member", zap.Uint64("ID", localMember.GetID()), zap.String("name", localMember.GetName()))
 
 		memberRemoveCtx, cancel := context.WithTimeout(ctx, r.memberTimeout)
 		defer cancel()
@@ -163,7 +178,11 @@ func (r *Runner) replaceMember(ctx context.Context, client etcdutil.EtcdClient) 
 			return fmt.Errorf("remove cluster member %d: %w", localMember.GetID(), err)
 		}
 		localMember = etcdutil.FindLocalMemberInResp(listResp, r.etcdConfig.Env["ETCD_NAME"], r.etcdConfig.InitialAdvertisePeerURLs)
-		r.logger.Info("removed local member")
+
+		// local data, if any is not usable now
+		if err := r.clearLocalData(); err != nil {
+			return fmt.Errorf("clear local data: %w", err)
+		}
 	}
 
 	if localMember == nil && len(listResp.GetMembers()) < len(r.etcdConfig.InitialCluster) {
@@ -174,7 +193,7 @@ func (r *Runner) replaceMember(ctx context.Context, client etcdutil.EtcdClient) 
 			return fmt.Errorf("add member: %w", err)
 		}
 		localMember = etcdutil.FindLocalMemberInResp(listResp, r.etcdConfig.Env["ETCD_NAME"], r.etcdConfig.InitialAdvertisePeerURLs)
-		r.logger.Info("added local member", zap.Uint64("ID", localMember.GetID()))
+		r.logger.Info("added local member", zap.Uint64("ID", localMember.GetID()), zap.String("name", localMember.GetName()))
 	}
 	return nil
 }
@@ -254,12 +273,8 @@ func (r *Runner) getLocalRevision() (int64, error) {
 	if err != nil {
 		r.logger.Error("get local data revision", zap.Error(err))
 		if err := r.clearLocalData(); err != nil {
-			return defaultRevision, fmt.Errorf("clear local data: %w", err)
+			return 0, fmt.Errorf("clear local data: %w", err)
 		}
-		r.logger.Info("cleared local data")
-	}
-	if revision == 0 {
-		revision = defaultRevision
 	}
 	r.logger.Info("local data", zap.Int64("revision", revision))
 	return revision, nil
@@ -267,21 +282,21 @@ func (r *Runner) getLocalRevision() (int64, error) {
 
 func (r *Runner) restoreSnapshot(ctx context.Context) (int64, error) {
 	if err := r.clearLocalData(); err != nil {
-		return defaultRevision, err
+		return 0, err
 	}
 	ok, err := r.snapshot.VerifyBucket(ctx)
 	if err != nil {
-		return defaultRevision, fmt.Errorf("verify backup bucket: %w", err)
+		return 0, fmt.Errorf("verify backup bucket: %w", err)
 	}
 	if !ok {
-		return defaultRevision, fmt.Errorf("verify backup bucket")
+		return 0, fmt.Errorf("verify backup bucket")
 	}
 	ok, err = r.snapshot.Restore(ctx, r.etcdConfig.RestoreConfig())
 	if err != nil {
-		return defaultRevision, fmt.Errorf("restore snapshot: %w", err)
+		return 0, fmt.Errorf("restore snapshot: %w", err)
 	}
 	if ok {
 		return r.getLocalRevision()
 	}
-	return defaultRevision, nil
+	return 0, nil
 }

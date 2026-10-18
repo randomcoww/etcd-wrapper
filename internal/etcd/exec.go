@@ -17,15 +17,10 @@ func (m *Exec) StartExisting(env []string) error {
 }
 
 func (m *Exec) start(env []string, state string) error {
-	return syscall.Exec(m.EtcdBinary,
-		[]string{"--initial-cluster-state=" + state},
-		env,
-	)
+	return syscall.Exec(m.EtcdBinary, []string{"--initial-cluster-state=" + state}, env)
 }
 
-func (m *Exec) Stop() error {
-	return nil
-}
+func (m *Exec) Stop() {}
 
 func (m *Exec) Wait() error {
 	return nil

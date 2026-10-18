@@ -4,7 +4,6 @@ locals {
   data_path         = "/var/lib/etcd"
   base_path         = "outputs"
   etcd_wrapper_path = "/etcd-wrapper"
-  cluster_token     = "test"
   members = {
     node0 = {
       client_url = "https://127.0.0.1:8080"
@@ -32,19 +31,19 @@ locals {
     for node, member in local.members :
     node => {
       "config.yaml" = yamlencode({
-        EtcdBinaryFile = "/usr/local/bin/etcd"
-        GossipPeerURLs = {
+        etcdBinaryFile = "/usr/local/bin/etcd"
+        gossipPeerURLs = {
           for node, member in local.members :
           node => member.gossip_url
         }
-        S3Endpoint = "https://127.0.0.1:${local.minio_port}"
-        S3Bucket   = local.minio_bucket
-        S3TrustedCAs = [
+        s3Endpoint = "https://127.0.0.1:${local.minio_port}"
+        s3Bucket   = local.minio_bucket
+        s3TrustedCAs = [
           "/etc/minio/certs/CAs/ca.crt",
         ]
-        S3AccessKeyID         = local.minio_username
-        S3SecretAccessKey     = local.minio_password
-        SnapshotEncryptionKey = "test-encryption-password"
+        s3AccessKeyID         = local.minio_username
+        s3SecretAccessKey     = local.minio_password
+        snapshotEncryptionKey = "test-encryption-password"
       })
       "client/ca.crt"  = tls_self_signed_cert.etcd-ca.cert_pem
       "client/tls.crt" = tls_locally_signed_cert.etcd[node].cert_pem
@@ -178,7 +177,8 @@ module "etcd-wrapper" {
         env = [
           for k, v in {
             "ETCD_NAME"                        = each.key
-            "ETCD_DATA_DIR"                    = "${local.data_path}/data"
+            "ETCD_LOG_LEVEL"                   = "warn"
+            "ETCD_DATA_DIR"                    = "/var/run/etcd"
             "ETCD_LISTEN_PEER_URLS"            = each.value.peer_url
             "ETCD_LISTEN_CLIENT_URLS"          = each.value.client_url
             "ETCD_INITIAL_ADVERTISE_PEER_URLS" = each.value.peer_url
@@ -194,13 +194,8 @@ module "etcd-wrapper" {
             "ETCD_PEER_TRUSTED_CA_FILE"      = "${local.data_path}/peer/ca.crt"
             "ETCD_PEER_CERT_FILE"            = "${local.data_path}/peer/tls.crt"
             "ETCD_PEER_KEY_FILE"             = "${local.data_path}/peer/tls.key"
-            "ETCD_STRICT_RECONFIG_CHECK"     = true
-            "ETCD_LOG_LEVEL"                 = "warn"
             "ETCD_AUTO_COMPACTION_RETENTION" = 1
             "ETCD_AUTO_COMPACTION_MODE"      = "revision"
-            "ETCD_SOCKET_REUSE_ADDRESS"      = true
-            "AWS_ACCESS_KEY_ID"              = local.minio_username
-            "AWS_SECRET_ACCESS_KEY"          = local.minio_password
           } :
           {
             name  = tostring(k)
@@ -281,8 +276,6 @@ module "etcd" {
             "ETCD_AUTO_COMPACTION_RETENTION" = 1
             "ETCD_AUTO_COMPACTION_MODE"      = "revision"
             "ETCD_SOCKET_REUSE_ADDRESS"      = true
-            "AWS_ACCESS_KEY_ID"              = local.minio_username
-            "AWS_SECRET_ACCESS_KEY"          = local.minio_password
           } :
           {
             name  = tostring(k)
