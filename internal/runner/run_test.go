@@ -31,7 +31,7 @@ type member struct {
 	gossipPort  int
 }
 
-func TestCreateFromRestore(t *testing.T) {
+func TestCreateFromSnapshot(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -80,7 +80,6 @@ func TestCreateFromRestore(t *testing.T) {
 			checkQuorumTimeout: 8 * time.Second,
 			memberTimeout:      8 * time.Second,
 			etcdRunner: &etcd.Fork{
-				Ctx:        ctx,
 				EtcdBinary: "/etcd/usr/local/bin/etcd",
 			},
 			etcdConfig: config,
@@ -93,14 +92,10 @@ func TestCreateFromRestore(t *testing.T) {
 				UploadSnapshotTimeout:  2 * time.Second,
 			}, func() string { return "" }),
 		}
-		defer r.etcdRunner.Wait()
 		defer r.etcdRunner.Stop()
 		runners = append(runners, r)
 
-		c, cancel := context.WithTimeout(ctx, time.Duration(8*time.Second))
-		defer cancel()
-
-		ok, err := r.StartInit(c)
+		ok, err := r.StartInit(ctx)
 		if err != nil {
 			t.Fatal("call etcd runner: %w", err)
 		}
@@ -123,7 +118,7 @@ func TestCreateFromRestore(t *testing.T) {
 	}
 }
 
-func TestReplaceMembers(t *testing.T) {
+func TestRestartMembers(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -172,7 +167,6 @@ func TestReplaceMembers(t *testing.T) {
 			checkQuorumTimeout: 8 * time.Second,
 			memberTimeout:      8 * time.Second,
 			etcdRunner: &etcd.Fork{
-				Ctx:        ctx,
 				EtcdBinary: "/etcd/usr/local/bin/etcd",
 			},
 			etcdConfig: config,
@@ -185,7 +179,6 @@ func TestReplaceMembers(t *testing.T) {
 				UploadSnapshotTimeout:  2 * time.Second,
 			}, func() string { return "" }),
 		}
-		defer r.etcdRunner.Wait()
 		defer r.etcdRunner.Stop()
 		runners = append(runners, r)
 	}
@@ -198,8 +191,7 @@ func TestReplaceMembers(t *testing.T) {
 
 	t.Logf("stopping nodes")
 	for _, r := range runners[:2] {
-		r.etcdRunner.Stop()
-		if err := r.etcdRunner.Wait(); err != nil {
+		if err := r.etcdRunner.Stop(); err != nil {
 			t.Fatalf("wait stop test client: %v", err)
 		}
 		t.Logf("stopped %s", r.etcdConfig.Env["ETCD_NAME"])
@@ -213,12 +205,9 @@ func TestReplaceMembers(t *testing.T) {
 	// --- start replacement nodes ---
 
 	for _, r := range runners[:2] {
-		runCtx, cancel := context.WithTimeout(ctx, time.Duration(8*time.Second))
-		defer cancel()
-
 		t.Logf("starting %s", r.etcdConfig.Env["ETCD_NAME"])
 
-		ok, err := r.StartInit(runCtx)
+		ok, err := r.StartInit(ctx)
 		if err != nil {
 			t.Fatal("call etcd runner: %w", err)
 		}
@@ -241,7 +230,7 @@ func TestReplaceMembers(t *testing.T) {
 	}
 }
 
-func TestRollingMemberReplace(t *testing.T) {
+func TestRollingMemberUpdate(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -315,7 +304,6 @@ func TestRollingMemberReplace(t *testing.T) {
 			checkQuorumTimeout: 8 * time.Second,
 			memberTimeout:      8 * time.Second,
 			etcdRunner: &etcd.Fork{
-				Ctx:        ctx,
 				EtcdBinary: "/etcd/usr/local/bin/etcd",
 			},
 			etcdConfig: config,
@@ -328,7 +316,6 @@ func TestRollingMemberReplace(t *testing.T) {
 				UploadSnapshotTimeout:  2 * time.Second,
 			}, func() string { return "" }),
 		}
-		defer r.etcdRunner.Wait()
 		defer r.etcdRunner.Stop()
 		runners = append(runners, r)
 	}
@@ -341,8 +328,7 @@ func TestRollingMemberReplace(t *testing.T) {
 
 	t.Logf("rolling restart")
 	for i, r := range runners {
-		r.etcdRunner.Stop()
-		if err := r.etcdRunner.Wait(); err != nil {
+		if err := r.etcdRunner.Stop(); err != nil {
 			t.Fatal("wait stop test client: %w", err)
 		}
 
@@ -355,10 +341,8 @@ func TestRollingMemberReplace(t *testing.T) {
 		r.etcdConfig = configsAfter[i]
 
 		t.Logf("restarting %s", r.etcdConfig.Env["ETCD_NAME"])
-		c, cancel := context.WithTimeout(ctx, time.Duration(8*time.Second))
-		defer cancel()
 
-		ok, err := r.StartInit(c)
+		ok, err := r.StartInit(ctx)
 		if err != nil {
 			t.Fatal("call etcd runner: %w", err)
 		}
@@ -415,11 +399,6 @@ func TestStartNew(t *testing.T) {
 		t.Fatal("generate test configs: %w", err)
 	}
 
-	gossipPeerURLs := make(map[string]string)
-	for _, member := range members {
-		gossipPeerURLs[member.name] = fmt.Sprintf("https://127.0.0.1:%d", member.gossipPort)
-	}
-
 	s3Client := &s3test.FakeS3Client{
 		ObjectsList:       []string{},
 		ObjectsErrors:     make(map[string]error),
@@ -434,7 +413,6 @@ func TestStartNew(t *testing.T) {
 			checkQuorumTimeout: 16 * time.Second,
 			memberTimeout:      8 * time.Second,
 			etcdRunner: &etcd.Fork{
-				Ctx:        ctx,
 				EtcdBinary: "/etcd/usr/local/bin/etcd",
 			},
 			etcdConfig: config,
@@ -447,7 +425,6 @@ func TestStartNew(t *testing.T) {
 				UploadSnapshotTimeout:  2 * time.Second,
 			}, func() string { return "" }),
 		}
-		defer r.etcdRunner.Wait()
 		defer r.etcdRunner.Stop()
 		runners = append(runners, r)
 
@@ -584,7 +561,7 @@ func existingDummyCluster(t *testing.T, ctx context.Context, runners []*Runner) 
 		if err := etcdutil.RestoreSnapshot(r.logger, restoreConfig); err != nil {
 			return fmt.Errorf("dummy cluster data restore: %w", err)
 		}
-		if err := r.etcdRunner.StartExisting(r.etcdConfig.WriteEnv()); err != nil {
+		if err := r.etcdRunner.StartExisting(ctx, r.etcdConfig.WriteEnv()); err != nil {
 			return fmt.Errorf("dummy cluster: %w", err)
 		}
 	}
@@ -603,27 +580,6 @@ func existingDummyCluster(t *testing.T, ctx context.Context, runners []*Runner) 
 		}
 		if val != "test-rev3-val" {
 			return fmt.Errorf("test dummy data")
-		}
-	}
-	return nil
-}
-
-func newDummyCluster(t *testing.T, ctx context.Context, runners []*Runner) error {
-	t.Helper()
-
-	for _, r := range runners {
-		if err := r.etcdRunner.StartNew(r.etcdConfig.WriteEnv()); err != nil {
-			return fmt.Errorf("dummy cluster: %w", err)
-		}
-	}
-	time.Sleep(4 * time.Second)
-
-	for _, r := range runners {
-		c, cancel := context.WithTimeout(ctx, time.Duration(4*time.Second))
-		defer cancel()
-
-		if err := verifyTestStatus(t, c, r); err != nil {
-			return fmt.Errorf("test dummy cluster: %w", err)
 		}
 	}
 	return nil

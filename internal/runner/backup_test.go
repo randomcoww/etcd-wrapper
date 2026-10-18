@@ -75,13 +75,11 @@ func TestBackupRun(t *testing.T) {
 			checkQuorumTimeout: 8 * time.Second,
 			memberTimeout:      8 * time.Second,
 			etcdRunner: &etcd.Fork{
-				Ctx:        ctx,
 				EtcdBinary: "/etcd/usr/local/bin/etcd",
 			},
 			etcdConfig: config,
 			snapshot:   snapshot,
 		}
-		defer r.etcdRunner.Wait()
 		defer r.etcdRunner.Stop()
 		runners = append(runners, r)
 

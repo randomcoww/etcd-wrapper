@@ -15,10 +15,9 @@ import (
 )
 
 type etcdProcess interface {
-	StartNew([]string) error
-	StartExisting([]string) error
-	Stop()
-	Wait() error
+	StartNew(context.Context, []string) error
+	StartExisting(context.Context, []string) error
+	Stop() error
 }
 
 type Runner struct {
@@ -42,7 +41,7 @@ func NewRunnerFromConfig(logger *zap.Logger, etcdRunner etcdProcess, snapshot *s
 }
 
 func (r *Runner) StartInit(ctx context.Context) (bool, error) {
-	ok, err := r.checkRevisionAndStart()
+	ok, err := r.checkRevisionAndStart(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -70,7 +69,7 @@ func (r *Runner) StartInit(ctx context.Context) (bool, error) {
 	return false, nil
 }
 
-func (r *Runner) checkRevisionAndStart() (bool, error) {
+func (r *Runner) checkRevisionAndStart(ctx context.Context) (bool, error) {
 	revision, err := r.getLocalRevision()
 	if err != nil {
 		return false, fmt.Errorf("init cluster: %w", err)
@@ -79,7 +78,8 @@ func (r *Runner) checkRevisionAndStart() (bool, error) {
 	if revision > 0 {
 		// current revision left on disk prior to any restore
 		// if non-zero, assume it is usable and start cluster as is
-		if err := r.etcdRunner.StartExisting(r.etcdConfig.WriteEnv()); err != nil {
+		r.logger.Info("start etcd as existing")
+		if err := r.etcdRunner.StartExisting(ctx, r.etcdConfig.WriteEnv()); err != nil {
 			return true, err
 		}
 		return true, nil
@@ -102,7 +102,10 @@ func (r *Runner) checkQuorumAndStart(ctx context.Context) (bool, error) {
 	}
 	defer client.Close()
 
-	remoteRevision, err := client.GetRevision(ctx)
+	// checks for quorum
+	quorumCtx, cancel := context.WithTimeout(ctx, r.memberTimeout)
+	defer cancel()
+	remoteRevision, err := client.GetRevision(quorumCtx)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
 			// pass to next handler
@@ -112,14 +115,15 @@ func (r *Runner) checkQuorumAndStart(ctx context.Context) (bool, error) {
 	}
 	r.logger.Info("remote data", zap.Int64("revision", remoteRevision))
 
-	// if cluster data revision > 0, cluster is existing
-	// there is no local data, so it needs a member replacement
-	if err := r.addNodeToQuorum(ctx, client); err != nil {
-		return false, err
+	if err := r.updateMembers(ctx, client); err != nil {
+		return false, fmt.Errorf("sync peerURLs: %w", err)
+	}
+	if err := r.replaceMember(ctx, client); err != nil {
+		return false, fmt.Errorf("replace member: %w", err)
 	}
 
-	// the cluster is new. start this node as new
-	if err := r.etcdRunner.StartExisting(r.etcdConfig.WriteEnv()); err != nil {
+	r.logger.Info("start etcd as existing")
+	if err := r.etcdRunner.StartExisting(ctx, r.etcdConfig.WriteEnv()); err != nil {
 		return true, err
 	}
 	return true, nil
@@ -132,29 +136,18 @@ func (r *Runner) restoreAndStart(ctx context.Context) (bool, error) {
 	}
 
 	if revision > 0 {
-		if err := r.etcdRunner.StartExisting(r.etcdConfig.WriteEnv()); err != nil {
+		r.logger.Info("start etcd as existing")
+		if err := r.etcdRunner.StartExisting(ctx, r.etcdConfig.WriteEnv()); err != nil {
 			return true, err
 		}
 		return true, nil
 	}
 
-	if err := r.etcdRunner.StartNew(r.etcdConfig.WriteEnv()); err != nil {
+	r.logger.Info("start etcd as new")
+	if err := r.etcdRunner.StartNew(ctx, r.etcdConfig.WriteEnv()); err != nil {
 		return true, err
 	}
 	return true, nil
-}
-
-func (r *Runner) addNodeToQuorum(ctx context.Context, client etcdutil.EtcdClient) error {
-	r.logger.Info("existing quorum found")
-
-	if err := r.updateMembers(ctx, client); err != nil {
-		return fmt.Errorf("sync peerURLs: %w", err)
-	}
-	if err := r.replaceMember(ctx, client); err != nil {
-		return fmt.Errorf("replace member: %w", err)
-	}
-	r.logger.Info("replaced local member")
-	return nil
 }
 
 func (r *Runner) replaceMember(ctx context.Context, client etcdutil.EtcdClient) error {
@@ -271,9 +264,8 @@ func (r *Runner) clearLocalData() error {
 func (r *Runner) getLocalRevision() (int64, error) {
 	revision, err := etcdutil.GetDataRevision(r.etcdConfig.Env["ETCD_DATA_DIR"], r.logger)
 	if err != nil {
-		r.logger.Error("get local data revision", zap.Error(err))
 		if err := r.clearLocalData(); err != nil {
-			return 0, fmt.Errorf("clear local data: %w", err)
+			return 0, fmt.Errorf("get local revision: %w", err)
 		}
 	}
 	r.logger.Info("local data", zap.Int64("revision", revision))

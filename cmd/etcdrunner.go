@@ -10,7 +10,6 @@ import (
 
 	c "github.com/randomcoww/etcd-wrapper/config"
 	"github.com/randomcoww/etcd-wrapper/internal/etcd"
-	g "github.com/randomcoww/etcd-wrapper/internal/gossip"
 	r "github.com/randomcoww/etcd-wrapper/internal/runner"
 	"github.com/randomcoww/etcd-wrapper/internal/s3util"
 	s "github.com/randomcoww/etcd-wrapper/internal/snapshot"
@@ -23,17 +22,21 @@ const (
 )
 
 func main() {
-	if err := run(); err != nil {
+	logger, err := zap.NewProduction()
+	if err != nil {
+		os.Exit(1)
+	}
+
+	if err := run(logger); err != nil {
+		logger.Error("runner", zap.Error(err))
 		os.Exit(1)
 	}
 	os.Exit(0)
 }
 
-func run() error {
-	logger, err := zap.NewProduction()
-	if err != nil {
-		return err
-	}
+func run(logger *zap.Logger) error {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
 
 	var (
 		configPath = flag.String("config", "", "path to the YAML boot profile config file")
@@ -52,46 +55,15 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	etcdRunner := &etcd.Exec{
-		EtcdBinary: cfg.EtcdBinaryFile,
-	}
 	snapshot := s.NewFromConfig(logger, s3Client, cfg, func() string { return time.Now().UTC().Format(timeFormat) })
-	runner := r.NewRunnerFromConfig(logger, etcdRunner, snapshot, cfg, etcdConfig)
+	runner := r.NewRunnerFromConfig(logger, &etcd.Fork{EtcdBinary: cfg.EtcdBinaryFile}, snapshot, cfg, etcdConfig)
 
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
-
-	ok, err := runner.StartInit(ctx)
-	if err != nil {
+	if _, err := runner.StartInit(ctx); err != nil {
 		return err
 	}
-	if ok {
-		return nil
-	}
-
-	errCh := make(chan error, 1)
-	startCh := make(chan struct{})
-	gossip, err := g.NewNode(logger, etcdConfig.Env["ETCD_NAME"], defaultRevision, cfg.GossipPeerURLs, etcdConfig.PeerTLSConfig, startCh)
-	if err != nil {
-		return err
-	}
-	defer gossip.Stop()
-
-	go func() {
-		errCh <- runner.StartLoop(ctx, startCh)
-	}()
-	go func() {
-		errCh <- gossip.StartListen()
-	}()
-	go func() {
-		errCh <- gossip.StartLoop()
-	}()
 
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
-
-	case err := <-errCh:
-		return err
 	}
 }
