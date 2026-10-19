@@ -184,10 +184,11 @@ func (s *Snapshot) RemoveOldBackups(ctx context.Context) error {
 	defer cancel()
 	keys, _ := s.s3Client.List(s3ClientCtx, s.objectPrefix)
 	if len(keys) > s.retentionCount {
-		if err := s.s3Client.Remove(s3ClientCtx, keys[:len(keys)-s.retentionCount]); err != nil {
-			return fmt.Errorf("remove old backups: '%s': %w", keys, err)
+		removeKeys := keys[:len(keys)-s.retentionCount]
+		if err := s.s3Client.Remove(s3ClientCtx, removeKeys); err != nil {
+			return fmt.Errorf("remove old backups: %w", err)
 		}
+		s.logger.Info("removed old backups", zap.String("keys", fmt.Sprintf("%s", removeKeys)))
 	}
-	s.logger.Info("removed old backups", zap.String("keys", fmt.Sprintf("%s", keys)))
 	return nil
 }
