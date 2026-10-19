@@ -17,3 +17,5 @@ ENV SSL_CERT_FILE /etc/ssl/certs/ca-certificates.crt
 
 COPY --from=build /go/src/etcd-wrapper /bin/
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
+
+ENTRYPOINT [ "/bin/etcd-wrapper" ]
