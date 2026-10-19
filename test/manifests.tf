@@ -227,6 +227,7 @@ module "etcd-wrapper" {
           for k, v in {
             "ETCD_NAME"                        = each.key
             "ETCD_LOG_LEVEL"                   = "warn"
+            "ETCD_LOG_OUTPUTS"                 = "stdout"
             "ETCD_DATA_DIR"                    = "/var/run/etcd"
             "ETCD_LISTEN_PEER_URLS"            = each.value.peer_url
             "ETCD_LISTEN_CLIENT_URLS"          = each.value.client_url

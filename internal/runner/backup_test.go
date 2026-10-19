@@ -76,19 +76,19 @@ func TestBackupRun(t *testing.T) {
 		}
 
 		r := NewRunnerFromConfig(logger, etcdRunner, snapshot, &c.YamlConfig{
-			CheckQuorumDelay: 8 * time.Second,
-			MemberTimeout:    8 * time.Second,
+			CheckQuorumTimeout: 8 * time.Second,
+			MemberTimeout:      8 * time.Second,
 		}, config)
 		defer r.etcdRunner.Stop()
 		runners = append(runners, r)
 
 		b := NewBackupFromConfig(logger, snapshot, &c.YamlConfig{
-			BackupInterval:    4 * time.Second,
-			CheckQuorumDelay:  8 * time.Second,
-			MemberTimeout:     4 * time.Second,
-			SnapshotTimeout:   8 * time.Second,
-			DefragmentTimeout: 16 * time.Second,
-			DefragThreshold:   0.0,
+			BackupInterval:     4 * time.Second,
+			CheckQuorumTimeout: 8 * time.Second,
+			MemberTimeout:      8 * time.Second,
+			SnapshotTimeout:    8 * time.Second,
+			DefragmentTimeout:  16 * time.Second,
+			DefragThreshold:    0.0,
 		}, config)
 		backupRunners = append(backupRunners, b)
 	}

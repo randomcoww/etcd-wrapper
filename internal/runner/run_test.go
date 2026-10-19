@@ -29,7 +29,6 @@ type member struct {
 	clientPort  int
 	peerPort    int
 	metricsPort int
-	gossipPort  int
 }
 
 func TestCreateFromSnapshot(t *testing.T) {
@@ -91,8 +90,8 @@ func TestCreateFromSnapshot(t *testing.T) {
 		}
 
 		r := NewRunnerFromConfig(logger, etcdRunner, snapshot, &c.YamlConfig{
-			CheckQuorumDelay: 8 * time.Second,
-			MemberTimeout:    8 * time.Second,
+			CheckQuorumTimeout: 8 * time.Second,
+			MemberTimeout:      8 * time.Second,
 		}, config)
 		defer r.etcdRunner.Stop()
 		runners = append(runners, r)
@@ -179,8 +178,8 @@ func TestRestartMembers(t *testing.T) {
 		}
 
 		r := NewRunnerFromConfig(logger, etcdRunner, snapshot, &c.YamlConfig{
-			CheckQuorumDelay: 8 * time.Second,
-			MemberTimeout:    8 * time.Second,
+			CheckQuorumTimeout: 8 * time.Second,
+			MemberTimeout:      8 * time.Second,
 		}, config)
 		defer r.etcdRunner.Stop()
 		runners = append(runners, r)
@@ -317,8 +316,8 @@ func TestRollingMemberUpdate(t *testing.T) {
 		}
 
 		r := NewRunnerFromConfig(logger, etcdRunner, snapshot, &c.YamlConfig{
-			CheckQuorumDelay: 8 * time.Second,
-			MemberTimeout:    8 * time.Second,
+			CheckQuorumTimeout: 8 * time.Second,
+			MemberTimeout:      8 * time.Second,
 		}, config)
 		defer r.etcdRunner.Stop()
 		runners = append(runners, r)
@@ -380,21 +379,18 @@ func TestStartNew(t *testing.T) {
 			clientPort:  8080,
 			peerPort:    8090,
 			metricsPort: 8100,
-			gossipPort:  8110,
 		},
 		{
 			name:        "node1",
 			clientPort:  8081,
 			peerPort:    8091,
 			metricsPort: 8101,
-			gossipPort:  8111,
 		},
 		{
 			name:        "node2",
 			clientPort:  8082,
 			peerPort:    8092,
 			metricsPort: 8102,
-			gossipPort:  8112,
 		},
 	}
 	dataPath := t.TempDir()
@@ -427,8 +423,8 @@ func TestStartNew(t *testing.T) {
 		}
 
 		r := NewRunnerFromConfig(logger, etcdRunner, snapshot, &c.YamlConfig{
-			CheckQuorumDelay: 8 * time.Second,
-			MemberTimeout:    8 * time.Second,
+			CheckQuorumTimeout: 8 * time.Second,
+			MemberTimeout:      8 * time.Second,
 		}, config)
 		defer r.etcdRunner.Stop()
 		runners = append(runners, r)

@@ -9,9 +9,9 @@ import (
 )
 
 type YamlConfig struct {
-	CheckQuorumDelay time.Duration `yaml:"checkQuorumDelay,omitempty"`
-	MemberTimeout    time.Duration `yaml:"memberTimeout,omitempty"`
-	EtcdBinaryFile   string        `yaml:"etcdBinaryFile,omitempty"`
+	CheckQuorumTimeout time.Duration `yaml:"checkQuorumTimeout,omitempty"`
+	MemberTimeout      time.Duration `yaml:"memberTimeout,omitempty"`
+	EtcdBinaryFile     string        `yaml:"etcdBinaryFile,omitempty"`
 
 	S3Endpoint             string        `yaml:"s3Endpoint,omitempty"`
 	S3Region               string        `yaml:"s3Region,omitempty"`
@@ -37,7 +37,7 @@ func LoadConfigFile(path string) (*YamlConfig, error) {
 		return nil, fmt.Errorf("reading config file '%s': %w", path, err)
 	}
 	raw := &YamlConfig{
-		CheckQuorumDelay:       2 * time.Minute,
+		CheckQuorumTimeout:     2 * time.Minute,
 		MemberTimeout:          4 * time.Second,
 		EtcdBinaryFile:         "/usr/local/bin/etcd",
 		S3Endpoint:             "https://s3.amazonaws.com",

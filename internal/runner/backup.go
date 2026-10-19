@@ -36,7 +36,7 @@ func NewBackupFromConfig(logger *zap.Logger, snapshot *s.Snapshot, raw *c.YamlCo
 	return &Backup{
 		logger:             logger,
 		backupInterval:     raw.BackupInterval,
-		checkQuorumTimeout: raw.CheckQuorumDelay,
+		checkQuorumTimeout: raw.CheckQuorumTimeout,
 		memberTimeout:      raw.MemberTimeout,
 		snapshotTimeout:    raw.SnapshotTimeout,
 		defragmentTimeout:  raw.DefragmentTimeout,

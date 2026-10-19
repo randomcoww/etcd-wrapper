@@ -46,10 +46,7 @@ func TestRunConfig(t *testing.T) {
 		"ETCD_PEER_TRUSTED_CA_FILE":        filepath.Join(baseTestPath, member, "peer", "ca.crt"),
 		"ETCD_PEER_CERT_FILE":              filepath.Join(baseTestPath, member, "peer", "tls.crt"),
 		"ETCD_PEER_KEY_FILE":               filepath.Join(baseTestPath, member, "peer", "tls.key"),
-		"ETCD_LOG_OUTPUTS":                 "stdout",
 		"ETCD_STRICT_RECONFIG_CHECK":       "true",
-		"ETCD_SOCKET_REUSE_ADDRESS":        "true",
-		"ETCD_SOCKET_REUSE_PORT":           "true",
 		"ETCD_DATA_DIR":                    "/data/test",
 	}, c.Env)
 
@@ -81,14 +78,11 @@ func TestRunConfig(t *testing.T) {
 		"ETCD_INITIAL_CLUSTER_TOKEN=token",
 		"ETCD_KEY_FILE=" + filepath.Join(baseTestPath, member, "client", "tls.key"),
 		"ETCD_LISTEN_CLIENT_URLS=https://10.1.0.1:9080,https://127.0.0.1:9080,https://10.0.0.1:9080",
-		"ETCD_LOG_OUTPUTS=stdout",
 		"ETCD_NAME=test",
 		"ETCD_PEER_CERT_FILE=" + filepath.Join(baseTestPath, member, "peer", "tls.crt"),
 		"ETCD_PEER_CLIENT_CERT_AUTH=true",
 		"ETCD_PEER_KEY_FILE=" + filepath.Join(baseTestPath, member, "peer", "tls.key"),
 		"ETCD_PEER_TRUSTED_CA_FILE=" + filepath.Join(baseTestPath, member, "peer", "ca.crt"),
-		"ETCD_SOCKET_REUSE_ADDRESS=true",
-		"ETCD_SOCKET_REUSE_PORT=true",
 		"ETCD_STRICT_RECONFIG_CHECK=true",
 		"ETCD_TRUSTED_CA_FILE=" + filepath.Join(baseTestPath, member, "client", "ca.crt"),
 	}, c.WriteEnv())

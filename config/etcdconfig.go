@@ -125,12 +125,9 @@ func LoadFromEnv() (*EtcdConfig, error) {
 	}
 
 	delete(config.Env, "ETCD_INITIAL_CLUSTER_STATE") // this is set internally
-	config.Env["ETCD_LOG_OUTPUTS"] = "stdout"
 	config.Env["ETCD_STRICT_RECONFIG_CHECK"] = "true"
 	config.Env["ETCD_CLIENT_CERT_AUTH"] = "true"
 	config.Env["ETCD_PEER_CLIENT_CERT_AUTH"] = "true"
-	config.Env["ETCD_SOCKET_REUSE_ADDRESS"] = "true"
-	config.Env["ETCD_SOCKET_REUSE_PORT"] = "true"
 
 	return config, nil
 }
