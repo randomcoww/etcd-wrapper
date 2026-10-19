@@ -62,7 +62,7 @@ func run(logger *zap.Logger, cmd string, args []string) error {
 	if err != nil {
 		return err
 	}
-	s3Client, err := s3util.NewClient(cfg.S3Endpoint, cfg.S3Region, cfg.S3Bucket, cfg.S3AccessKeyID, cfg.S3SecretAccessKey, cfg.S3TLSConfig)
+	s3Client, err := s3util.NewClient(cfg.S3Endpoint, cfg.S3Region, cfg.S3Bucket, cfg.S3AccessKeyID, cfg.S3SecretAccessKey, cfg.S3TrustedCAs)
 	if err != nil {
 		return err
 	}
@@ -71,7 +71,11 @@ func run(logger *zap.Logger, cmd string, args []string) error {
 	errCh := make(chan error)
 	switch cmd {
 	case "init":
-		runner := r.NewRunnerFromConfig(logger, &etcd.Fork{EtcdBinary: cfg.EtcdBinaryFile}, snapshot, cfg, etcdConfig)
+		etcdRunner, err := etcd.NewEtcdRunner(cfg.EtcdBinaryFile)
+		if err != nil {
+			return err
+		}
+		runner := r.NewRunnerFromConfig(logger, etcdRunner, snapshot, cfg, etcdConfig)
 		if _, err := runner.StartInit(ctx); err != nil {
 			return err
 		}

@@ -70,30 +70,26 @@ func TestBackupRun(t *testing.T) {
 			UploadSnapshotTimeout:  2 * time.Second,
 		}, func() string { return "test" })
 
-		r := &Runner{
-			logger:             logger,
-			checkQuorumTimeout: 8 * time.Second,
-			memberTimeout:      8 * time.Second,
-			etcdRunner: &etcd.Fork{
-				EtcdBinary: "/etcd/usr/local/bin/etcd",
-			},
-			etcdConfig: config,
-			snapshot:   snapshot,
+		etcdRunner, err := etcd.NewEtcdRunner(etcdBinary)
+		if err != nil {
+			t.Fatal("test etcd binary: %w", err)
 		}
+
+		r := NewRunnerFromConfig(logger, etcdRunner, snapshot, &c.YamlConfig{
+			CheckQuorumDelay: 8 * time.Second,
+			MemberTimeout:    8 * time.Second,
+		}, config)
 		defer r.etcdRunner.Stop()
 		runners = append(runners, r)
 
-		b := &Backup{
-			logger:             logger,
-			backupInterval:     4 * time.Second,
-			checkQuorumTimeout: 8 * time.Second,
-			memberTimeout:      4 * time.Second,
-			snapshotTimeout:    8 * time.Second,
-			defragmentTimeout:  16 * time.Second,
-			etcdConfig:         config,
-			snapshot:           snapshot,
-			defragThreshold:    0.0,
-		}
+		b := NewBackupFromConfig(logger, snapshot, &c.YamlConfig{
+			BackupInterval:    4 * time.Second,
+			CheckQuorumDelay:  8 * time.Second,
+			MemberTimeout:     4 * time.Second,
+			SnapshotTimeout:   8 * time.Second,
+			DefragmentTimeout: 16 * time.Second,
+			DefragThreshold:   0.0,
+		}, config)
 		backupRunners = append(backupRunners, b)
 	}
 

@@ -21,6 +21,7 @@ import (
 const (
 	baseTestPath      string = "../../test/outputs"
 	testEncryptionKey string = "test-snapshot-encryption"
+	etcdBinary        string = "/etcd/usr/local/bin/etcd"
 )
 
 type member struct {
@@ -75,23 +76,24 @@ func TestCreateFromSnapshot(t *testing.T) {
 
 	var runners []*Runner
 	for _, config := range configs {
-		r := &Runner{
-			logger:             logger,
-			checkQuorumTimeout: 8 * time.Second,
-			memberTimeout:      8 * time.Second,
-			etcdRunner: &etcd.Fork{
-				EtcdBinary: "/etcd/usr/local/bin/etcd",
-			},
-			etcdConfig: config,
-			snapshot: s.NewFromConfig(logger, s3Client, &c.YamlConfig{
-				SnapshotEncryptionKey:  testEncryptionKey,
-				SnapshotObjectPrefix:   "snap-",
-				SnapshotRetentionCount: 2,
-				S3ClientTimeout:        2 * time.Second,
-				RestoreSnapshotTimeout: 2 * time.Second,
-				UploadSnapshotTimeout:  2 * time.Second,
-			}, func() string { return "" }),
+		snapshot := s.NewFromConfig(logger, s3Client, &c.YamlConfig{
+			SnapshotEncryptionKey:  testEncryptionKey,
+			SnapshotObjectPrefix:   "snap-",
+			SnapshotRetentionCount: 2,
+			S3ClientTimeout:        2 * time.Second,
+			RestoreSnapshotTimeout: 2 * time.Second,
+			UploadSnapshotTimeout:  2 * time.Second,
+		}, func() string { return "test" })
+
+		etcdRunner, err := etcd.NewEtcdRunner(etcdBinary)
+		if err != nil {
+			t.Fatal("test etcd binary: %w", err)
 		}
+
+		r := NewRunnerFromConfig(logger, etcdRunner, snapshot, &c.YamlConfig{
+			CheckQuorumDelay: 8 * time.Second,
+			MemberTimeout:    8 * time.Second,
+		}, config)
 		defer r.etcdRunner.Stop()
 		runners = append(runners, r)
 
@@ -162,23 +164,24 @@ func TestRestartMembers(t *testing.T) {
 
 	var runners []*Runner
 	for _, config := range configs {
-		r := &Runner{
-			logger:             logger,
-			checkQuorumTimeout: 8 * time.Second,
-			memberTimeout:      8 * time.Second,
-			etcdRunner: &etcd.Fork{
-				EtcdBinary: "/etcd/usr/local/bin/etcd",
-			},
-			etcdConfig: config,
-			snapshot: s.NewFromConfig(logger, s3Client, &c.YamlConfig{
-				SnapshotEncryptionKey:  testEncryptionKey,
-				SnapshotObjectPrefix:   "snap-",
-				SnapshotRetentionCount: 2,
-				S3ClientTimeout:        2 * time.Second,
-				RestoreSnapshotTimeout: 2 * time.Second,
-				UploadSnapshotTimeout:  2 * time.Second,
-			}, func() string { return "" }),
+		snapshot := s.NewFromConfig(logger, s3Client, &c.YamlConfig{
+			SnapshotEncryptionKey:  testEncryptionKey,
+			SnapshotObjectPrefix:   "snap-",
+			SnapshotRetentionCount: 2,
+			S3ClientTimeout:        2 * time.Second,
+			RestoreSnapshotTimeout: 2 * time.Second,
+			UploadSnapshotTimeout:  2 * time.Second,
+		}, func() string { return "test" })
+
+		etcdRunner, err := etcd.NewEtcdRunner(etcdBinary)
+		if err != nil {
+			t.Fatal("test etcd binary: %w", err)
 		}
+
+		r := NewRunnerFromConfig(logger, etcdRunner, snapshot, &c.YamlConfig{
+			CheckQuorumDelay: 8 * time.Second,
+			MemberTimeout:    8 * time.Second,
+		}, config)
 		defer r.etcdRunner.Stop()
 		runners = append(runners, r)
 	}
@@ -299,23 +302,24 @@ func TestRollingMemberUpdate(t *testing.T) {
 
 	var runners []*Runner
 	for _, config := range configs {
-		r := &Runner{
-			logger:             logger,
-			checkQuorumTimeout: 8 * time.Second,
-			memberTimeout:      8 * time.Second,
-			etcdRunner: &etcd.Fork{
-				EtcdBinary: "/etcd/usr/local/bin/etcd",
-			},
-			etcdConfig: config,
-			snapshot: s.NewFromConfig(logger, s3Client, &c.YamlConfig{
-				SnapshotEncryptionKey:  testEncryptionKey,
-				SnapshotObjectPrefix:   "snap-",
-				SnapshotRetentionCount: 2,
-				S3ClientTimeout:        2 * time.Second,
-				RestoreSnapshotTimeout: 2 * time.Second,
-				UploadSnapshotTimeout:  2 * time.Second,
-			}, func() string { return "" }),
+		snapshot := s.NewFromConfig(logger, s3Client, &c.YamlConfig{
+			SnapshotEncryptionKey:  testEncryptionKey,
+			SnapshotObjectPrefix:   "snap-",
+			SnapshotRetentionCount: 2,
+			S3ClientTimeout:        2 * time.Second,
+			RestoreSnapshotTimeout: 2 * time.Second,
+			UploadSnapshotTimeout:  2 * time.Second,
+		}, func() string { return "test" })
+
+		etcdRunner, err := etcd.NewEtcdRunner(etcdBinary)
+		if err != nil {
+			t.Fatal("test etcd binary: %w", err)
 		}
+
+		r := NewRunnerFromConfig(logger, etcdRunner, snapshot, &c.YamlConfig{
+			CheckQuorumDelay: 8 * time.Second,
+			MemberTimeout:    8 * time.Second,
+		}, config)
 		defer r.etcdRunner.Stop()
 		runners = append(runners, r)
 	}
@@ -408,23 +412,24 @@ func TestStartNew(t *testing.T) {
 
 	var runners []*Runner
 	for _, config := range configs {
-		r := &Runner{
-			logger:             logger,
-			checkQuorumTimeout: 16 * time.Second,
-			memberTimeout:      8 * time.Second,
-			etcdRunner: &etcd.Fork{
-				EtcdBinary: "/etcd/usr/local/bin/etcd",
-			},
-			etcdConfig: config,
-			snapshot: s.NewFromConfig(logger, s3Client, &c.YamlConfig{
-				SnapshotEncryptionKey:  testEncryptionKey,
-				SnapshotObjectPrefix:   "snap-",
-				SnapshotRetentionCount: 2,
-				S3ClientTimeout:        2 * time.Second,
-				RestoreSnapshotTimeout: 2 * time.Second,
-				UploadSnapshotTimeout:  2 * time.Second,
-			}, func() string { return "" }),
+		snapshot := s.NewFromConfig(logger, s3Client, &c.YamlConfig{
+			SnapshotEncryptionKey:  testEncryptionKey,
+			SnapshotObjectPrefix:   "snap-",
+			SnapshotRetentionCount: 2,
+			S3ClientTimeout:        2 * time.Second,
+			RestoreSnapshotTimeout: 2 * time.Second,
+			UploadSnapshotTimeout:  2 * time.Second,
+		}, func() string { return "test" })
+
+		etcdRunner, err := etcd.NewEtcdRunner(etcdBinary)
+		if err != nil {
+			t.Fatal("test etcd binary: %w", err)
 		}
+
+		r := NewRunnerFromConfig(logger, etcdRunner, snapshot, &c.YamlConfig{
+			CheckQuorumDelay: 8 * time.Second,
+			MemberTimeout:    8 * time.Second,
+		}, config)
 		defer r.etcdRunner.Stop()
 		runners = append(runners, r)
 
