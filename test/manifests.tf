@@ -44,6 +44,8 @@ locals {
         s3AccessKeyID         = local.minio_username
         s3SecretAccessKey     = local.minio_password
         snapshotEncryptionKey = "test-encryption-password"
+        checkQuorumDelay      = "30s",
+        backupInterval        = "30s",
       })
       "client/ca.crt"  = tls_self_signed_cert.etcd-ca.cert_pem
       "client/tls.crt" = tls_locally_signed_cert.etcd[node].cert_pem
@@ -171,7 +173,64 @@ module "etcd-wrapper" {
           "3.7.1@sha256:a9983dd6d9283138ab926daa307c6c25623636703ecf5645d5df4d666ce9eba2", # renovate: datasource=docker depName=registry.k8s.io/etcd
         ])
         command = [
-          "${local.etcd_wrapper_path}/bin/etcd-runner",
+          "${local.etcd_wrapper_path}/bin/etcdwrapper",
+          "init",
+          "-config", "${local.data_path}/config.yaml",
+        ]
+        env = [
+          for k, v in {
+            "ETCD_NAME"                        = each.key
+            "ETCD_LOG_LEVEL"                   = "warn"
+            "ETCD_DATA_DIR"                    = "/var/run/etcd"
+            "ETCD_LISTEN_PEER_URLS"            = each.value.peer_url
+            "ETCD_LISTEN_CLIENT_URLS"          = each.value.client_url
+            "ETCD_INITIAL_ADVERTISE_PEER_URLS" = each.value.peer_url
+            "ETCD_INITIAL_CLUSTER" = join(",", [
+              for name, m in local.members :
+              "${name}=${m.peer_url}"
+            ])
+            "ETCD_INITIAL_CLUSTER_TOKEN"     = "test"
+            "ETCD_ADVERTISE_CLIENT_URLS"     = each.value.client_url
+            "ETCD_TRUSTED_CA_FILE"           = "${local.data_path}/client/ca.crt"
+            "ETCD_CERT_FILE"                 = "${local.data_path}/client/tls.crt"
+            "ETCD_KEY_FILE"                  = "${local.data_path}/client/tls.key"
+            "ETCD_PEER_TRUSTED_CA_FILE"      = "${local.data_path}/peer/ca.crt"
+            "ETCD_PEER_CERT_FILE"            = "${local.data_path}/peer/tls.crt"
+            "ETCD_PEER_KEY_FILE"             = "${local.data_path}/peer/tls.key"
+            "ETCD_AUTO_COMPACTION_RETENTION" = 1
+            "ETCD_AUTO_COMPACTION_MODE"      = "revision"
+          } :
+          {
+            name  = tostring(k)
+            value = tostring(v)
+          }
+        ]
+        volumeMounts = [
+          {
+            name      = "data"
+            mountPath = local.data_path
+            subPath   = each.key
+          },
+          {
+            name      = "data"
+            mountPath = "/etc/minio/certs"
+            subPath   = "minio/certs"
+          },
+          {
+            name      = "etcd-wrapper"
+            mountPath = local.etcd_wrapper_path
+          },
+        ]
+      },
+      {
+        name = "backup"
+        image = join(":", [
+          "registry.k8s.io/etcd",
+          "3.7.1@sha256:a9983dd6d9283138ab926daa307c6c25623636703ecf5645d5df4d666ce9eba2", # renovate: datasource=docker depName=registry.k8s.io/etcd
+        ])
+        command = [
+          "${local.etcd_wrapper_path}/bin/etcdwrapper",
+          "backup",
           "-config", "${local.data_path}/config.yaml",
         ]
         env = [
@@ -234,70 +293,6 @@ module "etcd-wrapper" {
           pullPolicy = "IfNotPresent"
         }
       }
-    ]
-  }
-}
-
-module "etcd" {
-  for_each = local.members
-
-  source = "./modules/static_pod"
-  name   = each.key
-  spec = {
-    hostNetwork = true
-    containers = [
-      {
-        name = "etcd"
-        image = join(":", [
-          "registry.k8s.io/etcd",
-          "3.7.1@sha256:a9983dd6d9283138ab926daa307c6c25623636703ecf5645d5df4d666ce9eba2", # renovate: datasource=docker depName=registry.k8s.io/etcd
-        ])
-        env = [
-          for k, v in {
-            "ETCD_NAME"                        = each.key
-            "ETCD_DATA_DIR"                    = "${local.data_path}/data"
-            "ETCD_LISTEN_PEER_URLS"            = each.value.peer_url
-            "ETCD_LISTEN_CLIENT_URLS"          = each.value.client_url
-            "ETCD_INITIAL_ADVERTISE_PEER_URLS" = each.value.peer_url
-            "ETCD_INITIAL_CLUSTER" = join(",", [
-              for name, m in local.members :
-              "${name}=${m.peer_url}"
-            ])
-            "ETCD_INITIAL_CLUSTER_TOKEN"     = "test"
-            "ETCD_ADVERTISE_CLIENT_URLS"     = each.value.client_url
-            "ETCD_TRUSTED_CA_FILE"           = "${local.data_path}/client/ca.crt"
-            "ETCD_CERT_FILE"                 = "${local.data_path}/client/tls.crt"
-            "ETCD_KEY_FILE"                  = "${local.data_path}/client/tls.key"
-            "ETCD_PEER_TRUSTED_CA_FILE"      = "${local.data_path}/peer/ca.crt"
-            "ETCD_PEER_CERT_FILE"            = "${local.data_path}/peer/tls.crt"
-            "ETCD_PEER_KEY_FILE"             = "${local.data_path}/peer/tls.key"
-            "ETCD_STRICT_RECONFIG_CHECK"     = true
-            "ETCD_LOG_LEVEL"                 = "warn"
-            "ETCD_AUTO_COMPACTION_RETENTION" = 1
-            "ETCD_AUTO_COMPACTION_MODE"      = "revision"
-            "ETCD_SOCKET_REUSE_ADDRESS"      = true
-          } :
-          {
-            name  = tostring(k)
-            value = tostring(v)
-          }
-        ]
-        volumeMounts = [
-          {
-            name      = "data"
-            mountPath = local.data_path
-            subPath   = each.key
-          },
-        ]
-      },
-    ]
-    volumes = [
-      {
-        name = "data"
-        hostPath = {
-          path = abspath(local.base_path)
-        }
-      },
     ]
   }
 }

@@ -35,13 +35,14 @@ type node struct {
 func NewBackupFromConfig(logger *zap.Logger, snapshot *s.Snapshot, raw *c.YamlConfig, etcdConfig *c.EtcdConfig) *Backup {
 	return &Backup{
 		logger:             logger,
+		backupInterval:     raw.BackupInterval,
 		checkQuorumTimeout: raw.CheckQuorumDelay,
 		memberTimeout:      raw.MemberTimeout,
-		etcdConfig:         etcdConfig,
 		snapshotTimeout:    raw.SnapshotTimeout,
 		defragmentTimeout:  raw.DefragmentTimeout,
-		defragThreshold:    raw.DefragThreshold,
+		etcdConfig:         etcdConfig,
 		snapshot:           snapshot,
+		defragThreshold:    raw.DefragThreshold,
 	}
 }
 
