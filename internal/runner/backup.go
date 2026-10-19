@@ -85,7 +85,7 @@ func (b *Backup) run(ctx context.Context) error {
 		return nil
 	}
 
-	b.logger.Info("node is leader running maintenance")
+	b.logger.Info("node is leader - running maintenance")
 
 	// --- defrag ---
 
@@ -109,6 +109,11 @@ func (b *Backup) run(ctx context.Context) error {
 		return err
 	}
 	b.logger.Info("uploaded snapshot backup")
+
+	if err := b.snapshot.RemoveOldBackups(ctx); err != nil {
+		return err
+	}
+	b.logger.Info("removed old snapshots")
 
 	return nil
 }

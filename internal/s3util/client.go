@@ -30,11 +30,11 @@ type Client interface {
 
 func NewClient(endpoint, region, bucket, accessKeyID, secretAccessKey string, trustedCAs []string) (*s3client, error) {
 	if bucket == "" {
-		return nil, fmt.Errorf("missing s3Bucket")
+		return nil, fmt.Errorf("config missing s3Bucket")
 	}
 	u, err := url.Parse(endpoint)
 	if err != nil {
-		return nil, fmt.Errorf("parse advertise url: %w", err)
+		return nil, fmt.Errorf("parse configured advertise url: %w", err)
 	}
 	if u.Scheme != "https" {
 		return nil, fmt.Errorf("S3 URL scheme must be HTTPS")
@@ -95,7 +95,7 @@ func (c *s3client) Upload(ctx context.Context, key string, reader io.Reader) err
 	}); err != nil {
 		removeIncompleteErr := c.client.RemoveIncompleteUpload(ctx, c.bucket, key)
 		if removeIncompleteErr != nil {
-			return fmt.Errorf("put object: %w", errors.Join(err, removeIncompleteErr))
+			return fmt.Errorf("remove failed put: %w", errors.Join(err, removeIncompleteErr))
 		}
 		return fmt.Errorf("put object: %w", err)
 	}

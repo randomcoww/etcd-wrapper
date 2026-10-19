@@ -98,7 +98,7 @@ func (r *Runner) checkQuorumAndStart(ctx context.Context) (bool, error) {
 			// pass to next handler
 			return false, nil
 		}
-		return false, err
+		return false, fmt.Errorf("look up cluster from peer URLs: %w", err)
 	}
 	defer client.Close()
 
@@ -111,7 +111,7 @@ func (r *Runner) checkQuorumAndStart(ctx context.Context) (bool, error) {
 			// pass to next handler
 			return false, nil
 		}
-		return false, err
+		return false, fmt.Errorf("get cluster data revision: %w", err)
 	}
 	r.logger.Info("remote data", zap.Int64("revision", remoteRevision))
 

@@ -53,7 +53,7 @@ func (s *Snapshot) VerifyBucket(ctx context.Context) (bool, error) {
 func (s *Snapshot) Restore(ctx context.Context, restoreConfig s.RestoreConfig) (bool, error) {
 	ok, err := s.VerifyBucket(ctx)
 	if err != nil {
-		return false, fmt.Errorf("verify bucket: %w", err)
+		return false, fmt.Errorf("verify bucket access: %w", err)
 	}
 	if !ok {
 		return false, nil
@@ -66,19 +66,19 @@ func (s *Snapshot) Restore(ctx context.Context, restoreConfig s.RestoreConfig) (
 		return false, nil
 	}
 	for object, err := range errors {
-		s.logger.Error("list", zap.String("object", object), zap.Error(err))
+		s.logger.Error("list object error", zap.String("object", object), zap.Error(err))
 	}
 
 	for i := len(keys) - 1; i >= 0; i-- {
 		ok, err = s.restoreKey(ctx, keys[i], restoreConfig)
 		if err == nil && ok {
-			s.logger.Info("restored snapshot", zap.String("key", keys[i]))
+			s.logger.Info("restored from object", zap.String("key", keys[i]))
 			break
 		}
-		s.logger.Error("restore snapshot", zap.String("key", keys[i]), zap.Error(err))
+		s.logger.Error("restore from object", zap.String("key", keys[i]), zap.Error(err))
 	}
 	if err != nil {
-		return false, fmt.Errorf("restore snapshot: %w", err)
+		return false, fmt.Errorf("restore from object: %w", err)
 	}
 	return true, nil
 }
@@ -126,7 +126,7 @@ func (s *Snapshot) restoreKey(ctx context.Context, key string, restoreConfig s.R
 		return false, fmt.Errorf("copy reader: %w", err)
 	}
 	if b == 0 {
-		return false, fmt.Errorf("snapshot file download size was 0")
+		return false, fmt.Errorf("snapshot size is 0")
 	}
 
 	// --- restore to etcd ---
@@ -134,7 +134,7 @@ func (s *Snapshot) restoreKey(ctx context.Context, key string, restoreConfig s.R
 	restoreConfig.SnapshotPath = snapshotFile.Name()
 	restoreConfig.RevisionBump = s.restoreRevisionBump
 	if err := etcdutil.RestoreSnapshot(s.logger, restoreConfig); err != nil {
-		return false, fmt.Errorf("restore snapshot to etcd data: %w", err)
+		return false, fmt.Errorf("restore snapshot to etcd: %w", err)
 	}
 	s.logger.Info("finished restoring snapshot")
 	return true, nil
@@ -151,24 +151,24 @@ func (s *Snapshot) CreateBackup(ctx context.Context, reader io.ReadCloser) error
 	}
 	ageWriter, err := age.Encrypt(&buf, recipient)
 	if err != nil {
-		return fmt.Errorf("encryption writer: %w", err)
+		return fmt.Errorf("age writer: %w", err)
 	}
 
 	b, err := io.Copy(ageWriter, reader)
 	if err != nil {
-		return fmt.Errorf("buffer upload: %w", err)
+		return fmt.Errorf("age buffer: %w", err)
 	}
 	if b == 0 {
-		return fmt.Errorf("buffer upload size was 0")
+		return fmt.Errorf("age buffer size is 0")
 	}
 	if err := ageWriter.Close(); err != nil {
-		return fmt.Errorf("close age writer: %w", err)
+		return fmt.Errorf("close age buffer: %w", err)
 	}
 
 	// --- upload ---
 
 	objectKey := fmt.Sprintf("%s%s", s.objectPrefix, s.objectTagFunc())
-	s.logger.Info("backup", zap.String("key", objectKey), zap.Int64("size", b))
+	s.logger.Info("encrypted backup object", zap.String("key", objectKey), zap.Int64("size", b))
 
 	uploadSnapshotCtx, cancel := context.WithTimeout(ctx, s.uploadSnapshotTimeout)
 	defer cancel()
@@ -184,7 +184,10 @@ func (s *Snapshot) RemoveOldBackups(ctx context.Context) error {
 	defer cancel()
 	keys, _ := s.s3Client.List(s3ClientCtx, s.objectPrefix)
 	if len(keys) > s.retentionCount {
-		return s.s3Client.Remove(s3ClientCtx, keys[:len(keys)-s.retentionCount])
+		if err := s.s3Client.Remove(s3ClientCtx, keys[:len(keys)-s.retentionCount]); err != nil {
+			return fmt.Errorf("remove old backups: '%s': %w", keys, err)
+		}
 	}
+	s.logger.Info("removed old backups", zap.String("keys", fmt.Sprintf("%s", keys)))
 	return nil
 }
