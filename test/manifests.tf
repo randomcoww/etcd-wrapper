@@ -37,7 +37,7 @@ locals {
         s3AccessKeyID         = local.minio_username
         s3SecretAccessKey     = local.minio_password
         snapshotEncryptionKey = "test-encryption-password"
-        checkQuorumDelay      = "30s",
+        checkQuorumTimeout    = "30s",
         backupInterval        = "30s",
       })
       "client/ca.crt"  = tls_self_signed_cert.etcd-ca.cert_pem
@@ -166,7 +166,7 @@ module "etcd-wrapper" {
           "3.7.1@sha256:a9983dd6d9283138ab926daa307c6c25623636703ecf5645d5df4d666ce9eba2", # renovate: datasource=docker depName=registry.k8s.io/etcd
         ])
         command = [
-          "${local.etcd_wrapper_path}/bin/etcdwrapper",
+          "${local.etcd_wrapper_path}/bin/etcd-wrapper",
           "init",
           "-config", "${local.data_path}/config.yaml",
         ]
@@ -174,6 +174,7 @@ module "etcd-wrapper" {
           for k, v in {
             "ETCD_NAME"                        = each.key
             "ETCD_LOG_LEVEL"                   = "warn"
+            "ETCD_LOG_OUTPUTS"                 = "stdout"
             "ETCD_DATA_DIR"                    = "/var/run/etcd"
             "ETCD_LISTEN_PEER_URLS"            = each.value.peer_url
             "ETCD_LISTEN_CLIENT_URLS"          = each.value.client_url
@@ -219,7 +220,7 @@ module "etcd-wrapper" {
         name  = "backup"
         image = "localhost/etcd-wrapper:latest"
         command = [
-          "/bin/etcdwrapper",
+          "/bin/etcd-wrapper",
           "backup",
           "-config", "${local.data_path}/config.yaml",
         ]

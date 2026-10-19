@@ -22,7 +22,7 @@ type Backup struct {
 	etcdConfig         *c.EtcdConfig
 	snapshot           *s.Snapshot
 	defragThreshold    float64
-	Success            bool
+	Error              error
 }
 
 type node struct {
@@ -53,14 +53,12 @@ func (b *Backup) StartLoop(ctx context.Context) error {
 	for {
 		select {
 		case <-ticker.C:
-			if err := b.run(ctx); err != nil {
-				b.Success = false
-				b.logger.Error("backup loop", zap.Error(err))
-				continue
+			b.Error = b.run(ctx)
+			if b.Error != nil {
+				b.logger.Error("backup loop", zap.Error(b.Error))
 			}
-			b.Success = true
 		case <-ctx.Done():
-			return nil
+			return ctx.Err()
 		}
 	}
 }

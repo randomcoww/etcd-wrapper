@@ -88,12 +88,12 @@ func TestCreateFromSnapshot(t *testing.T) {
 		if err != nil {
 			t.Fatal("test etcd binary: %w", err)
 		}
+		defer etcdRunner.Stop()
 
 		r := NewRunnerFromConfig(logger, etcdRunner, snapshot, &c.YamlConfig{
 			CheckQuorumTimeout: 8 * time.Second,
 			MemberTimeout:      8 * time.Second,
 		}, config)
-		defer r.etcdRunner.Stop()
 		runners = append(runners, r)
 
 		ok, err := r.StartInit(ctx)
@@ -176,12 +176,12 @@ func TestRestartMembers(t *testing.T) {
 		if err != nil {
 			t.Fatal("test etcd binary: %w", err)
 		}
+		defer etcdRunner.Stop()
 
 		r := NewRunnerFromConfig(logger, etcdRunner, snapshot, &c.YamlConfig{
 			CheckQuorumTimeout: 8 * time.Second,
 			MemberTimeout:      8 * time.Second,
 		}, config)
-		defer r.etcdRunner.Stop()
 		runners = append(runners, r)
 	}
 
@@ -314,12 +314,12 @@ func TestRollingMemberUpdate(t *testing.T) {
 		if err != nil {
 			t.Fatal("test etcd binary: %w", err)
 		}
+		defer etcdRunner.Stop()
 
 		r := NewRunnerFromConfig(logger, etcdRunner, snapshot, &c.YamlConfig{
 			CheckQuorumTimeout: 8 * time.Second,
 			MemberTimeout:      8 * time.Second,
 		}, config)
-		defer r.etcdRunner.Stop()
 		runners = append(runners, r)
 	}
 
@@ -421,12 +421,12 @@ func TestStartNew(t *testing.T) {
 		if err != nil {
 			t.Fatal("test etcd binary: %w", err)
 		}
+		defer etcdRunner.Stop()
 
 		r := NewRunnerFromConfig(logger, etcdRunner, snapshot, &c.YamlConfig{
 			CheckQuorumTimeout: 8 * time.Second,
 			MemberTimeout:      8 * time.Second,
 		}, config)
-		defer r.etcdRunner.Stop()
 		runners = append(runners, r)
 
 		ok, err := r.StartInit(ctx)
@@ -496,6 +496,7 @@ func newConfigs(t *testing.T, members []member, dataPath string) ([]*c.EtcdConfi
 			Env: map[string]string{
 				"ETCD_NAME":                        member.name,
 				"ETCD_LOG_LEVEL":                   "error",
+				"ETCD_LOG_OUTPUTS":                 "stdout",
 				"ETCD_DATA_DIR":                    filepath.Join(dataPath, member.name+"_etcd"),
 				"ETCD_CLIENT_CERT_AUTH":            "true",
 				"ETCD_PEER_CLIENT_CERT_AUTH":       "true",
@@ -516,7 +517,6 @@ func newConfigs(t *testing.T, members []member, dataPath string) ([]*c.EtcdConfi
 				"ETCD_AUTO_COMPACTION_MODE":        "revision",
 				"ETCD_SOCKET_REUSE_ADDRESS":        "true",
 				"ETCD_SOCKET_REUSE_PORT":           "true",
-				"ETCDCTL_API":                      "3",
 			},
 			InitialAdvertisePeerURLs: []string{fmt.Sprintf("https://127.0.0.1:%d", member.peerPort)},
 		}

@@ -23,7 +23,7 @@ const (
 )
 
 func TestS3Client(t *testing.T) {
-	client, err := NewClient("127.0.0.1:9000", "us-east-1", minioBucket, minioUser, minioPassword, []string{filepath.Join(baseTestPath, "minio", "certs", "CAs", "ca.crt")})
+	client, err := NewClient("https://127.0.0.1:9000", "us-east-1", minioBucket, minioUser, minioPassword, []string{filepath.Join(baseTestPath, "minio", "certs", "CAs", "ca.crt")})
 	assert.NoError(t, err)
 
 	clientCtx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
@@ -78,4 +78,8 @@ func TestS3Client(t *testing.T) {
 	list, errors = client.List(clientCtx, "other-")
 	assert.Equal(t, []string{"other-1"}, list)
 	assert.Equal(t, map[string]error{}, errors)
+
+	// cleanup
+	err = client.Remove(clientCtx, []string{"other-1"})
+	assert.NoError(t, err)
 }

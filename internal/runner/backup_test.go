@@ -74,12 +74,12 @@ func TestBackupRun(t *testing.T) {
 		if err != nil {
 			t.Fatal("test etcd binary: %w", err)
 		}
+		defer etcdRunner.Stop()
 
 		r := NewRunnerFromConfig(logger, etcdRunner, snapshot, &c.YamlConfig{
 			CheckQuorumTimeout: 8 * time.Second,
 			MemberTimeout:      8 * time.Second,
 		}, config)
-		defer r.etcdRunner.Stop()
 		runners = append(runners, r)
 
 		b := NewBackupFromConfig(logger, snapshot, &c.YamlConfig{

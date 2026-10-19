@@ -31,10 +31,10 @@ func main() {
 		fmt.Print(`Usage:
 
 Start etcd:
-etcdwrapper init -config <yamlconfig>
+etcd-wrapper init -config <yamlconfig>
 
 Start periodic defragment and backup:
-etcdwrapper backup -config <yamlconfig>
+etcd-wrapper backup -config <yamlconfig>
 `)
 		os.Exit(0)
 	}
@@ -75,6 +75,8 @@ func run(logger *zap.Logger, cmd string, args []string) error {
 		if err != nil {
 			return err
 		}
+		defer etcdRunner.Stop()
+
 		runner := r.NewRunnerFromConfig(logger, etcdRunner, snapshot, cfg, etcdConfig)
 		if _, err := runner.StartInit(ctx); err != nil {
 			return err
