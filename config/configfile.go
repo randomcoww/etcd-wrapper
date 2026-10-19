@@ -12,10 +12,9 @@ import (
 )
 
 type YamlConfig struct {
-	CheckQuorumDelay time.Duration     `yaml:"checkQuorumDelay,omitempty"`
-	MemberTimeout    time.Duration     `yaml:"memberTimeout,omitempty"`
-	EtcdBinaryFile   string            `yaml:"etcdBinaryFile,omitempty"`
-	GossipPeerURLs   map[string]string `yaml:"gossipPeerURLs"`
+	CheckQuorumDelay time.Duration `yaml:"checkQuorumDelay,omitempty"`
+	MemberTimeout    time.Duration `yaml:"memberTimeout,omitempty"`
+	EtcdBinaryFile   string        `yaml:"etcdBinaryFile,omitempty"`
 
 	S3Endpoint        string   `yaml:"s3Endpoint,omitempty"`
 	S3Region          string   `yaml:"s3Region,omitempty"`
@@ -43,19 +42,19 @@ func LoadConfigFile(path string) (*YamlConfig, error) {
 		return nil, fmt.Errorf("reading config file '%s': %w", path, err)
 	}
 	raw := &YamlConfig{
-		CheckQuorumDelay:       16 * time.Second,
-		MemberTimeout:          8 * time.Second,
+		CheckQuorumDelay:       2 * time.Minute,
+		MemberTimeout:          4 * time.Second,
 		EtcdBinaryFile:         "/usr/local/bin/etcd",
 		S3Endpoint:             "https://s3.amazonaws.com",
 		S3Region:               "us-east-1",
 		SnapshotObjectPrefix:   "etcd-snapshot-",
 		SnapshotRetentionCount: 4,
-		S3ClientTimeout:        4 * time.Second,
-		RestoreSnapshotTimeout: 16 * time.Second,
-		UploadSnapshotTimeout:  16 * time.Second,
-		BackupInterval:         10 * time.Minute,
-		SnapshotTimeout:        16 * time.Second,
-		DefragmentTimeout:      16 * time.Second,
+		S3ClientTimeout:        8 * time.Second,
+		RestoreSnapshotTimeout: 30 * time.Second,
+		UploadSnapshotTimeout:  30 * time.Second,
+		BackupInterval:         5 * time.Minute,
+		SnapshotTimeout:        30 * time.Second,
+		DefragmentTimeout:      30 * time.Second,
 		DefragThreshold:        0.3,
 	}
 	if err := yaml.Unmarshal(data, &raw); err != nil {
@@ -85,14 +84,6 @@ func LoadConfigFile(path string) (*YamlConfig, error) {
 	raw.S3TLSConfig, err = tlsutil.BuildTLSCAConfig(raw.S3TrustedCAs)
 	if err != nil {
 		return nil, fmt.Errorf("building S3 TLS config: %w", err)
-	}
-
-	for node, peerURL := range raw.GossipPeerURLs {
-		u, err := url.Parse(peerURL)
-		if err != nil {
-			return nil, fmt.Errorf("parse peer URL: %w", err)
-		}
-		raw.GossipPeerURLs[node] = fmt.Sprintf("%s://%s", u.Scheme, u.Host)
 	}
 	return raw, nil
 }
