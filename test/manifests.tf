@@ -8,17 +8,14 @@ locals {
     node0 = {
       client_url = "https://127.0.0.1:8080"
       peer_url   = "https://127.0.0.1:8090"
-      gossip_url = "https://127.0.0.1:8100"
     }
     node1 = {
       client_url = "https://127.0.0.1:8081"
       peer_url   = "https://127.0.0.1:8091"
-      gossip_url = "https://127.0.0.1:8101"
     }
     node2 = {
       client_url = "https://127.0.0.1:8082"
       peer_url   = "https://127.0.0.1:8092"
-      gossip_url = "https://127.0.0.1:8102"
     }
   }
 
@@ -32,12 +29,8 @@ locals {
     node => {
       "config.yaml" = yamlencode({
         etcdBinaryFile = "/usr/local/bin/etcd"
-        gossipPeerURLs = {
-          for node, member in local.members :
-          node => member.gossip_url
-        }
-        s3Endpoint = "https://127.0.0.1:${local.minio_port}"
-        s3Bucket   = local.minio_bucket
+        s3Endpoint     = "https://127.0.0.1:${local.minio_port}"
+        s3Bucket       = local.minio_bucket
         s3TrustedCAs = [
           "/etc/minio/certs/CAs/ca.crt",
         ]
@@ -223,13 +216,10 @@ module "etcd-wrapper" {
         ]
       },
       {
-        name = "backup"
-        image = join(":", [
-          "registry.k8s.io/etcd",
-          "3.7.1@sha256:a9983dd6d9283138ab926daa307c6c25623636703ecf5645d5df4d666ce9eba2", # renovate: datasource=docker depName=registry.k8s.io/etcd
-        ])
+        name  = "backup"
+        image = "localhost/etcd-wrapper:latest"
         command = [
-          "${local.etcd_wrapper_path}/bin/etcdwrapper",
+          "/bin/etcdwrapper",
           "backup",
           "-config", "${local.data_path}/config.yaml",
         ]
@@ -272,10 +262,6 @@ module "etcd-wrapper" {
             mountPath = "/etc/minio/certs"
             subPath   = "minio/certs"
           },
-          {
-            name      = "etcd-wrapper"
-            mountPath = local.etcd_wrapper_path
-          },
         ]
       },
     ]
@@ -311,15 +297,6 @@ resource "local_file" "etcd-wrapper-manifest" {
 
   filename             = "${local.base_path}/${each.key}-wrapper.yaml"
   content              = module.etcd-wrapper[each.key].manifest
-  directory_permission = "0700"
-  file_permission      = "0600"
-}
-
-resource "local_file" "etcd-wrapper" {
-  for_each = local.members
-
-  filename             = "${local.base_path}/${each.key}.yaml"
-  content              = module.etcd[each.key].manifest
   directory_permission = "0700"
   file_permission      = "0600"
 }
