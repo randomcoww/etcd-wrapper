@@ -47,6 +47,7 @@ func NewBackupFromConfig(logger *zap.Logger, snapshot *s.Snapshot, raw *c.YamlCo
 }
 
 func (b *Backup) StartLoop(ctx context.Context) error {
+	b.logger.Info("start backup process")
 	ticker := time.NewTicker(b.backupInterval)
 	defer ticker.Stop()
 

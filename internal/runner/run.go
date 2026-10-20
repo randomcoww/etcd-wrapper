@@ -41,6 +41,7 @@ func NewRunnerFromConfig(logger *zap.Logger, etcdRunner etcdProcess, snapshot *s
 }
 
 func (r *Runner) StartInit(ctx context.Context) (bool, error) {
+	r.logger.Info("start init process")
 	ok, err := r.checkRevisionAndStart(ctx)
 	if err != nil {
 		return false, err
