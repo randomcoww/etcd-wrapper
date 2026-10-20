@@ -1,7 +1,6 @@
 package snapshot
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -141,38 +140,38 @@ func (s *Snapshot) restoreKey(ctx context.Context, key string, restoreConfig s.R
 }
 
 func (s *Snapshot) CreateBackup(ctx context.Context, reader io.ReadCloser) error {
-	var buf bytes.Buffer
-
-	// --- encrypt ---
-
 	recipient, err := age.NewScryptRecipient(s.encryptionPassword)
 	if err != nil {
 		return fmt.Errorf("create scrypt recipient: %w", err)
 	}
-	ageWriter, err := age.Encrypt(&buf, recipient)
-	if err != nil {
-		return fmt.Errorf("age writer: %w", err)
-	}
 
-	b, err := io.Copy(ageWriter, reader)
-	if err != nil {
-		return fmt.Errorf("age buffer: %w", err)
-	}
-	if b == 0 {
-		return fmt.Errorf("age buffer size is 0")
-	}
-	if err := ageWriter.Close(); err != nil {
-		return fmt.Errorf("close age buffer: %w", err)
-	}
+	pr, pw := io.Pipe()
+	go func() {
+		ageWriter, err := age.Encrypt(pw, recipient)
+		if err != nil {
+			pw.CloseWithError(err)
+			return
+		}
+		_, copyErr := io.Copy(ageWriter, reader)
+		ageCloseErr := ageWriter.Close()
+
+		if copyErr != nil {
+			pw.CloseWithError(copyErr)
+		} else if ageCloseErr != nil {
+			pw.CloseWithError(ageCloseErr)
+		} else {
+			pw.Close() // Finished successfully
+		}
+	}()
 
 	// --- upload ---
 
 	objectKey := fmt.Sprintf("%s%s", s.objectPrefix, s.objectTagFunc())
-	s.logger.Info("encrypted backup object", zap.String("key", objectKey), zap.Int64("size", b))
+	s.logger.Info("encrypted backup object", zap.String("key", objectKey))
 
 	uploadSnapshotCtx, uploadSnapshotCancel := context.WithTimeout(ctx, s.uploadSnapshotTimeout)
 	defer uploadSnapshotCancel()
-	if err := s.s3Client.Upload(uploadSnapshotCtx, objectKey, &buf); err != nil {
+	if err := s.s3Client.Upload(uploadSnapshotCtx, objectKey, pr); err != nil {
 
 		cleanupCtx, cleanupCancel := context.WithTimeout(ctx, s.uploadSnapshotTimeout)
 		defer cleanupCancel()

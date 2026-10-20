@@ -15,6 +15,7 @@ import (
 	"github.com/randomcoww/etcd-wrapper/internal/s3util"
 	s "github.com/randomcoww/etcd-wrapper/internal/snapshot"
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 const (
@@ -41,7 +42,14 @@ etcd-wrapper backup -config <yamlconfig>
 }
 
 func run(cmd string, args []string) error {
-	logger := zap.Must(zap.NewProduction())
+	zapConfig := zap.NewProductionConfig()
+	zapConfig.OutputPaths = []string{"stdout"}
+	zapConfig.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+
+	logger, err := zapConfig.Build()
+	if err != nil {
+		return err
+	}
 	defer logger.Sync()
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
