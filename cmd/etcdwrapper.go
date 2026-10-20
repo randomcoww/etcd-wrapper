@@ -68,7 +68,6 @@ func run(cmd string, args []string) error {
 	}
 	snapshot := s.NewFromConfig(logger, s3Client, cfg, func() string { return time.Now().UTC().Format(timeFormat) })
 
-	errCh := make(chan error)
 	switch cmd {
 	case "init":
 		etcdRunner, err := etcd.NewEtcdRunner(cfg.EtcdBinaryFile)
@@ -86,21 +85,19 @@ func run(cmd string, args []string) error {
 
 	case "backup":
 		backup := r.NewBackupFromConfig(logger, snapshot, cfg, etcdConfig)
-		go func() {
-			errCh <- backup.StartLoop(ctx)
-		}()
+		return backup.StartLoop(ctx)
 
 	default:
 		return fmt.Errorf("unsupported command")
 	}
 
 	select {
-	case err := <-errCh:
-		if err != nil {
-			logger.Error("quit", zap.Error(err))
-		}
-		return err
 	case <-ctx.Done():
-		return ctx.Err()
+		if ctx.Err() != nil {
+			logger.Error("finished", zap.Error(ctx.Err()))
+			return ctx.Err()
+		}
+		logger.Info("finished")
+		return nil
 	}
 }

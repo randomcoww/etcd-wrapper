@@ -36,9 +36,10 @@ locals {
         ]
         s3AccessKeyID         = local.minio_username
         s3SecretAccessKey     = local.minio_password
-        snapshotEncryptionKey = "test-encryption-password"
+        snapshotEncryptionKey = "test-snapshot-encryption"
+        snapshotObjectPrefix  = "dev-cluster/snapshot-"
         checkQuorumTimeout    = "30s",
-        backupInterval        = "30s",
+        backupInterval        = "1m",
       })
       "client/ca.crt"  = tls_self_signed_cert.etcd-ca.cert_pem
       "client/tls.crt" = tls_locally_signed_cert.etcd[node].cert_pem
@@ -219,8 +220,7 @@ module "etcd-wrapper" {
       {
         name  = "backup"
         image = "localhost/etcd-wrapper:latest"
-        command = [
-          "/bin/etcd-wrapper",
+        args = [
           "backup",
           "-config", "${local.data_path}/config.yaml",
         ]

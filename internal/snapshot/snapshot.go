@@ -164,9 +164,6 @@ func (s *Snapshot) CreateBackup(ctx context.Context, reader io.ReadCloser) error
 	if err := ageWriter.Close(); err != nil {
 		return fmt.Errorf("close age buffer: %w", err)
 	}
-	if err := reader.Close(); err != nil {
-		return fmt.Errorf("close read buffer: %w", err)
-	}
 
 	// --- upload ---
 

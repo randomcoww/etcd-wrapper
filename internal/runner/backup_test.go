@@ -40,20 +40,15 @@ func TestBackupRun(t *testing.T) {
 			metricsPort: 8102,
 		},
 	}
-	dataPath := t.TempDir()
-	configs, err := newConfigs(t, members, dataPath)
+	configs, err := newConfigs(t, members)
 	if err != nil {
 		t.Fatal("generate test configs: %w", err)
 	}
 
 	s3Client := &s3test.FakeS3Client{
-		ObjectsList: []string{
-			"snap-2",
-		},
-		ObjectsErrors: make(map[string]error),
-		SnapshotFiles: map[string]string{
-			"snap-2": filepath.Join(baseTestPath, "../rev2-snap.db"), // good data
-		},
+		ObjectsList:       []string{},
+		ObjectsErrors:     make(map[string]error),
+		SnapshotFiles:     map[string]string{},
 		TestEncryptionKey: testEncryptionKey,
 	}
 
@@ -63,11 +58,11 @@ func TestBackupRun(t *testing.T) {
 	for _, config := range configs {
 		snapshot := s.NewFromConfig(logger, s3Client, &c.YamlConfig{
 			SnapshotEncryptionKey:  testEncryptionKey,
-			SnapshotObjectPrefix:   "snap-",
+			SnapshotObjectPrefix:   "dev-cluster/snapshot-",
 			SnapshotRetentionCount: 2,
-			S3ClientTimeout:        2 * time.Second,
-			RestoreSnapshotTimeout: 2 * time.Second,
-			UploadSnapshotTimeout:  2 * time.Second,
+			S3ClientTimeout:        2 * time.Minute,
+			RestoreSnapshotTimeout: 2 * time.Minute,
+			UploadSnapshotTimeout:  2 * time.Minute,
 		}, func() string { return "test" })
 
 		etcdRunner, err := etcd.NewEtcdRunner(etcdBinary)
@@ -83,7 +78,6 @@ func TestBackupRun(t *testing.T) {
 		runners = append(runners, r)
 
 		b := NewBackupFromConfig(logger, snapshot, &c.YamlConfig{
-			BackupInterval:     4 * time.Second,
 			CheckQuorumTimeout: 8 * time.Second,
 			MemberTimeout:      8 * time.Second,
 			SnapshotTimeout:    8 * time.Second,
@@ -93,7 +87,7 @@ func TestBackupRun(t *testing.T) {
 		backupRunners = append(backupRunners, b)
 	}
 
-	if err := existingDummyCluster(t, ctx, runners); err != nil {
+	if err := existingDummyCluster(t, ctx, runners, filepath.Join(baseTestPath, "../rev3-snap.db")); err != nil {
 		t.Fatal("create dummy cluster: %w", err)
 	}
 
@@ -102,10 +96,9 @@ func TestBackupRun(t *testing.T) {
 
 	for i, b := range backupRunners {
 		wg.Add(1)
-		backupCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
 		defer cancel()
 		go func(index int) {
-			errs[index] = b.run(backupCtx)
+			errs[index] = b.run(ctx)
 			wg.Done()
 		}(i)
 	}
@@ -115,6 +108,6 @@ func TestBackupRun(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	_, ok := s3Client.SnapshotFiles["snap-test"] // should create backup under SnapshotFiles
+	_, ok := s3Client.SnapshotFiles["dev-cluster/snapshot-test"] // should create backup under SnapshotFiles
 	assert.True(t, ok)
 }

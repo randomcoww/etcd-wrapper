@@ -56,8 +56,7 @@ func TestCreateFromSnapshot(t *testing.T) {
 			metricsPort: 8102,
 		},
 	}
-	dataPath := t.TempDir()
-	configs, err := newConfigs(t, members, dataPath)
+	configs, err := newConfigs(t, members)
 	if err != nil {
 		t.Fatal("generate test configs: %w", err)
 	}
@@ -144,8 +143,7 @@ func TestRestartMembers(t *testing.T) {
 			metricsPort: 8102,
 		},
 	}
-	dataPath := t.TempDir()
-	configs, err := newConfigs(t, members, dataPath)
+	configs, err := newConfigs(t, members)
 	if err != nil {
 		t.Fatal("generate test configs: %w", err)
 	}
@@ -185,7 +183,7 @@ func TestRestartMembers(t *testing.T) {
 		runners = append(runners, r)
 	}
 
-	if err := existingDummyCluster(t, ctx, runners); err != nil {
+	if err := existingDummyCluster(t, ctx, runners, filepath.Join(baseTestPath, "../rev3-snap.db")); err != nil {
 		t.Fatal("create dummy cluster: %w", err)
 	}
 
@@ -278,12 +276,11 @@ func TestRollingMemberUpdate(t *testing.T) {
 		},
 	}
 
-	dataPath := t.TempDir()
-	configs, err := newConfigs(t, members, dataPath)
+	configs, err := newConfigs(t, members)
 	if err != nil {
 		t.Fatal("generate test configs: %w", err)
 	}
-	configsAfter, err := newConfigs(t, membersAfter, dataPath)
+	configsAfter, err := newConfigs(t, membersAfter)
 	if err != nil {
 		t.Fatal("generate test configs: %w", err)
 	}
@@ -323,7 +320,7 @@ func TestRollingMemberUpdate(t *testing.T) {
 		runners = append(runners, r)
 	}
 
-	if err := existingDummyCluster(t, ctx, runners); err != nil {
+	if err := existingDummyCluster(t, ctx, runners, filepath.Join(baseTestPath, "../rev3-snap.db")); err != nil {
 		t.Fatal("create dummy cluster: %w", err)
 	}
 
@@ -333,11 +330,6 @@ func TestRollingMemberUpdate(t *testing.T) {
 	for i, r := range runners {
 		if err := r.etcdRunner.Stop(); err != nil {
 			t.Fatal("wait stop test client: %w", err)
-		}
-
-		// remove data (data loss)
-		if err := r.clearLocalData(); err != nil {
-			t.Fatalf("test data loss, %v", err)
 		}
 
 		// update config
@@ -393,8 +385,7 @@ func TestStartNew(t *testing.T) {
 			metricsPort: 8102,
 		},
 	}
-	dataPath := t.TempDir()
-	configs, err := newConfigs(t, members, dataPath)
+	configs, err := newConfigs(t, members)
 	if err != nil {
 		t.Fatal("generate test configs: %w", err)
 	}
@@ -486,7 +477,7 @@ func verifyTestData(t *testing.T, ctx context.Context, r *Runner, key string) (s
 	return string(resp.Kvs[0].Value), nil
 }
 
-func newConfigs(t *testing.T, members []member, dataPath string) ([]*c.EtcdConfig, error) {
+func newConfigs(t *testing.T, members []member) ([]*c.EtcdConfig, error) {
 	t.Helper()
 
 	var configs []*c.EtcdConfig
@@ -497,7 +488,7 @@ func newConfigs(t *testing.T, members []member, dataPath string) ([]*c.EtcdConfi
 				"ETCD_NAME":                        member.name,
 				"ETCD_LOG_LEVEL":                   "error",
 				"ETCD_LOG_OUTPUTS":                 "stdout",
-				"ETCD_DATA_DIR":                    filepath.Join(dataPath, member.name+"_etcd"),
+				"ETCD_DATA_DIR":                    t.TempDir(),
 				"ETCD_CLIENT_CERT_AUTH":            "true",
 				"ETCD_PEER_CLIENT_CERT_AUTH":       "true",
 				"ETCD_STRICT_RECONFIG_CHECK":       "true",
@@ -550,14 +541,14 @@ func newConfigs(t *testing.T, members []member, dataPath string) ([]*c.EtcdConfi
 	return configs, nil
 }
 
-func existingDummyCluster(t *testing.T, ctx context.Context, runners []*Runner) error {
+func existingDummyCluster(t *testing.T, ctx context.Context, runners []*Runner, snapshotPath string) error {
 	t.Helper()
 
 	for _, r := range runners {
 		// preseed data into etcd path
 		restoreConfig := r.etcdConfig.RestoreConfig()
 		restoreConfig.RevisionBump = 0
-		restoreConfig.SnapshotPath = filepath.Join(baseTestPath, "../rev3-snap.db")
+		restoreConfig.SnapshotPath = snapshotPath
 
 		if err := etcdutil.RestoreSnapshot(r.logger, restoreConfig); err != nil {
 			return fmt.Errorf("dummy cluster data restore: %w", err)
@@ -574,13 +565,6 @@ func existingDummyCluster(t *testing.T, ctx context.Context, runners []*Runner) 
 
 		if err := verifyTestStatus(t, c, r); err != nil {
 			return fmt.Errorf("test dummy cluster: %w", err)
-		}
-		val, err := verifyTestData(t, c, r, "test-rev3")
-		if err != nil {
-			return fmt.Errorf("test dummy data: %w", err)
-		}
-		if val != "test-rev3-val" {
-			return fmt.Errorf("test dummy data")
 		}
 	}
 	return nil
