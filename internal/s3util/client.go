@@ -26,6 +26,7 @@ type Client interface {
 	List(context.Context, string) ([]string, map[string]error)
 	Remove(context.Context, []string) error
 	Upload(context.Context, string, io.Reader) error
+	RemoveIncompleteUpload(context.Context, string) error
 }
 
 func NewClient(endpoint, region, bucket, accessKeyID, secretAccessKey string, trustedCAs []string) (*s3client, error) {
@@ -93,11 +94,14 @@ func (c *s3client) Upload(ctx context.Context, key string, reader io.Reader) err
 		AutoChecksum: minio.ChecksumCRC32,
 		PartSize:     8 * 1024 * 1024,
 	}); err != nil {
-		removeIncompleteErr := c.client.RemoveIncompleteUpload(ctx, c.bucket, key)
-		if removeIncompleteErr != nil {
-			return fmt.Errorf("remove failed put: %w", errors.Join(err, removeIncompleteErr))
-		}
 		return fmt.Errorf("put object: %w", err)
+	}
+	return nil
+}
+
+func (c *s3client) RemoveIncompleteUpload(ctx context.Context, key string) error {
+	if err := c.client.RemoveIncompleteUpload(ctx, c.bucket, key); err != nil {
+		return fmt.Errorf("remove failed put: %w", err)
 	}
 	return nil
 }

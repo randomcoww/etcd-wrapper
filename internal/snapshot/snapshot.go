@@ -164,16 +164,25 @@ func (s *Snapshot) CreateBackup(ctx context.Context, reader io.ReadCloser) error
 	if err := ageWriter.Close(); err != nil {
 		return fmt.Errorf("close age buffer: %w", err)
 	}
+	if err := reader.Close(); err != nil {
+		return fmt.Errorf("close read buffer: %w", err)
+	}
 
 	// --- upload ---
 
 	objectKey := fmt.Sprintf("%s%s", s.objectPrefix, s.objectTagFunc())
 	s.logger.Info("encrypted backup object", zap.String("key", objectKey), zap.Int64("size", b))
 
-	uploadSnapshotCtx, cancel := context.WithTimeout(ctx, s.uploadSnapshotTimeout)
-	defer cancel()
+	uploadSnapshotCtx, uploadSnapshotCancel := context.WithTimeout(ctx, s.uploadSnapshotTimeout)
+	defer uploadSnapshotCancel()
 	if err := s.s3Client.Upload(uploadSnapshotCtx, objectKey, &buf); err != nil {
-		return fmt.Errorf("put backup: %w", err)
+
+		cleanupCtx, cleanupCancel := context.WithTimeout(ctx, s.uploadSnapshotTimeout)
+		defer cleanupCancel()
+		if err := s.s3Client.RemoveIncompleteUpload(cleanupCtx, objectKey); err != nil {
+			return fmt.Errorf("remove failed put: %w", err)
+		}
+		return fmt.Errorf("put object: %w", err)
 	}
 	s.logger.Info("created backup", zap.String("key", objectKey))
 	return nil

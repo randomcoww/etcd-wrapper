@@ -89,3 +89,7 @@ func (c *FakeS3Client) Upload(ctx context.Context, key string, reader io.Reader)
 	c.ObjectsList = append(c.ObjectsList, key)
 	return nil
 }
+
+func (c *FakeS3Client) RemoveIncompleteUpload(ctx context.Context, key string) error {
+	return nil
+}

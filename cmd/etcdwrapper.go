@@ -22,11 +22,6 @@ const (
 )
 
 func main() {
-	logger, err := zap.NewProduction()
-	if err != nil {
-		os.Exit(1)
-	}
-
 	if len(os.Args) < 3 {
 		fmt.Print(`Usage:
 
@@ -39,14 +34,16 @@ etcd-wrapper backup -config <yamlconfig>
 		os.Exit(0)
 	}
 
-	if err := run(logger, os.Args[1], os.Args[2:]); err != nil {
-		logger.Error("runner", zap.Error(err))
+	if err := run(os.Args[1], os.Args[2:]); err != nil {
 		os.Exit(1)
 	}
 	os.Exit(0)
 }
 
-func run(logger *zap.Logger, cmd string, args []string) error {
+func run(cmd string, args []string) error {
+	logger := zap.Must(zap.NewProduction())
+	defer logger.Sync()
+
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 
@@ -56,14 +53,17 @@ func run(logger *zap.Logger, cmd string, args []string) error {
 
 	cfg, err := c.LoadConfigFile(*configPath)
 	if err != nil {
+		logger.Error("load config", zap.Error(err))
 		return err
 	}
 	etcdConfig, err := c.LoadFromEnv()
 	if err != nil {
+		logger.Error("load envs", zap.Error(err))
 		return err
 	}
 	s3Client, err := s3util.NewClient(cfg.S3Endpoint, cfg.S3Region, cfg.S3Bucket, cfg.S3AccessKeyID, cfg.S3SecretAccessKey, cfg.S3TrustedCAs)
 	if err != nil {
+		logger.Error("create s3 client", zap.Error(err))
 		return err
 	}
 	snapshot := s.NewFromConfig(logger, s3Client, cfg, func() string { return time.Now().UTC().Format(timeFormat) })
@@ -73,12 +73,14 @@ func run(logger *zap.Logger, cmd string, args []string) error {
 	case "init":
 		etcdRunner, err := etcd.NewEtcdRunner(cfg.EtcdBinaryFile)
 		if err != nil {
+			logger.Error("etcd init", zap.Error(err))
 			return err
 		}
 		defer etcdRunner.Stop()
 
 		runner := r.NewRunnerFromConfig(logger, etcdRunner, snapshot, cfg, etcdConfig)
 		if _, err := runner.StartInit(ctx); err != nil {
+			logger.Error("etcd init run", zap.Error(err))
 			return err
 		}
 
@@ -94,6 +96,9 @@ func run(logger *zap.Logger, cmd string, args []string) error {
 
 	select {
 	case err := <-errCh:
+		if err != nil {
+			logger.Error("quit", zap.Error(err))
+		}
 		return err
 	case <-ctx.Done():
 		return ctx.Err()

@@ -2,6 +2,8 @@ package snapshot
 
 import (
 	"context"
+	"crypto/rand"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -75,12 +77,11 @@ func TestRestore(t *testing.T) {
 		restoreRevisionBump:    1000,
 		s3ClientTimeout:        2 * time.Second,
 		restoreSnapshotTimeout: 2 * time.Second,
-		uploadSnapshotTimeout:  2 * time.Second,
+		uploadSnapshotTimeout:  8 * time.Second,
 	}
 
-	clientCtx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	clientCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
 	ok, err := snapshot.Restore(clientCtx, etcdConfig.RestoreConfig())
 	assert.NoError(t, err)
 	assert.True(t, ok)
@@ -107,19 +108,13 @@ func TestCreateBackup(t *testing.T) {
 		objectTagFunc:          func() string { return baseNow.Add(time.Duration(1 * time.Minute)).Format(timeFormat) },
 		s3ClientTimeout:        2 * time.Second,
 		restoreSnapshotTimeout: 2 * time.Second,
-		uploadSnapshotTimeout:  2 * time.Second,
+		uploadSnapshotTimeout:  8 * time.Second,
 	}
 
-	file, err := os.Open(filepath.Join(baseTestPath, "../rev2-snap.db"))
-	if err != nil {
-		t.Fatal("open test file: %w", err)
-	}
-	defer file.Close()
-
-	clientCtx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
+	file := io.LimitReader(rand.Reader, 400*1024*1024)
+	clientCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	err = snapshot.CreateBackup(clientCtx, file)
+	err := snapshot.CreateBackup(clientCtx, file)
 	assert.NoError(t, err)
 
 	_, ok := s3Client.SnapshotFiles["snap-20000101-000100"] // should create content under SnapshotFiles

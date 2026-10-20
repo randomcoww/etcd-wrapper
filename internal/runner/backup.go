@@ -102,10 +102,10 @@ func (b *Backup) run(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	defer reader.Close()
 	b.logger.Info("created snapshot backup")
 
-	err = b.snapshot.CreateBackup(ctx, reader)
-	if err != nil {
+	if err := b.snapshot.CreateBackup(ctx, reader); err != nil {
 		return err
 	}
 	b.logger.Info("uploaded snapshot backup")
@@ -233,10 +233,10 @@ func (b *Backup) rollingDefragment(ctx context.Context, client etcdutil.EtcdClie
 func (b *Backup) runDefragment(ctx context.Context, member etcdutil.Member, client etcdutil.EtcdClient) error {
 	defragmentCtx, cancel := context.WithTimeout(ctx, b.defragmentTimeout)
 	defer cancel()
+	b.logger.Info("start defragment", zap.String("node", member.GetName()))
 	if err := client.Defragment(defragmentCtx, member.GetClientURLs()[0]); err != nil {
 		return err
 	}
-	b.logger.Info("start defragment", zap.String("node", member.GetName()))
 
 	// wait for status to respond
 	time.Sleep(1 * time.Second)

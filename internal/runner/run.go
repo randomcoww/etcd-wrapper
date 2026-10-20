@@ -90,8 +90,8 @@ func (r *Runner) checkRevisionAndStart(ctx context.Context) (bool, error) {
 }
 
 func (r *Runner) checkQuorumAndStart(ctx context.Context) (bool, error) {
-	peerClientCtx, cancel := context.WithTimeout(ctx, r.checkQuorumTimeout)
-	defer cancel()
+	peerClientCtx, peerClientCancel := context.WithTimeout(ctx, r.checkQuorumTimeout)
+	defer peerClientCancel()
 	client, err := etcdutil.NewClientFromPeers(peerClientCtx, r.logger, r.etcdConfig.ClusterPeerURLs(), r.etcdConfig.PeerTLSConfig, r.etcdConfig.ClientTLSConfig)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
@@ -103,8 +103,8 @@ func (r *Runner) checkQuorumAndStart(ctx context.Context) (bool, error) {
 	defer client.Close()
 
 	// checks for quorum
-	quorumCtx, cancel := context.WithTimeout(ctx, r.memberTimeout)
-	defer cancel()
+	quorumCtx, quorumCancel := context.WithTimeout(ctx, r.memberTimeout)
+	defer quorumCancel()
 	remoteRevision, err := client.GetRevision(quorumCtx)
 	if err != nil {
 		if errors.Is(err, context.DeadlineExceeded) {
@@ -151,8 +151,8 @@ func (r *Runner) restoreAndStart(ctx context.Context) (bool, error) {
 }
 
 func (r *Runner) replaceMember(ctx context.Context, client etcdutil.EtcdClient) error {
-	memberListCtx, cancel := context.WithTimeout(ctx, r.memberTimeout)
-	defer cancel()
+	memberListCtx, memberListCancel := context.WithTimeout(ctx, r.memberTimeout)
+	defer memberListCancel()
 	listResp, err := client.MemberList(memberListCtx)
 	if err != nil {
 		return fmt.Errorf("list cluster members: %w", err)
@@ -164,8 +164,8 @@ func (r *Runner) replaceMember(ctx context.Context, client etcdutil.EtcdClient) 
 	if localMember != nil && len(listResp.GetMembers()) >= len(r.etcdConfig.InitialCluster) {
 		r.logger.Info("remove local member", zap.Uint64("ID", localMember.GetID()), zap.String("name", localMember.GetName()))
 
-		memberRemoveCtx, cancel := context.WithTimeout(ctx, r.memberTimeout)
-		defer cancel()
+		memberRemoveCtx, memberRemoveCancel := context.WithTimeout(ctx, r.memberTimeout)
+		defer memberRemoveCancel()
 		listResp, err = client.MemberRemove(memberRemoveCtx, localMember.GetID())
 		if err != nil {
 			return fmt.Errorf("remove cluster member %d: %w", localMember.GetID(), err)
@@ -179,8 +179,8 @@ func (r *Runner) replaceMember(ctx context.Context, client etcdutil.EtcdClient) 
 	}
 
 	if localMember == nil && len(listResp.GetMembers()) < len(r.etcdConfig.InitialCluster) {
-		memberAddCtx, cancel := context.WithTimeout(ctx, r.memberTimeout)
-		defer cancel()
+		memberAddCtx, memberAddCancel := context.WithTimeout(ctx, r.memberTimeout)
+		defer memberAddCancel()
 		listResp, err = client.MemberAdd(memberAddCtx, r.etcdConfig.InitialAdvertisePeerURLs)
 		if err != nil {
 			return fmt.Errorf("add member: %w", err)
@@ -192,8 +192,8 @@ func (r *Runner) replaceMember(ctx context.Context, client etcdutil.EtcdClient) 
 }
 
 func (r *Runner) updateMembers(ctx context.Context, client etcdutil.EtcdClient) error {
-	memberListCtx, cancel := context.WithTimeout(ctx, r.memberTimeout)
-	defer cancel()
+	memberListCtx, memberListCancel := context.WithTimeout(ctx, r.memberTimeout)
+	defer memberListCancel()
 	listResp, err := client.MemberList(memberListCtx)
 	if err != nil {
 		return fmt.Errorf("list cluster members: %w", err)
@@ -205,8 +205,8 @@ func (r *Runner) updateMembers(ctx context.Context, client etcdutil.EtcdClient) 
 		case member.GetName() == r.etcdConfig.Env["ETCD_NAME"], util.HasMatchingElement(member.GetPeerURLs(), r.etcdConfig.InitialAdvertisePeerURLs):
 			if !slices.Equal(member.GetPeerURLs(), r.etcdConfig.InitialAdvertisePeerURLs) {
 
-				memberUpdateCtx, cancel := context.WithTimeout(ctx, r.memberTimeout)
-				defer cancel()
+				memberUpdateCtx, memberUpdateCancel := context.WithTimeout(ctx, r.memberTimeout)
+				defer memberUpdateCancel()
 				listResp, err = client.MemberUpdate(memberUpdateCtx, member.GetID(), r.etcdConfig.InitialAdvertisePeerURLs)
 				if err != nil {
 					return err

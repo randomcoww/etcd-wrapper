@@ -31,16 +31,28 @@ func TestS3Client(t *testing.T) {
 
 	// --- upload test data ---
 
-	err = client.Upload(clientCtx, "snap-1", bytes.NewBufferString("snap-1-val"))
+	err = client.Upload(clientCtx, "dev/snap-1", bytes.NewBufferString("dev/snap-1-val"))
 	assert.NoError(t, err)
 
-	err = client.Upload(clientCtx, "snap-2", bytes.NewBufferString("snap-2-val"))
+	err = client.RemoveIncompleteUpload(clientCtx, "dev/snap-1")
 	assert.NoError(t, err)
 
-	err = client.Upload(clientCtx, "snap-3", bytes.NewBufferString(""))
+	err = client.Upload(clientCtx, "dev/snap-2", bytes.NewBufferString("dev/snap-2-val"))
 	assert.NoError(t, err)
 
-	err = client.Upload(clientCtx, "other-1", bytes.NewBufferString("other-1-val"))
+	err = client.RemoveIncompleteUpload(clientCtx, "dev/snap-2")
+	assert.NoError(t, err)
+
+	err = client.Upload(clientCtx, "dev/snap-3", bytes.NewBufferString(""))
+	assert.NoError(t, err)
+
+	err = client.RemoveIncompleteUpload(clientCtx, "dev/snap-3")
+	assert.NoError(t, err)
+
+	err = client.Upload(clientCtx, "dev/other-1", bytes.NewBufferString("dev/other-1-val"))
+	assert.NoError(t, err)
+
+	err = client.RemoveIncompleteUpload(clientCtx, "dev/other-1")
 	assert.NoError(t, err)
 
 	// --- verify ---
@@ -51,35 +63,35 @@ func TestS3Client(t *testing.T) {
 
 	// --- list objects ---
 
-	list, errors := client.List(clientCtx, "snap-")
-	assert.Equal(t, []string{"snap-1", "snap-2"}, list)
-	assert.Equal(t, map[string]error{"snap-3": fmt.Errorf("object size is 0")}, errors)
+	list, errors := client.List(clientCtx, "dev/snap-")
+	assert.Equal(t, []string{"dev/snap-1", "dev/snap-2"}, list)
+	assert.Equal(t, map[string]error{"dev/snap-3": fmt.Errorf("object size is 0")}, errors)
 
 	// --- get objects ---
 
-	reader, ok, err := client.Download(clientCtx, "snap-2")
+	reader, ok, err := client.Download(clientCtx, "dev/snap-2")
 	defer reader.Close()
 
 	var buf bytes.Buffer
 	if _, err := io.Copy(&buf, reader); err != nil {
 		t.Fatal("snapshot copy: %w", err)
 	}
-	assert.Equal(t, "snap-2-val", buf.String())
+	assert.Equal(t, "dev/snap-2-val", buf.String())
 
 	// --- remove objects and verify list ---
 
-	err = client.Remove(clientCtx, []string{"snap-1", "snap-2", "snap-3"})
+	err = client.Remove(clientCtx, []string{"dev/snap-1", "dev/snap-2", "dev/snap-3"})
 	assert.NoError(t, err)
 
-	list, errors = client.List(clientCtx, "snap-")
+	list, errors = client.List(clientCtx, "dev/snap-")
 	assert.Equal(t, []string{}, list)
 	assert.Equal(t, map[string]error{}, errors)
 
-	list, errors = client.List(clientCtx, "other-")
-	assert.Equal(t, []string{"other-1"}, list)
+	list, errors = client.List(clientCtx, "dev/other-")
+	assert.Equal(t, []string{"dev/other-1"}, list)
 	assert.Equal(t, map[string]error{}, errors)
 
 	// cleanup
-	err = client.Remove(clientCtx, []string{"other-1"})
+	err = client.Remove(clientCtx, []string{"dev/other-1"})
 	assert.NoError(t, err)
 }
