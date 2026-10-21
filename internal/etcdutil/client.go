@@ -217,11 +217,11 @@ func (client *Client) Defragment(ctx context.Context, endpoint string) error {
 }
 
 func (client *Client) Snapshot(ctx context.Context) (io.ReadCloser, error) {
-	rc, err := client.Maintenance.Snapshot(ctx)
+	resp, err := client.Maintenance.SnapshotWithVersion(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("snapshot data: %w", err)
 	}
-	return rc, nil
+	return resp.Snapshot, nil
 }
 
 func (client *Client) C() *clientv3.Client {

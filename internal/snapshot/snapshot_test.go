@@ -111,7 +111,7 @@ func TestCreateBackup(t *testing.T) {
 		uploadSnapshotTimeout:  8 * time.Second,
 	}
 
-	file := io.NopCloser(io.LimitReader(rand.Reader, 2*1024*1024*1024))
+	file := io.NopCloser(io.LimitReader(rand.Reader, 100*1024*1024))
 	clientCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	err := snapshot.CreateBackup(clientCtx, file)

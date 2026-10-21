@@ -128,7 +128,7 @@ func (c *s3client) Remove(ctx context.Context, keys []string) error {
 func (c *s3client) List(ctx context.Context, prefix string) ([]string, map[string]error) {
 	objectCh := c.client.ListObjects(ctx, c.bucket, minio.ListObjectsOptions{
 		Prefix:    prefix,
-		Recursive: true,
+		Recursive: false,
 	})
 	keys := []string{}
 	errors := make(map[string]error)

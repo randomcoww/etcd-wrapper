@@ -147,21 +147,22 @@ func (s *Snapshot) CreateBackup(ctx context.Context, reader io.ReadCloser) error
 
 	pr, pw := io.Pipe()
 	go func() {
+		defer reader.Close()
 		ageWriter, err := age.Encrypt(pw, recipient)
 		if err != nil {
 			pw.CloseWithError(err)
 			return
 		}
-		_, copyErr := io.Copy(ageWriter, reader)
-		ageCloseErr := ageWriter.Close()
-
-		if copyErr != nil {
-			pw.CloseWithError(copyErr)
-		} else if ageCloseErr != nil {
-			pw.CloseWithError(ageCloseErr)
-		} else {
-			pw.Close() // Finished successfully
+		if _, err := io.Copy(ageWriter, reader); err != nil {
+			ageWriter.Close()
+			pw.CloseWithError(err)
+			return
 		}
+		if err := ageWriter.Close(); err != nil {
+			pw.CloseWithError(err)
+			return
+		}
+		pw.Close()
 	}()
 
 	// --- upload ---
